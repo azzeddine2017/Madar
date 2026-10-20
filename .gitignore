@@ -16,22 +16,23 @@
 # Compiled Object Files & Intermediates
 *.obj
 *.o
-*.exp
-*.lib
 *.ilk
 *.pdb
 *.idb
 *.manifest
 *.res
+
 *.exe
 *.dll
-
+*.exp
+*.lib
 
 # Retain essential scripts/data in bin
 !/bin/*.ring
 !/bin/*.bat
 !/bin/*.sh
 !/bin/load/
+
 
 # Editor & IDE Artifacts
 .vs/
