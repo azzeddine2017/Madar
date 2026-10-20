@@ -13,26 +13,19 @@
 !/models/.gitkeep
 !/models/README.md
 
-# Temporary Test Models & Artifacts
-tests/ai/*.gguf
-test_tok.gguf
-
 # Compiled Object Files & Intermediates
 *.obj
 *.o
 *.exp
-*.lib.exp
+*.lib
 *.ilk
 *.pdb
 *.idb
 *.manifest
 *.res
+*.exe
+*.dll
 
-# Build Output Binaries
-/bin/*.exe
-/bin/*.dll
-/lib/*.lib
-/lib/*.dll
 
 # Retain essential scripts/data in bin
 !/bin/*.ring
