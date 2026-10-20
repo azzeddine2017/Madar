@@ -1,0 +1,162 @@
+# Madar Technical Architecture & Design Specification
+
+This document details the architectural blueprints, memory models, and subsystem designs powering the **Madar** (مدار) AI-Native runtime.
+
+---
+
+## 1. System Overview
+
+Madar transforms the lightweight Ring Core engine into an AI-first runtime through a layered, modular architecture written in standard ANSI C (C99):
+
+```text
++-------------------------------------------------------------+
+|                     Madar Script Layer                      |
+|         (ChatML Pipelines, Matrix Ops, Native Tensors)      |
++-------------------------------------------------------------+
+                              |
++-------------------------------------------------------------+
+|                  Ring VM & Dispatch Engine                  |
+|    - Direct Threading (Computed Gotos) / Fast Dispatch      |
+|    - RefCount GC & Item System (ITEMTYPE_TENSOR = 6)        |
+|    - Operator Overloading for Tensors (+, -, *, /)          |
++-------------------------------------------------------------+
+                              |
++-------------------------------------------------------------+
+|                 Native Tensor Engine Core                   |
+|    - Zero-Copy View & Slicing Subsystem (Strided Layout)    |
+|    - Contiguous Buffer Allocator & Lifecycle Tracking       |
+|    - Precision Types: Float32, Float16, Int8, Int32, Float64|
+|    - Vectorized Math: GEMM (IKJ blocked), Activations       |
++-------------------------------------------------------------+
+                              |
++-------------------------------------------------------------+
+|            In-Core GGUF & Transformer Engine                |
+|    - Memory-Mapped GGUF (v2/v3) Binary Reader               |
+|    - Quantized MatVec: Q4_0, Q8_0, F16, and Q6_K SuperBlocks|
+|    - Multi-Threaded Event-Driven Worker Pool                |
+|    - Byte-Level GPT-2 / BPE Multilingual Tokenizer          |
+|    - KV-Cache Engine & Prefill Logits Optimization          |
++-------------------------------------------------------------+
+```
+
+---
+
+## 2. Zero-Copy Tensor Memory Model
+
+### Separation of Storage and Descriptor
+To allow zero-copy views, slicing, and reshaping, Madar separates raw memory storage from the tensor's geometrical view:
+
+```text
+[RingTensor View A] -----\
+  - shape: [2, 4]         \
+  - offset: 0              +---> [RingTensorStorage]
+  - strides: [4, 1]       /        - pData: 0x1000 (raw memory)
+                         /         - nBytes: 32 bytes
+[RingTensor View B] ----/          - nRefCount: 2
+  - shape: [4, 2]                  - lOwnsData: 1
+  - offset: 0
+  - strides: [2, 1]
+```
+
+### Strided Coordinate Resolution Formula
+For any $N$-dimensional coordinate $(i_0, i_1, \dots, i_{N-1})$, the exact byte location within `pStorage->pData` is computed deterministically in $O(1)$:
+
+$$\text{ByteAddress} = \text{pData} + \text{nOffset} + \left( \sum_{d=0}^{N-1} i_d \times \text{aStrides}[d] \right) \times \text{element\_size}$$
+
+### Slicing & Reshaping Rules
+- **Slicing (`ring_tensor_slice`):** Increments `nRefCount` on the existing `pStorage`, advances `nOffset` to the slice starting element, multiplies the stride by `nStep`, and leaves raw data untouched.
+- **Reshaping (`ring_tensor_reshape`):** Requires `lContiguous == 1`. When contiguous, shape transformation is an instantaneous $O(1)$ metadata operation with zero reallocations.
+
+---
+
+## 3. Core VM Integration & The 3-Bit Item Optimization
+
+In Ring, every fundamental value on the evaluation stack and inside lists is represented by `struct Item`.
+
+### The Bitfield Discovery
+In `language/include/ritem.h`:
+```c
+typedef struct Item {
+    union { ... } data;
+    unsigned int nType : 3;
+    ...
+} Item;
+```
+A 3-bit unsigned bitfield represents integers from `0` to `7`. Upstream Ring defined only types `0` through `5`:
+- `0`: `ITEMTYPE_NOTHING`
+- `1`: `ITEMTYPE_STRING`
+- `2`: `ITEMTYPE_NUMBER`
+- `3`: `ITEMTYPE_POINTER`
+- `4`: `ITEMTYPE_LIST`
+- `5`: `ITEMTYPE_FUNCPOINTER`
+
+Madar assigns:
+```c
+#define ITEMTYPE_TENSOR 6
+```
+Because `6` fits cleanly inside the existing 3 bits, **the memory footprint of `Item` is not increased by a single byte**, guaranteeing 100% binary structure alignment with all existing Ring libraries.
+
+---
+
+## 4. GGUF & Quantization Architecture
+
+### 1. Memory-Mapped GGUF Binary Parser (`ring_gguf.c`)
+- Direct Windows file mapping (`CreateFileMapping` / `MapViewOfFile`) allows multi-gigabyte models to be accessed with virtual addresses without copying data into RAM.
+- Instant initialization times: models mount in under 0.35 seconds.
+
+### 2. Quantization Kernels Supported
+
+| Format | Block Size | Struct Size | Packing & Dequantization Details |
+| :--- | :--- | :--- | :--- |
+| **F32** | 1 | 4 bytes | Standard IEEE 754 float |
+| **F16** | 1 | 2 bytes | Half-precision float converted via table/bit shifts |
+| **Q4_0** | 32 | 18 bytes | 16-bit scale + 16 bytes (32 x 4-bit nibbles - 8) |
+| **Q8_0** | 32 | 34 bytes | 16-bit scale + 32 x 8-bit signed quants |
+| **Q6_K** | 256 | 210 bytes | 128B lower 4 bits (`ql`) + 64B upper 2 bits (`qh`) + 16B 8-bit sub-block scales + FP16 super-block scale |
+
+### 3. Dynamic Heap Buffer Architecture
+To support arbitrary LLM architectures (from 0.5B to 14B+) without risk of C runtime stack exhaustion:
+- Model activations for Attention Projections (`pActAttnProj`) and Feed-Forward Networks (`pActFFNOut`) are allocated on the heap during model initialization.
+- Re-used across forward passes with zero dynamic allocation overhead during inference.
+
+---
+
+## 5. Modern Language Syntax Roadmap (Python-Like Extensions)
+
+Madar is extending Ring's grammar to incorporate high-productivity constructs while preserving 100% backward compatibility:
+
+1. **`f-strings`**: Direct literal interpolation `f"Value: {x + 1}"` compiled into fast concatenation bytecode.
+2. **Default Arguments**: `def my_func(a, b = 10)` with runtime parameter count validation.
+3. **Multiple Assignments & Destructuring**: `a, b = b, a` and `first, *rest = list`.
+4. **Chained Comparisons**: `10 <= x <= 100` evaluated without re-evaluating intermediate expressions.
+5. **List Comprehensions**: `[x * x for x in items if x > 2]` compiled into optimized inline builder loops.
+6. **Resource Management (`with ... as`)**: Automatic resource cleanup blocks using Ring's unreserved `with` construct.
+
+---
+
+## 6. Scripting API Reference
+
+### Tensor Operations
+| Function | Signature | Description |
+| :--- | :--- | :--- |
+| `tensor` / `tensor_new` | `tensor(shape, [type])` | Allocates a new zero-initialized tensor. |
+| `tensor_from_list` | `tensor_from_list(list, [type])` | Converts a Ring numerical list to a contiguous C tensor. |
+| `tensor_to_list` | `tensor_to_list(tensor)` | Converts a tensor to a Ring list. |
+| `tensor_shape` | `tensor_shape(tensor)` | Returns a list of dimension lengths `[d1, d2, ...]`. |
+| `tensor_dims` | `tensor_dims(tensor)` | Returns the tensor rank (number of dimensions). |
+| `tensor_elements` | `tensor_elements(tensor)` | Returns total element count. |
+| `tensor_type` | `tensor_type(tensor)` | Returns data type name string (`"Float32"`, `"Int8"`, etc.). |
+| `tensor_slice` | `tensor_slice(tensor, dim, start, length)` | Returns a zero-copy slice view. |
+| `tensor_reshape` | `tensor_reshape(tensor, new_shape)` | Returns a zero-copy reshaped view. |
+| `tensor_matmul` | `tensor_matmul(t1, t2)` | Cache-blocked matrix multiplication. |
+| `istensor` | `istensor(variable)` | Returns `1` if the variable is a Tensor, `0` otherwise. |
+
+### GGUF & Model APIs
+| Function | Signature | Description |
+| :--- | :--- | :--- |
+| `gguf_open` | `gguf_open(path)` | Opens a GGUF file with zero-copy memory mapping. |
+| `gguf_close` | `gguf_close(handle)` | Closes and unmaps the GGUF file. |
+| `madar_model_open` | `madar_model_open(path)` | Initializes transformer inference runtime from GGUF. |
+| `madar_model_set_threads` | `madar_model_set_threads(h, n)` | Sets active CPU worker thread count. |
+| `madar_model_generate` | `madar_model_generate(h, prompt, maxTokens, temp)` | Executes autoregressive text generation. |
+| `madar_model_generate_stream`| `madar_model_generate_stream(h, prompt, maxTokens, temp, stream)` | Streams generated tokens to terminal in real time. |

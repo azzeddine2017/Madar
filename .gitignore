@@ -1,0 +1,64 @@
+# ==========================================
+# Madar (.gitignore)
+# AI-Native High-Performance Ring Runtime
+# ==========================================
+
+# AI & LLM Model Files & Weights (GGUF, Safetensors, Checkpoints)
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+/models/*
+!/models/.gitkeep
+!/models/README.md
+
+# Temporary Test Models & Artifacts
+tests/ai/*.gguf
+test_tok.gguf
+
+# Compiled Object Files & Intermediates
+*.obj
+*.o
+*.exp
+*.lib.exp
+*.ilk
+*.pdb
+*.idb
+*.manifest
+*.res
+
+# Build Output Binaries
+/bin/*.exe
+/bin/*.dll
+/lib/*.lib
+/lib/*.dll
+
+# Retain essential scripts/data in bin
+!/bin/*.ring
+!/bin/*.bat
+!/bin/*.sh
+!/bin/load/
+
+# Editor & IDE Artifacts
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosv
+*.sln.docstates
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary & Log Files
+*.tmp
+*.log
+*.bak
+*.orig
+
+# OS Generated Files
+Thumbs.db
+Desktop.ini
+.DS_Store

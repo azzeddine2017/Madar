@@ -1,0 +1,195 @@
+# Changelog - Madar Runtime (مدار)
+
+All notable changes to the **Madar** project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [Unreleased] - Madar 0.2.0-alpha
+
+### Added
+- **Native Python-style List Comprehensions (`[expr for var in source (if cond)?]`) (`language/src/stmt.c`, `language/include/parser.h`):**
+  - Added native syntactic and bytecode-level compilation for Python-style list comprehensions (`[x*x for x in list if x > 2]`).
+  - Supports single and chained `if` filters (`[x for x in 1:10 if x > 3 if x < 8]`) with short-circuit skipping via `ICO_JUMPZERO`.
+  - Supports multi-variable nested `for` clauses (`[x + y for x in [1, 2] for y in [10, 20]]`) for Cartesian products and permutations.
+  - Supports projection of arbitrary expressions including functions, sub-lists, dictionaries, and f-strings.
+  - Generates optimized C-speed Ring VM bytecode leveraging `ICO_LISTSTART`, `ICO_JUMPFOR`, `ICO_LISTITEM`, and `ICO_LISTEND` with zero new runtime opcodes or VM overhead.
+  - Supports multiline syntax and direct slicing on comprehensions (`[x*2 for x in 1:10][1:3]`).
+  - Preserves 100% backward compatibility with standard list literals `[1, 2, 3]` and empty lists `[]`.
+  - Added comprehensive test suite `tests/core/test_comprehensions.ring` and documentation `docs/COMPREHENSIONS.md`.
+- **Native Python-style Advanced Slicing (`seq[start:stop:step]`) (`language/src/expr.c`, `vmlists.c`, `vmstr.c`, `codegen.h`, `vm.c`, `vmcgoto.c`):**
+  - Added native parser and VM support for slicing strings and lists using bracket syntax (`seq[start:stop:step]`).
+  - Added new VM opcode `ICO_SLICE` with bit flags (`RING_SLICE_HAS_START`, `RING_SLICE_HAS_STOP`, `RING_SLICE_HAS_STEP`).
+  - Adopted natural 1-based inclusive range semantics (`s[1:5]` extracts items 1 to 5), aligning with Ring's range operator `1:3`.
+  - Supports omitting bounds: full sequence copy (`seq[:]`), prefix slice (`seq[:stop]`), suffix slice (`seq[start:]`).
+  - Supports stride / step (`seq[::2]`, `seq[1:5:2]`).
+  - Supports negative step for instant string and list reversal (`seq[::-1]`).
+  - Supports negative single indexing and slice indices (`seq[-1]`, `seq[-3:]`, `seq[1:-2]`).
+  - 100% backward compatible: preserves existing Ring hash-map lookups with string literal keys (`user[:name]`).
+  - Added dedicated test suite `tests/core/test_slicing.ring` and documentation `docs/SLICING.md`.
+- **Native Python-style Default Arguments (`func f(a, b=10)`) (`language/src/stmt.c`, `vmfuncs.c`, `vmjump.c`, `vm.c`, `vmcgoto.c`):**
+  - Added native parser and VM support for default parameter values in function signatures (`func f(a, b = 10)` and `def f(a, b = 10)`).
+  - Added new VM opcode `ICO_CHECKARG` to conditionally bypass default evaluation when the argument is supplied by the caller.
+  - Dynamically evaluates default argument expressions at call time inside the callee's scope, avoiding Python's infamous mutable default shared object bug.
+  - Allows later default arguments to dynamically reference earlier arguments (e.g., `func rect(w, h = w)`).
+  - Works transparently with standard functions, anonymous functions (`func(...)`), and class methods.
+  - Enforces syntax validation: non-default parameters cannot follow default parameters.
+  - Added introspection built-ins `argcount()` and `paramcount()` to query actual passed argument counts at runtime.
+  - Added dedicated test suite `tests/core/test_default_args.ring` and documentation `docs/DEFAULT_ARGS.md`.
+- **Native Python-style Formatted String Literals (`f-strings`) (`language/include/scanner.h` & `language/src/scanner.c`):**
+  - Added native scanner-level lexical support for formatted string literals (`f"..."`, `f'...'`, and `f`...``).
+  - Interpolated expressions in `{...}` are desugared at tokenization time into grouped expression tokens `( "" + ... )`, guaranteeing zero runtime overhead, standard operator precedence, and type coercion.
+  - Supports escaped braces via double braces (`{{` and `}}`) as well as backslash escaping (`\{` and `\}`).
+  - Supports up to 8 levels of nested f-strings (`RING_SCANNER_MAXFSTRINGLEVEL = 8`) and multiline interpolation.
+  - Preserves 100% backward compatibility with Ring Core syntax.
+  - Added dedicated test suite `tests/core/test_fstrings.ring` and documentation `docs/FSTRINGS.md`.
+- **Q6_K Super-Block Quantization Kernel (`language/src/ring_inference.c` & `language/include/ring_gguf.h`):**
+  - Added binary layout structure `RingGGUFBlockQ6_K` (128-byte `ql` lower nibbles, 64-byte `qh` upper 2-bit quants, 16-byte signed 8-bit scales, 2-byte FP16 super-scale).
+  - Implemented vectorized dot product routine `dot_q6_k` supporting 256-weight super-blocks and sub-block scale scaling.
+  - Resolved `output.weight` type 14 support in Qwen-3B, eliminating the need to fall back to tied `token_embd.weight`.
+  - Added dedicated diagnostic test suite `tools/test_q6k.ring`.
+- **Dynamic Heap Buffer Scaling for Large LLMs (`language/src/ring_inference.c`):**
+  - Migrated stack-allocated attention output (`attnOut`) and feed-forward output (`ffnOut`) to dynamically allocated model buffers `pActAttnProj` and `pActFFNOut`.
+  - Prevents stack overflow crashes on models with hidden dimensions larger than 2048 (e.g., 3B, 7B, 14B).
+- **Prompting & Generation Stabilization (`language/src/ring_inference.c` & `libraries/madar_ai/madar_ai.ring`):**
+  - Implemented early EOS suppression at token index 0, preventing premature empty generation on ChatML prompts.
+  - Aligned Qwen ChatML prompt structure in `formatChatPrompt` with official Alibaba Qwen2.5 guidelines.
+  - Updated model candidates and download helper scripts for `Qwen2.5-3B-Instruct` and `DeepSeek-R1-Distill-Qwen-1.5B`.
+
+---
+
+## [0.1.0-alpha] - 2026-10-18
+
+### Added
+- **Native Tensor Architecture (`language/include/ring_tensor.h`):**
+  - Continuous memory buffer storage abstraction (`RingTensorStorage`) with built-in reference counting for safe zero-copy sharing.
+  - Multi-dimensional tensor descriptor (`RingTensor`) supporting up to 8 dimensions (`RING_TENSOR_MAX_DIMS = 8`).
+  - Supported precision & quantized data types:
+    - `RING_TENSOR_TYPE_FLOAT32` (Single-precision 32-bit float)
+    - `RING_TENSOR_TYPE_FLOAT16` (Half-precision 16-bit float)
+    - `RING_TENSOR_TYPE_INT8` (Quantized 8-bit integer)
+    - `RING_TENSOR_TYPE_INT32` (32-bit signed integer)
+    - `RING_TENSOR_TYPE_FLOAT64` (Double-precision 64-bit float)
+  - Zero-Copy View API (`ring_tensor_create_view`): permits multiple tensor descriptors to view the same underlying storage without duplication.
+  - Zero-Copy Slicing API (`ring_tensor_slice`): enables arbitrary sub-tensor slicing with offset and stride adjustment.
+  - Zero-Copy Reshaping API (`ring_tensor_reshape`): dynamic shape transformation for contiguous tensors without memory reallocation.
+  - Bidirectional Conversion Bridges (`ring_tensor_to_list` and `ring_list_to_tensor`): high-speed data interchange between Ring's dynamic `List` objects and contiguous C tensors.
+- **VM Scripting & Standard Library Integration (`language/src/ring_tensor.c` & `language/src/genlib_e.c`):**
+  - Exposed first-class Ring scripting functions for native tensors:
+    - `tensor(dims, [type])` / `tensor_new(dims, [type])`: Allocate new tensor with dimensions list and optional type string (`"Float32"`, `"Float64"`, `"Int32"`, `"Int8"`).
+    - `tensor_from_list(list, [type])`: Convert dynamic Ring list to contiguous C tensor.
+    - `tensor_to_list(tensor)`: Convert contiguous C tensor back to 1D Ring list.
+    - `tensor_shape(tensor)`: Get dimensions as a Ring list.
+    - `tensor_dims(tensor)`: Get number of dimensions (rank).
+    - `tensor_elements(tensor)`: Get total element count.
+    - `tensor_type(tensor)`: Get data type name as string.
+    - `tensor_slice(tensor, dim, start, length)`: Zero-copy strided slice.
+    - `tensor_reshape(tensor, new_dims)`: Zero-copy strided reshape.
+    - `tensor_print(tensor)`: Pretty-print tensor metadata and contents.
+    - `istensor(val)`: Check if variable is a Madar tensor object.
+  - Registered `ring_tensor_loadfunctions(pRingState)` into `ring_vm_generallib_loadfunctions()` for global availability.
+- **Element Access, Indexing & Mutation (`language/src/ring_tensor.c` & `language/include/ring_tensor.h`):**
+  - Added multi-dimensional element getter `tensor_get(t, [indices] | i, j, ...)` with automatic 1-based to 0-based index translation.
+  - Added multi-dimensional element setter `tensor_set(t, [indices] | i, j, ..., val)` with bounds checking.
+  - Added scalar tensor filling `tensor_fill(t, val)`.
+- **High-Performance Math, GEMM & Neural Activations:**
+  - Element-wise arithmetic: `tensor_add`, `tensor_sub`, `tensor_mul` (Hadamard), `tensor_div`, `tensor_scale` / `tensor_mul_scalar`, `tensor_add_scalar`.
+  - Cache-blocked Matrix Multiplication (`tensor_matmul`): Optimized $IKJ$ loop ordering for $O(1)$ stride sequential access and compiler auto-vectorization (AVX2/FMA), supporting 2D GEMM and 3D Batched GEMM.
+  - Neural Network Activation Functions:
+    - `tensor_relu(t)`: High-performance vectorized ReLU.
+    - `tensor_gelu(t)`: Fast approximation of Gaussian Error Linear Units (used in Transformers/LLMs).
+    - `tensor_sigmoid(t)`: Vectorized logistic sigmoid.
+    - `tensor_softmax(t, [dim])`: Numerically stable softmax with maximum subtraction.
+  - Reductions: `tensor_sum(t)`, `tensor_mean(t)`, `tensor_max(t)`, `tensor_min(t)`.
+- **Embedded GGML Core Engine (`language/include/ggml.h` & `language/src/ggml.c`):**
+  - Integrated self-contained pure ANSI C (C99) GGML tensor library into the Madar core runtime.
+  - Zero external dependencies: completely standalone with native Win32 threading and atomics abstraction.
+  - Added half-precision FP16 conversions: `ggml_fp32_to_fp16()` and `ggml_fp16_to_fp32()`.
+  - Added runtime version identifier: `ggml_version()`.
+- **Native VM Operator Overloading (`language/src/vmexpr.c`):**
+  - Integrated zero-overhead bytecode dispatch for mathematical operators on Tensors:
+    - `Tensor + Tensor`: Element-wise addition (`ring_tensor_add`).
+    - `Tensor - Tensor`: Element-wise subtraction (`ring_tensor_sub`).
+    - `Tensor * Tensor`: Element-wise Hadamard product (`ring_tensor_mul`).
+    - `Tensor / Tensor`: Element-wise division (`ring_tensor_div`).
+    - `Tensor * Number` & `Number * Tensor`: Scalar scaling (`ring_tensor_scale`).
+    - `Tensor + Number` & `Number + Tensor`: Scalar offset addition (`ring_tensor_add_scalar`).
+    - `Tensor - Number` & `Tensor / Number`: Scalar subtraction and division.
+  - Full support for complex linear expressions directly in Ring syntax (e.g. `y = 2.0 * t1 + t2`).
+- **GGUF Model Loader & Binary Parser (`language/include/ring_gguf.h` & `language/src/ring_gguf.c`):**
+  - **Zero-Copy Memory-Mapped Architecture:** Implemented direct binary memory-mapping via Win32 `CreateFileMapping` / `MapViewOfFile` with cross-platform 64-bit file reading fallback, enabling instant loading of multi-gigabyte models without RAM duplication.
+  - **Full GGUF v2 & v3 Specification Support:** Complete parser for GGUF magic (`0x46554747`), header versions, arbitrary metadata key-value pairs (String, Int, Float, Bool, Arrays), alignment configuration, and tensor info descriptor tables.
+  - **Dynamic Tensor Extraction & Dequantization:**
+    - Zero-copy native `Tensor` view creation for contiguous F32, F16, Int8, and Int32 tensors.
+    - On-the-fly vectorized dequantization for block-quantized formats: `Q4_0` (4-bit nibbles) and `Q8_0` (8-bit quantized weights) to single-precision float (`gguf_tensor_to_f32`).
+  - **Exposed Scripting APIs:** `gguf_open(file)`, `gguf_close(h)`, `gguf_version(h)`, `gguf_tensor_count(h)`, `gguf_metadata_count(h)`, `gguf_alignment(h)`, `gguf_architecture(h)`, `gguf_metadata_keys(h)`, `gguf_metadata_get(h, key)`, `gguf_tensor_names(h)`, `gguf_tensor_info(h, name_or_idx)`, `gguf_tensor_get(h, name_or_idx)`, `gguf_tensor_to_f32(h, name_or_idx)`.
+- **High-Performance VM Dispatch Acceleration (`language/src/vmcgoto.c` & `language/include/rconfig.h`):**
+  - **GCC / Clang Direct Threading:** Implemented computed goto dispatch using C labels-as-values (`&&label`), replacing the standard function-call-overhead dispatch with direct threading for superior branch prediction.
+  - **MSVC Monolithic Inlined Dispatch Loop:** Implemented a unified zero-overhead inlined opcode dispatch loop eliminating two function call frames (`ring_vm_fetch` and `ring_vm_execute`) per instruction executed, keeping bytecode and state in CPU registers.
+  - Activated by default via `#define RING_VM_COMPUTEDGOTO 1` in `language/include/rconfig.h`.
+- **AI Agent Compiler Feedback Loop & Structured JSON Diagnostics (`--json-errors`):**
+  - **RFC 8259 Standardized JSON Error Output (`language/src/ring_diagnostics.c` & `language/include/ring_diagnostics.h`):**
+    - Transforms scanner, parser, and VM runtime errors into machine-actionable JSON diagnostics consumed seamlessly by AI Agents and LLMs for 100% autonomous self-correction.
+    - Captures file path, line number, exact source snippet extracted from disk, standardized error code (e.g. `R24`, `P1`, `TENSOR_ERR`), descriptive message, and full call stack frames.
+  - **Context-Aware Intelligent Fix Generator:**
+    - Detects tensor dimensionality mismatches (element-wise broadcasting rules, GEMM inner-dimension alignment, 1-based indexing).
+    - Uninitialized variable detection with Levenshtein-distance fuzzy identifier suggestions.
+    - Syntax rule closing hints (e.g., matching `if` with `ok`, `for` with `next`, unclosed quotes, unclosed multiline comments).
+  - **Zero-Overhead Dual Triggering & Scripting APIs:**
+    - CLI flag: `ring --json-errors file.ring` or `ring -json-errors file.ring`.
+    - Environment variable fallback: `MADAR_JSON_ERRORS=1`.
+    - In-script dynamic control: `madar_json_errors([lEnable])` and sub-state API `ring_state_setjsonerrors(pState, lEnable)`.
+    - Zero-overhead default: 100% backward-compatible with Ring's standard human-readable error output when `--json-errors` is omitted.
+- **GGUF Byte-Pair Encoding (BPE) Tokenizer (`language/include/ring_tokenizer.h` & `language/src/ring_tokenizer.c`):**
+  - **Direct Metadata Extraction:** Reads `tokenizer.ggml.tokens`, `tokenizer.ggml.scores`, and `tokenizer.ggml.merges` directly from GGUF zero-copy memory mapping.
+  - **High-Performance Vocabulary Hash Table:** $O(1)$ string-to-token lookup table with power-of-two bitmask indexing.
+  - **Full Byte-Level BPE & GPT-2 Encoding:** Supports raw byte fallback tokens, hex tokens (`<0xHH>`), and GPT-2 unicode byte transformations (`Ġ` for space, `Ċ` for newline).
+  - **BPE Merge Prioritization:** Iterative pair merging based on GGUF merge rank priority.
+  - **Scripting APIs:** `gguf_tokenize(hGGUF, text)`, `gguf_detokenize(hGGUF, token_or_list)`.
+- **Transformer & Qwen LLM Inference Pipeline (`language/include/ring_inference.h` & `language/src/ring_inference.c`):**
+  - **Ultra-Lightweight Architecture:** Zero-copy weight execution streaming directly from memory-mapped GGUF files; working activations and 512-token KV cache consume under 20 MB of RAM!
+  - **Hardware Optimized for Low-Power Dual-Core CPUs:** Multi-threaded quantized matrix-vector dot product kernels (Q4_0, Q8_0, F16, F32) default-capped to 2 threads to prevent system freezing on Core i3 / 2-core machines.
+  - **Complete Modern Transformer Operators:**
+    - RMSNorm with configurable epsilon.
+    - Rotary Position Embedding (RoPE) with frequency scaling for high-context positions.
+    - Multi-Head Attention with Grouped-Query Attention (GQA) support.
+    - SwiGLU Feed-Forward Network (FFN) with native SiLU activation.
+    - Logits projection and dual sampling modes: Greedy (argmax) and Temperature sampling.
+    - Automatic stop-token detection (`<|im_end|>`, `<|endoftext|>`, EOS).
+  - **Scripting APIs:** `madar_model_open(path)`, `madar_model_close(h)`, `madar_model_set_threads(h, n)`, `madar_model_tokenize(h, text)`, `madar_model_detokenize(h, tokens)`, `madar_model_generate(h, prompt, max_tokens, [temp])`, `madar_model_reset(h)`.
+- **High-Level Declarative AI Module (`lib/madar_ai.ring` & `bin/load/madar_ai.ring`):**
+  - Clean `QwenModel` class with ChatML formatting, prompt generation, and token throughput calculation (`tokens/sec`).
+  - Added `DeepSeekModel` class subclassing `QwenModel` with specialized ChatML template and Chain-of-Thought reasoning parser (`extractThinking` & `extractAnswer`).
+- **Interactive AI Examples & CLI Assistant (`examples/ai/`):**
+  - Added `examples/ai/chat.ring`: Interactive REPL terminal assistant supporting DeepSeek-R1 (1.5B) and Qwen2.5 (3B), real-time reasoning display, context memory reset, and performance metrics.
+- **Automated QA & Test Harness (`tests/` & `tools/`):**
+  - Unit tests for backward compatibility, tensor math, GGUF loader, Q6_K, tokenizer, and diagnostics.
+  - Inlined fast FP16-to-FP32 conversion and 2x unrolled dual-accumulator dot product loops.
+
+### Changed
+- **Build Toolchain (`language/build/buildvc_x64.bat`, `buildvcw_x64.bat`, `buildvc.bat`, `buildvcw.bat`):**
+  - Incorporated `ring_tensor.c`, `ring_gguf.c`, `ring_tokenizer.c`, `ring_inference.c`, `ggml.c`, `vmcgoto.c`, `ring_diagnostics.c`, and their respective object files into core compilation, DLL linkage (`ring.dll`), and static library archive (`ringstatic.lib`).
+- **Master Include Hierarchy (`language/include/ring.h`):**
+  - Included `ggml.h`, `ring_tensor.h`, `ring_gguf.h`, `ring_tokenizer.h`, `ring_inference.h`, and `ring_diagnostics.h` in the master build pipeline before `ritem.h`.
+
+### Fixed
+- **Windows 11 SDK Header Detection Bug (`language/build/locatevc.bat`):**
+  - Added `:FixWindowsSdk` subroutine to resolve Microsoft's `VsDevCmd.bat` failure to find Universal C Runtime (`ucrt\stdio.h`) with SDK 10.0.26100.0+.
+- **Libcurl WebSocket Header Missing (`extensions/libdepwin/.../websockets.h`):**
+  - Created standard `websockets.h` with definitions for `struct curl_ws_frame`, `curl_ws_send`, `curl_ws_recv`, `curl_ws_meta`, and all `CURLWS_*` flags including `CURLWS_RAW_MODE`.
+- **GPT-2 & Qwen Byte-Level BPE Multilingual Tokenization (`language/src/ring_tokenizer.c`):**
+  - Implemented complete reversible GPT-2 `bytes_to_unicode` mapping (256 bytes to safe Unicode code points).
+  - Fixed tokenization of non-ASCII and Arabic scripts.
+- **Qwen2 / Qwen2.5 GGUF Metadata & Tensor Resolution (`language/src/ring_inference.c` & `language/src/ring_gguf.c`):**
+  - Added multi-type integer & float metadata readers handling `UINT64`, `INT32`, and `UINT32` formats from standard Hugging Face/llama.cpp GGUF exports.
+  - Added tensor name fallback lookups supporting standard Hugging Face tensor naming conventions.
+  - Resolved OOP property shadowing in `QwenModel` class when initializing with model path parameter.
+
+---
+
+## Versioning Policy
+- **Major (X.0.0):** Breaking architectural changes to runtime or language specification.
+- **Minor (0.X.0):** New features, GGML operators, VM optimizations, or new standard modules.
+- **Patch (0.0.X):** Bug fixes, memory leak resolutions, or build pipeline improvements.
