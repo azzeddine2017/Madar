@@ -20,7 +20,7 @@ if not fexists(cModelPath) cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0
 oTimer = new QalamChronos()
 oTimer.reset()
 
-see "تحميل النموذج اللغوي... "
+see "تحميل النموذج اللغوي... " + nl
 llm = model_open(cModelPath)
 llm.setTemperature(0.2)
 see "[تم في: " + oTimer.elapsed() + "]" + nl
@@ -31,12 +31,12 @@ store = new VectorStore(llm)
 cBinFile = "knowledge_cache.bin"
 
 if fexists(cBinFile)
-	see f"استرجاع قاعدة المعرفة المحفوظة ثنائياً من ({cBinFile})... "
+	see f"استرجاع قاعدة المعرفة المحفوظة ثنائياً من ({cBinFile})... " + nl
 	oTimer.reset()
 	nLoaded = store.loadBinary(cBinFile)
 	see "[تم استرجاع " + nLoaded + " مقطع في: " + oTimer.elapsed() + "]" + nl
 else
-	see "فهرسة المعرفة الأولية واستخراج المتجهات... "
+	see "فهرسة المعرفة الأولية واستخراج المتجهات... " + nl
 	oTimer.reset()
 	store.addText("لحل خطأ نفاد الذاكرة في C، تأكد من استدعاء free() لكل مؤشر تم تخصيصه بـ malloc وتجنب تسريب الموارد.")
 	store.addText("لغة مدار تدعم المصفوفات الممتدة المتصلة ومحرك استنتاج ذكاء اصطناعي محلي خفيف الوزن فائق السرعة.")
