@@ -4,7 +4,7 @@ call locatevc.bat x64
 
 cd ..\src
 
-cl /c %ringcflags% ring.c  ^
+cl /c %ringcflags% /arch:AVX2 ring.c  ^
 ring_tensor.c ring_gguf.c ring_tokenizer.c ring_inference.c ring_diagnostics.c ggml.c vmcgoto.c rstring.c rlist.c ritem.c ritems.c rhtable.c general.c state.c scanner.c parser.c hashlib.c vmgc.c ^
 stmt.c expr.c codegen.c vm.c vmerror.c vmeval.c vmthread.c vmexpr.c vmvars.c ^
 vmlists.c vmfuncs.c ringapi.c vmoop.c  ^
@@ -36,10 +36,9 @@ vmtry.obj vmstr.obj vmjump.obj vmrange.obj ^
 vmperf.obj vmexit.obj vmstack.obj vmstate.obj genlib_e.obj math_e.obj file_e.obj os_e.obj list_e.obj meta_e.obj vminfo_e.obj ^
 ext.obj dll_e.obj objfile.obj 
 
-
 copy ..\..\lib\ring.dll ..\..\bin\
 
-cl %ringcflags% ring.c ..\..\lib\ring.lib -I"..\include" /link /STACK:8388608 /OUT:..\..\bin\ring.exe 
+cl %ringcflags% /arch:AVX2 ring.c ..\..\lib\ring.lib -I"..\include" /link /STACK:8388608 /OUT:..\..\bin\ring.exe 
 
 del *.obj
 

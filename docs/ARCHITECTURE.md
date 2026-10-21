@@ -32,10 +32,12 @@ Madar transforms the lightweight Ring Core engine into an AI-first runtime throu
 +-------------------------------------------------------------+
 |            In-Core GGUF & Transformer Engine                |
 |    - Memory-Mapped GGUF (v2/v3) Binary Reader               |
+|    - AVX2 & FMA SIMD MatVec Kernels (Q4_0, Q8_0, F16, F32)  |
 |    - Quantized MatVec: Q4_0, Q8_0, F16, and Q6_K SuperBlocks|
 |    - Multi-Threaded Event-Driven Worker Pool                |
 |    - Byte-Level GPT-2 / BPE Multilingual Tokenizer          |
 |    - KV-Cache Engine & Prefill Logits Optimization          |
+|    - See docs/AI_ENGINE.md for deep SIMD details            |
 +-------------------------------------------------------------+
 ```
 

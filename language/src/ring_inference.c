@@ -43,6 +43,129 @@ static inline float fast_fp16_to_fp32(uint16_t h) {
 	return v.f;
 }
 
+#if defined(__AVX2__) || (defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_X64)))
+#include <immintrin.h>
+#define MADAR_AVX2 1
+
+static inline float hsum_float_8(__m256 v) {
+	float f[8];
+	_mm256_storeu_ps(f, v);
+	return f[0] + f[1] + f[2] + f[3] + f[4] + f[5] + f[6] + f[7];
+}
+#endif
+
+#if defined(MADAR_AVX2)
+static float dot_q4_0(const RingGGUFBlockQ4_0 *b, const float *x, int k) {
+	int nBlocks = k / 32;
+	float sum = 0.0f;
+	int i;
+	const __m128i lowMask = _mm_set1_epi8(0x0F);
+	const __m128i c8 = _mm_set1_epi8(8);
+
+	for (i = 0; i < nBlocks; i++) {
+		float d = fast_fp16_to_fp32(b[i].d);
+		const uint8_t *qs = b[i].qs;
+		const float *xi = x + i * 32;
+
+		/* Load 16 bytes = 32 x 4-bit nibbles */
+		__m128i raw = _mm_loadu_si128((const __m128i *)qs);
+
+		/* Lower 4-bits -> weights 0..15, Higher 4-bits -> weights 16..31 */
+		__m128i low = _mm_sub_epi8(_mm_and_si128(raw, lowMask), c8);
+		__m128i high = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(raw, 4), lowMask), c8);
+
+		/* Convert signed 8-bit to float across 4 x 256-bit AVX2 registers */
+		__m256 f0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(low));
+		__m256 f1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(low, 8)));
+		__m256 f2 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(high));
+		__m256 f3 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(high, 8)));
+
+		/* Load input activations x[0..31] */
+		__m256 x0 = _mm256_loadu_ps(xi + 0);
+		__m256 x1 = _mm256_loadu_ps(xi + 8);
+		__m256 x2 = _mm256_loadu_ps(xi + 16);
+		__m256 x3 = _mm256_loadu_ps(xi + 24);
+
+		/* Vector multiply */
+		__m256 p0 = _mm256_mul_ps(f0, x0);
+		__m256 p1 = _mm256_mul_ps(f1, x1);
+		__m256 p2 = _mm256_mul_ps(f2, x2);
+		__m256 p3 = _mm256_mul_ps(f3, x3);
+
+		__m256 bsum = _mm256_add_ps(_mm256_add_ps(p0, p1), _mm256_add_ps(p2, p3));
+		sum += hsum_float_8(bsum) * d;
+	}
+	return sum;
+}
+
+static float dot_q8_0(const RingGGUFBlockQ8_0 *b, const float *x, int k) {
+	int nBlocks = k / 32;
+	float sum = 0.0f;
+	int i;
+
+	for (i = 0; i < nBlocks; i++) {
+		float d = fast_fp16_to_fp32(b[i].d);
+		const int8_t *qs = b[i].qs;
+		const float *xi = x + i * 32;
+
+		__m128i q0_15 = _mm_loadu_si128((const __m128i *)(qs + 0));
+		__m128i q16_31 = _mm_loadu_si128((const __m128i *)(qs + 16));
+
+		__m256 f0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q0_15));
+		__m256 f1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(q0_15, 8)));
+		__m256 f2 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(q16_31));
+		__m256 f3 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(q16_31, 8)));
+
+		__m256 x0 = _mm256_loadu_ps(xi + 0);
+		__m256 x1 = _mm256_loadu_ps(xi + 8);
+		__m256 x2 = _mm256_loadu_ps(xi + 16);
+		__m256 x3 = _mm256_loadu_ps(xi + 24);
+
+		__m256 p0 = _mm256_mul_ps(f0, x0);
+		__m256 p1 = _mm256_mul_ps(f1, x1);
+		__m256 p2 = _mm256_mul_ps(f2, x2);
+		__m256 p3 = _mm256_mul_ps(f3, x3);
+
+		__m256 bsum = _mm256_add_ps(_mm256_add_ps(p0, p1), _mm256_add_ps(p2, p3));
+		sum += hsum_float_8(bsum) * d;
+	}
+	return sum;
+}
+
+static float dot_f16(const ggml_fp16_t *f, const float *x, int k) {
+	int i = 0;
+	__m256 acc = _mm256_setzero_ps();
+	for (; i + 7 < k; i += 8) {
+		__m128i h = _mm_loadu_si128((const __m128i *)(f + i));
+		__m256 val = _mm256_cvtph_ps(h);
+		acc = _mm256_add_ps(acc, _mm256_mul_ps(val, _mm256_loadu_ps(x + i)));
+	}
+	float sum = hsum_float_8(acc);
+	for (; i < k; i++) {
+		sum += fast_fp16_to_fp32(f[i]) * x[i];
+	}
+	return sum;
+}
+
+static float dot_f32(const float *f, const float *x, int k) {
+	int i = 0;
+	__m256 acc0 = _mm256_setzero_ps();
+	__m256 acc1 = _mm256_setzero_ps();
+
+	for (; i + 15 < k; i += 16) {
+		acc0 = _mm256_add_ps(acc0, _mm256_mul_ps(_mm256_loadu_ps(f + i), _mm256_loadu_ps(x + i)));
+		acc1 = _mm256_add_ps(acc1, _mm256_mul_ps(_mm256_loadu_ps(f + i + 8), _mm256_loadu_ps(x + i + 8)));
+	}
+	for (; i + 7 < k; i += 8) {
+		acc0 = _mm256_add_ps(acc0, _mm256_mul_ps(_mm256_loadu_ps(f + i), _mm256_loadu_ps(x + i)));
+	}
+	float sum = hsum_float_8(_mm256_add_ps(acc0, acc1));
+	for (; i < k; i++) {
+		sum += f[i] * x[i];
+	}
+	return sum;
+}
+#else
 static float dot_q4_0(const RingGGUFBlockQ4_0 *b, const float *x, int k) {
 	int nBlocks = k / 32;
 	float sum = 0.0f;
@@ -92,6 +215,25 @@ static float dot_q8_0(const RingGGUFBlockQ8_0 *b, const float *x, int k) {
 	return sum;
 }
 
+static float dot_f16(const ggml_fp16_t *f, const float *x, int k) {
+	float sum = 0.0f;
+	int i;
+	for (i = 0; i < k; i++) {
+		sum += fast_fp16_to_fp32(f[i]) * x[i];
+	}
+	return sum;
+}
+
+static float dot_f32(const float *f, const float *x, int k) {
+	float sum = 0.0f;
+	int i;
+	for (i = 0; i < k; i++) {
+		sum += f[i] * x[i];
+	}
+	return sum;
+}
+#endif
+
 static float dot_q6_k(const RingGGUFBlockQ6_K *b, const float *x, int k) {
 	int nBlocks = k / 256;
 	float sum = 0.0f;
@@ -131,24 +273,6 @@ static float dot_q6_k(const RingGGUFBlockQ6_K *b, const float *x, int k) {
 			sc += 8;
 		}
 		sum += bsum * d;
-	}
-	return sum;
-}
-
-static float dot_f16(const ggml_fp16_t *f, const float *x, int k) {
-	float sum = 0.0f;
-	int i;
-	for (i = 0; i < k; i++) {
-		sum += fast_fp16_to_fp32(f[i]) * x[i];
-	}
-	return sum;
-}
-
-static float dot_f32(const float *f, const float *x, int k) {
-	float sum = 0.0f;
-	int i;
-	for (i = 0; i < k; i++) {
-		sum += f[i] * x[i];
 	}
 	return sum;
 }

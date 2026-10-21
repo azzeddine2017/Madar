@@ -7,6 +7,11 @@
 #include "ring_tensor.h"
 #include <math.h>
 
+#if defined(__AVX2__) || (defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_X64)))
+#include <immintrin.h>
+#define MADAR_AVX2 1
+#endif
+
 /* Returns the byte size of a single element for the specified data type */
 RING_API size_t ring_tensor_element_size(RingTensorType nType) {
 	switch (nType) {
@@ -919,6 +924,38 @@ RING_API double ring_tensor_cosine_similarity(const RingTensor *pA, const RingTe
 	nTotal = nA;
 
 	if (pA->lContiguous && pB->lContiguous) {
+#if defined(MADAR_AVX2)
+		if (pA->nDataType == RING_TENSOR_TYPE_FLOAT32 && pB->nDataType == RING_TENSOR_TYPE_FLOAT32) {
+			const float *a = (const float *)ring_tensor_data(pA);
+			const float *b = (const float *)ring_tensor_data(pB);
+			__m256 vDot = _mm256_setzero_ps();
+			__m256 vNormA = _mm256_setzero_ps();
+			__m256 vNormB = _mm256_setzero_ps();
+			float fDot[8], fNormA[8], fNormB[8];
+			int j;
+
+			for (i = 0; i + 7 < nTotal; i += 8) {
+				__m256 va = _mm256_loadu_ps(a + i);
+				__m256 vb = _mm256_loadu_ps(b + i);
+				vDot = _mm256_add_ps(vDot, _mm256_mul_ps(va, vb));
+				vNormA = _mm256_add_ps(vNormA, _mm256_mul_ps(va, va));
+				vNormB = _mm256_add_ps(vNormB, _mm256_mul_ps(vb, vb));
+			}
+			_mm256_storeu_ps(fDot, vDot);
+			_mm256_storeu_ps(fNormA, vNormA);
+			_mm256_storeu_ps(fNormB, vNormB);
+			for (j = 0; j < 8; j++) {
+				dot += (double)fDot[j];
+				normA += (double)fNormA[j];
+				normB += (double)fNormB[j];
+			}
+			for (; i < nTotal; i++) {
+				dot += (double)a[i] * (double)b[i];
+				normA += (double)a[i] * (double)a[i];
+				normB += (double)b[i] * (double)b[i];
+			}
+		} else
+#else
 		if (pA->nDataType == RING_TENSOR_TYPE_FLOAT32 && pB->nDataType == RING_TENSOR_TYPE_FLOAT32) {
 			const float *a = (const float *)ring_tensor_data(pA);
 			const float *b = (const float *)ring_tensor_data(pB);
@@ -927,7 +964,9 @@ RING_API double ring_tensor_cosine_similarity(const RingTensor *pA, const RingTe
 				normA += (double)a[i] * (double)a[i];
 				normB += (double)b[i] * (double)b[i];
 			}
-		} else if (pA->nDataType == RING_TENSOR_TYPE_FLOAT64 && pB->nDataType == RING_TENSOR_TYPE_FLOAT64) {
+		} else
+#endif
+		if (pA->nDataType == RING_TENSOR_TYPE_FLOAT64 && pB->nDataType == RING_TENSOR_TYPE_FLOAT64) {
 			const double *a = (const double *)ring_tensor_data(pA);
 			const double *b = (const double *)ring_tensor_data(pB);
 			for (i = 0; i < nTotal; i++) {

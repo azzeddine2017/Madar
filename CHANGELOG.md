@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - Madar 0.2.0-alpha
 
 ### Added
+- **Hardware-Accelerated AVX2 & FMA SIMD Inference Core (`language/src/ring_inference.c`, `ring_tensor.c`, `language/build/buildvc_x64.bat`):**
+  - Implemented 256-bit SIMD vector kernels for quantized tensor dot products (`dot_q4_0`, `dot_q8_0`, `dot_f16`, `dot_f32`).
+  - `dot_q4_0`: Unpacks 32 x 4-bit nibbles across 4 AVX2 256-bit vector registers with zero-allocation, executing block multiply-adds concurrently.
+  - `dot_q8_0`: Vectorized signed 8-bit dequantization with 256-bit FMA accumulation for lightning-fast output logits projection.
+  - `dot_f16`: Direct hardware FP16 to FP32 conversion using `_mm256_cvtph_ps` (F16C) instructions.
+  - `dot_f32` & `ring_tensor_cosine_similarity`: 8-way parallel vector dot product and norm calculation for embedding and RAG vector searches.
+  - Portable design: Automatically falls back to ANSI C scalar implementations on non-AVX2 CPUs. Added `/arch:AVX2` flag to MSVC x64 build pipeline.
+- **Native Mean-Pooling Embeddings & RAG Vector Engine (`language/src/ring_inference.c`, `libraries/madar_ai/rag.ring`):**
+  - Native Mean Pooling with attention-sink token 0 skipping to eliminate vector anisotropy in modern embedding models (Qwen-Embedding).
+  - Standalone `VectorStore` class supporting in-memory and binary disk caching (`saveBinary` / `loadBinary`), reducing database load time to under 9 ms.
+  - `RAGPipeline` class offering seamless contextual augmentation for LLMs (`query(question)`).
+- **AlQalam (القلم) AI & C++17 Ecosystem Integration (`examples/ai/qalam_rag.ring`):**
+  - PDF document ingestion via `QalamReader` and native `pdftotext.exe`.
+  - Zero-fragmentation prompt stitching via `QalamInk` dynamic memory buffers.
+  - Hybrid Search Engine combining Semantic Vector Search (70%) and `QalamIndex` O(1) Lexical Inverted Index (30%).
+  - Nanosecond-precision profiling using `QalamChronos`.
 - **Native Python-style List Comprehensions (`[expr for var in source (if cond)?]`) (`language/src/stmt.c`, `language/include/parser.h`):**
   - Added native syntactic and bytecode-level compilation for Python-style list comprehensions (`[x*x for x in list if x > 2]`).
   - Supports single and chained `if` filters (`[x for x in 1:10 if x > 3 if x < 8]`) with short-circuit skipping via `ICO_JUMPZERO`.

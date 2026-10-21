@@ -63,7 +63,7 @@ if bIsDeepSeek
 else
 	model = new QwenModel(cModelPath)
 ok
-model.setThreads(4)
+model.setThreads(2)
 model.setTemperature(0.6) # Default to 0.6 for natural dialogue
 t1 = clock()
 nLoadSec = (t1 - t0) / clockspersecond()
