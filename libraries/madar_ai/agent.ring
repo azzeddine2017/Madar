@@ -5,20 +5,102 @@
 
 load "madar_ai.ring"
 load "dataframe.ring"
+load "rag.ring"
 
 class AIAgent
-	oModel          = NULL
-	aTools          = []       # List of registered tools [ [name, desc, params, func], ... ]
-	nMaxSteps       = 4        # Maximum tool execution iterations
-	bVerbose        = 1        # Print tool calls & observations to terminal
-	bStream         = 0        # Real-time token streaming to terminal
-	cSystemPrompt   = ""
+	oModel           = NULL
+	aTools           = []       # List of registered tools [ [name, desc, params, func], ... ]
+	nMaxSteps        = 4        # Maximum tool execution iterations
+	bVerbose         = 1        # Print tool calls & observations to terminal
+	bStream          = 0        # Real-time token streaming to terminal
+	cSystemPrompt    = ""
+	aConversation    = []       # Multi-turn conversational history: [ [role, text], ... ]
+	nMaxHistoryTurns = 6        # Max conversation turns to retain
+	bMemoryEnabled   = 1        # Enable/disable conversation memory
+	oMemory          = NULL     # Long-term VectorStore instance
+	cMemoryPath      = ""       # Disk path for binary memory persistence
+	bVectorMemory    = 1        # Enable/disable long-term vector memory
 
 	func init(model)
 		oModel = model
 		# Register default core utilities
 		registerCoreTools()
 		return self
+
+	func initMemory(cPath)
+		if cPath = NULL or cPath = ""
+			cPath = "agent_memory.bin"
+		ok
+		cMemoryPath = cPath
+		oMemory = new VectorStore(oModel)
+		if fexists(cMemoryPath)
+			oMemory.loadBinary(cMemoryPath)
+		ok
+		return oMemory
+
+	func saveMemory()
+		if oMemory != NULL and cMemoryPath != ""
+			oMemory.saveBinary(cMemoryPath)
+			return true
+		ok
+		return false
+
+	func remember(cFact)
+		if oMemory = NULL
+			initMemory("agent_memory.bin")
+		ok
+		cFact = trim(cFact)
+		if cFact = "" return false ok
+		oMemory.addText(cFact)
+		saveMemory()
+		return true
+
+	func recall(cQuery, nTopK)
+		if oMemory = NULL return [] ok
+		if nTopK = NULL or nTopK <= 0 nTopK = 3 ok
+		return oMemory.search(cQuery, nTopK)
+
+	func learnFile(cFilePath)
+		if oMemory = NULL
+			initMemory("agent_memory.bin")
+		ok
+		if not fexists(cFilePath) and fexists("examples/ai/" + cFilePath)
+			cFilePath = "examples/ai/" + cFilePath
+		ok
+		if not fexists(cFilePath) return 0 ok
+		nAdded = oMemory.addFile(cFilePath)
+		saveMemory()
+		return nAdded
+
+	func resetHistory()
+		aConversation = []
+		if oModel != NULL oModel.reset() ok
+
+	func undo()
+		if len(aConversation) >= 2
+			del(aConversation, len(aConversation))
+			del(aConversation, len(aConversation))
+			return true
+		elseif len(aConversation) = 1
+			del(aConversation, 1)
+			return true
+		ok
+		return false
+
+	func getHistory()
+		return aConversation
+
+	func formatHistory()
+		cHist = ""
+		nStart = 1
+		if len(aConversation) > (nMaxHistoryTurns * 2)
+			nStart = len(aConversation) - (nMaxHistoryTurns * 2) + 1
+		ok
+		for i = nStart to len(aConversation)
+			turn = aConversation[i]
+			cHist += "<|im_start|>" + turn[1] + nl + turn[2] + "<|im_end|>" + nl
+		next
+		return cHist
 
 	func registerTool(cName, cDesc, aParams, pFunc)
 		aTools + [cName, cDesc, aParams, pFunc]
@@ -62,6 +144,16 @@ class AIAgent
 				cPath = "" + args
 			ok
 			cPath = trim(cPath)
+			cPath = substr(cPath, '"', "")
+			cPath = substr(cPath, "'", "")
+			cPath = substr(cPath, "؟", "")
+			cPath = substr(cPath, "?", "")
+			cPath = substr(cPath, ":", "")
+			cPath = trim(cPath)
+
+			if not fexists(cPath) and fexists("examples/ai/" + cPath)
+				cPath = "examples/ai/" + cPath
+			ok
 			if fexists(cPath)
 				cContent = read(cPath)
 				if len(cContent) > 2000
@@ -75,7 +167,7 @@ class AIAgent
 
 		# 4. Operating System Info
 		registerTool("sys_info", "Returns operating system and runtime platform info", [], func(args) {
-			return "OS: Windows (Madar AI Native Runtime, AVX2 Enabled, FP16 KV-Cache)"
+			return "OS: Windows x64 (Madar AI Native Runtime, AVX2 SIMD Enabled, FP16 KV-Cache 2048 Context Window, 4 CPU Worker Threads)"
 		})
 
 		# 5. CSV DataFrame Statistical Summary
@@ -145,6 +237,34 @@ class AIAgent
 			ok
 		})
 
+		# 7. RAG Knowledge & Long-Term Memory Search
+		registerTool("rag_search", "Searches agent's long-term vector knowledge base and memories for relevant facts", ["query"], func(args) {
+			s = ""
+			if islist(args) and len(args) >= 1 s = "" + args[1] else s = "" + args ok
+			s = trim(s)
+			if s = "" return "No search query provided." ok
+			if oMemory = NULL return "No long-term memory or knowledge base loaded." ok
+			aResults = oMemory.search(s, 2)
+			if len(aResults) = 0 return "No relevant knowledge found in memory." ok
+			cRes = ""
+			for r in aResults
+				fScore = r[1]
+				chunk = r[2]
+				cRes += "- [Similarity: " + round(fScore, 2) + "]: " + chunk.cText + nl
+			next
+			return cRes
+		})
+
+		# 8. Persistent Memory Inscription
+		registerTool("remember_fact", "Saves a persistent user fact, project rule, or preference to long-term memory", ["fact"], func(args) {
+			s = ""
+			if islist(args) and len(args) >= 1 s = "" + args[1] else s = "" + args ok
+			s = trim(s)
+			if s = "" return "No fact provided to remember." ok
+			remember(s)
+			return "Saved successfully to long-term memory: " + s
+		})
+
 	func buildToolSchema()
 		cSchema = "You are an intelligent AI assistant with access to the following local functions/tools:" + nl
 		for tool in aTools
@@ -183,17 +303,36 @@ class AIAgent
 			return "Error: AI Model is not initialized in Agent."
 		ok
 
-		# Hybrid Agent Architecture: Fast Semantic Intent Matching + LLM Synthesis
+		# Hybrid Agent Architecture: Fast Semantic Intent Matching + Multi-turn Synthesis
 		cIntentTool = ""
 		cIntentArg  = ""
 		cLowerPrompt = lower(cUserPrompt)
 
-		if substr(cLowerPrompt, "وقت") > 0 or substr(cLowerPrompt, "تاريخ") > 0 or substr(cLowerPrompt, "ساعة") > 0 or substr(cLowerPrompt, "time") > 0 or substr(cLowerPrompt, "date") > 0
+		bIsQuestion = (substr(cLowerPrompt, "هل") > 0 or substr(cLowerPrompt, "ماذا") > 0 or substr(cLowerPrompt, "ما هو") > 0 or substr(cLowerPrompt, "ماهو") > 0 or substr(cLowerPrompt, "what") > 0)
+
+		if not bIsQuestion and (substr(cLowerPrompt, "تذكر") > 0 or substr(cLowerPrompt, "احفظ") > 0 or substr(cLowerPrompt, "remember") > 0)
+			cIntentTool = "remember_fact"
+			cFact = cUserPrompt
+			aPrefixes = ["تذكر أن ", "تذكر ان ", "تذكر هذا: ", "تذكر هذا ", "تذكر: ", "تذكر ", 
+			             "احفظ عندك: ", "احفظ عندك ", "احفظ أن ", "احفظ ان ", "احفظ هذا: ", "احفظ هذا ", "احفظ: ", "احفظ ",
+			             "remember that ", "remember this: ", "remember this ", "remember: ", "remember "]
+			for pfx in aPrefixes
+				nPos = substr(lower(cFact), pfx)
+				if nPos > 0
+					cFact = trim(substr(cFact, nPos + len(pfx)))
+					exit
+				ok
+			next
+			cIntentArg = cFact
+		elseif substr(cLowerPrompt, "ابحث في المعرفة") > 0 or substr(cLowerPrompt, "ماذا تعرف عن") > 0 or substr(cLowerPrompt, "ماذا تتذكر") > 0 or substr(cLowerPrompt, "هل تتذكر") > 0 or substr(cLowerPrompt, "من أنا") > 0 or substr(cLowerPrompt, "search knowledge") > 0 or substr(cLowerPrompt, "what do you know about") > 0 or substr(cLowerPrompt, "who am i") > 0 or substr(cLowerPrompt, "do you remember") > 0
+			cIntentTool = "rag_search"
+			cIntentArg  = cUserPrompt
+		elseif substr(cLowerPrompt, "وقت") > 0 or substr(cLowerPrompt, "تاريخ") > 0 or substr(cLowerPrompt, "ساعة") > 0 or substr(cLowerPrompt, "time") > 0 or substr(cLowerPrompt, "date") > 0 or substr(cLowerPrompt, "clock") > 0
 			cIntentTool = "get_time"
-		elseif substr(cLowerPrompt, "دولار") > 0 or substr(cLowerPrompt, "دينار") > 0 or substr(cLowerPrompt, "صرف") > 0 or substr(cLowerPrompt, "عملة") > 0
+		elseif substr(cLowerPrompt, "دولار") > 0 or substr(cLowerPrompt, "دينار") > 0 or substr(cLowerPrompt, "صرف") > 0 or substr(cLowerPrompt, "عملة") > 0 or substr(cLowerPrompt, "currency") > 0 or substr(cLowerPrompt, "exchange") > 0
 			cIntentTool = "currency_rate"
 			cIntentArg  = "USD to DZD"
-		elseif substr(cLowerPrompt, "احسب") > 0 or substr(cLowerPrompt, "ناتج") > 0 or substr(cLowerPrompt, "*") > 0 or substr(cLowerPrompt, "+") > 0 or substr(cLowerPrompt, "/") > 0
+		elseif substr(cLowerPrompt, "احسب") > 0 or substr(cLowerPrompt, "ناتج") > 0 or substr(cLowerPrompt, "calc") > 0 or substr(cLowerPrompt, "calculate") > 0 or substr(cLowerPrompt, "*") > 0 or substr(cLowerPrompt, "+") > 0 or substr(cLowerPrompt, "/") > 0
 			cIntentTool = "calc"
 			# Extract arithmetic expression
 			cExpr = ""
@@ -205,10 +344,26 @@ class AIAgent
 				ok
 			next
 			cIntentArg = trim(cExpr)
-		elseif substr(cLowerPrompt, "نظام") > 0 or substr(cLowerPrompt, "معالج") > 0 or substr(cLowerPrompt, "نظام التشغيل") > 0
+		elseif substr(cLowerPrompt, "اقرأ") > 0 or substr(cLowerPrompt, "ملف") > 0 or substr(cLowerPrompt, "read") > 0 or substr(cLowerPrompt, "محتوى") > 0 or substr(cLowerPrompt, "file") > 0
+			cIntentTool = "read_file"
+			cWords = split(cUserPrompt, " ")
+			for w in cWords
+				wClean = trim(w)
+				if substr(wClean, ".") > 0 or substr(wClean, "/") > 0 or substr(wClean, "\\") > 0
+					wClean = substr(wClean, "؟", "")
+					wClean = substr(wClean, "?", "")
+					wClean = substr(wClean, ":", "")
+					wClean = substr(wClean, '"', "")
+					wClean = substr(wClean, "'", "")
+					cIntentArg = trim(wClean)
+					exit
+				ok
+			next
+			if cIntentArg = "" cIntentArg = "README.md" ok
+		elseif substr(cLowerPrompt, "نظام") > 0 or substr(cLowerPrompt, "معالج") > 0 or substr(cLowerPrompt, "نظام التشغيل") > 0 or substr(cLowerPrompt, "system") > 0 or substr(cLowerPrompt, "os") > 0 or substr(cLowerPrompt, "specs") > 0
 			cIntentTool = "sys_info"
-		elseif substr(cLowerPrompt, ".csv") > 0 or substr(cLowerPrompt, "بيانات") > 0 or substr(cLowerPrompt, "جدول") > 0 or substr(cLowerPrompt, "موظف") > 0 or substr(cLowerPrompt, "رواتب") > 0 or substr(cLowerPrompt, "راتب") > 0
-			if substr(cLowerPrompt, "ملخص") > 0 or substr(cLowerPrompt, "إحصاء") > 0 or substr(cLowerPrompt, "summary") > 0
+		elseif substr(cLowerPrompt, ".csv") > 0 or substr(cLowerPrompt, "بيانات") > 0 or substr(cLowerPrompt, "جدول") > 0 or substr(cLowerPrompt, "موظف") > 0 or substr(cLowerPrompt, "رواتب") > 0 or substr(cLowerPrompt, "راتب") > 0 or substr(cLowerPrompt, "csv") > 0 or substr(cLowerPrompt, "salary") > 0 or substr(cLowerPrompt, "dataframe") > 0
+			if substr(cLowerPrompt, "ملخص") > 0 or substr(cLowerPrompt, "إحصاء") > 0 or substr(cLowerPrompt, "summary") > 0 or substr(cLowerPrompt, "describe") > 0
 				cIntentTool = "csv_summary"
 				cIntentArg  = "examples/ai/sample_data.csv"
 			else
@@ -226,25 +381,89 @@ class AIAgent
 				see "  [Tool Observation] Result: " + cToolResult + nl
 			ok
 
-			# Prompt model to formulate final Arabic answer using tool result
-			cPrompt = "<|im_start|>system" + nl +
-			          "أنت مساعد ذكي وموثوق. أجب المستخدم باختصار ودقة باللغة العربية بناءً على نتيجة الأداة المعطاة." + "<|im_end|>" + nl +
-			          "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
+			# Prompt model to formulate final answer using tool result and conversation history
+			cSysPrompt = "أنت مساعد ذكي وموثوق. أجب المستخدم باختصار ودقة باللغة العربية بناءً على نتيجة الأداة وسياق المحادثة."
+			cPrompt = "<|im_start|>system" + nl + cSysPrompt + "<|im_end|>" + nl
+			if bMemoryEnabled and len(aConversation) > 0
+				cPrompt += formatHistory()
+			ok
+			cPrompt += "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
 			          "<|im_start|>assistant" + nl +
 			          "نتيجة أداة " + cIntentTool + ": " + cToolResult + nl +
 			          "الإجابة: "
 
+			if cIntentTool = "remember_fact"
+				cClean = "تم حفظ ذلك في الذاكرة الدائمة بنجاح: " + cIntentArg
+				if bStream
+					see "Agent Response: " + cClean + nl
+				ok
+				if bMemoryEnabled
+					aConversation + ["user", cUserPrompt]
+					aConversation + ["assistant", cClean]
+				ok
+				return cClean
+			ok
+
 			oModel.setTemperature(0.3)
+			cFinalAnswer = ""
 			if bStream
 				see "Agent Response: "
-				cFinalAnswer = oModel.generateStream(cPrompt, 128)
+				cFinalAnswer = oModel.generateStream(cPrompt, 160)
 				see nl
-				return cleanResponse(cFinalAnswer)
 			else
-				cFinalAnswer = oModel.generate(cPrompt, 128)
-				return cleanResponse(cFinalAnswer)
+				cFinalAnswer = oModel.generate(cPrompt, 160)
 			ok
+
+			cClean = cleanResponse(cFinalAnswer)
+			if bMemoryEnabled
+				aConversation + ["user", cUserPrompt]
+				aConversation + ["assistant", cClean]
+			ok
+			return cClean
 		ok
+
+		# General Conversational Turn with History Memory and Long-Term Vector Recall
+		cSysPrompt = "أنت مساعد ذكي وموثوق يتحدث العربية والإنجليزية بطلاقة ويقدم إجابات دقيقة ومفيدة."
+
+		# Automatic Contextual Recall from Persistent Memory (if available)
+		cMemContext = ""
+		if bVectorMemory and oMemory != NULL and oMemory.count() > 0
+			aMemMatches = oMemory.search(cUserPrompt, 2)
+			for mm in aMemMatches
+				if mm[1] >= 0.50
+					cMemContext += "- " + mm[2].cText + nl
+				ok
+			next
+		ok
+
+		if cMemContext != ""
+			cSysPrompt += nl + "معلومات مؤكدة ومحفوظة في ذاكرتك الدائمة عن المستخدم:" + nl + cMemContext + nl +
+			              "أجب المستخدم بدقة وبشكل مباشر اعتماداً على هذه المعلومات المحفوظة."
+		ok
+
+		cPrompt = "<|im_start|>system" + nl + cSysPrompt + "<|im_end|>" + nl
+		if bMemoryEnabled and len(aConversation) > 0
+			cPrompt += formatHistory()
+		ok
+		cPrompt += "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
+		          "<|im_start|>assistant" + nl
+
+		oModel.setTemperature(0.6)
+		cFinalAnswer = ""
+		if bStream
+			see "Agent Response: "
+			cFinalAnswer = oModel.generateStream(cPrompt, 200)
+			see nl
+		else
+			cFinalAnswer = oModel.generate(cPrompt, 200)
+		ok
+
+		cClean = cleanResponse(cFinalAnswer)
+		if bMemoryEnabled
+			aConversation + ["user", cUserPrompt]
+			aConversation + ["assistant", cClean]
+		ok
+		return cClean
 
 		cSys = buildToolSchema()
 		cHistory = "<|im_start|>system" + nl + cSys + "<|im_end|>" + nl +
@@ -362,6 +581,27 @@ class AIAgent
 		cArg = trim(cArg)
 		if len(cArg) >= 2 and (cArg[1] = '"' or cArg[1] = "'")
 			cArg = substr(cArg, 2, len(cArg) - 2)
+		ok
+
+		# Native Agent tools that require 'self' context
+		if cName = "remember_fact"
+			if cArg = "" return "No fact provided to remember." ok
+			remember(cArg)
+			return "تم الحفظ بنجاح في الذاكرة الدائمة: " + cArg
+		ok
+
+		if cName = "rag_search"
+			if cArg = "" return "No search query provided." ok
+			if oMemory = NULL return "No long-term memory or knowledge base loaded." ok
+			aResults = oMemory.search(cArg, 2)
+			if len(aResults) = 0 return "No relevant knowledge found in memory." ok
+			cRes = ""
+			for r in aResults
+				fScore = r[1]
+				chunk = r[2]
+				cRes += "- [Similarity: " + round(fScore, 2) + "]: " + chunk.cText + nl
+			next
+			return cRes
 		ok
 
 		for tool in aTools

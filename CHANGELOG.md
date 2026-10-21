@@ -21,10 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Expanded KV context window from 512 to 2048 tokens (`nMaxSeq = 2048`), allowing multi-turn conversations and long-document RAG without running out of context.
   - Implemented dynamic attention scores buffer `pAttScores` replacing fixed-size stack arrays.
   - Hardened repetition penalty (`1.25x` over 64 tokens, and `1.55x` consecutive token penalty) to eliminate repetitive text looping.
-- **Autonomous Function Calling & AI Agent Runtime (`libraries/madar_ai/agent.ring`):**
+- **Autonomous Function Calling & AI Agent Runtime (`libraries/madar_ai/agent.ring`, `examples/ai/agent_chat.ring`):**
   - Added `AIAgent` class supporting declarative tool registration (`registerTool`).
-  - Built-in system tools: mathematical evaluation (`calc`), real-time clock/date (`get_time`), local file reader (`read_file`), OS diagnostics (`sys_info`), and DataFrame table query/summary tools (`csv_summary`, `csv_query`).
+  - Multi-turn conversational memory with history inspection (`/history`), turn rollback (`/undo`), and context reset (`/reset`).
+  - Built-in system tools: mathematical evaluation (`calc`), real-time clock/date (`get_time`), local file reader (`read_file`), directory listing (`list_files`), OS diagnostics (`sys_info`), currency converter (`currency_rate`), and DataFrame table query/summary tools (`csv_summary`, `csv_query`).
   - Automated Hybrid ReAct execution loop: combines fast semantic intent routing with LLM tool-calling and response synthesis.
+  - Interactive Agent REPL Terminal CLI (`examples/ai/agent_chat.ring`) featuring real-time token streaming, slash commands, and multi-lingual dialogue.
 - **High-Performance C-Accelerated DataFrames (`libraries/madar_ai/dataframe.ring`):**
   - Added `DataFrame` class and `read_csv()` function parsing CSV tables with zero external dependencies.
   - Binds numerical columns directly to contiguous C-memory `RingTensor` views for microsecond statistical operations (`mean`, `sum`, `min`, `max`, `std`).

@@ -21,6 +21,7 @@
 *.idb
 *.manifest
 *.res
+*.bin
 
 *.exe
 *.dll

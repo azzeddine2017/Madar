@@ -16,6 +16,7 @@ func ai_open(cPath)
 	return model_open(cPath)
 
 func round(val, nDec)
+	if isobject(val) or islist(val) return "" ok
 	s = "" + val
 	nDot = substr(s, ".")
 	if nDot > 0 and len(s) > nDot + nDec
