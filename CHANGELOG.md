@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] - Madar 0.2.0-alpha
+## [0.2.0-alpha] - 2026-10-21
 
 ### Added
 - **Real-Time Token Streaming & Step-by-Step Generator Engine (`language/src/ring_inference.c`, `libraries/madar_ai/madar_ai.ring`, `agent.ring`):**

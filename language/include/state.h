@@ -89,6 +89,7 @@ typedef struct RingState {
 #define RING_VERSION_PATCH 0
 #define RING_STATE_VERSION "1.27"
 #define RING_STATE_VERSIONANDPATCH (RING_STATE_VERSION ".0")
+#define MADAR_VERSION "0.2.0-alpha"
 #define RING_WARNING_UNKNOWNOPTION "Warning (W1): Unrecognized option: "
 #define RING_WARNING_DUPLICATIONINFILENAME "Warning (W2) : Duplication in file name : "
 #define RING_WARNING_CHANGEKEYWORDPARA                                                                                 \

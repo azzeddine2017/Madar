@@ -9,6 +9,9 @@
 *.onnx
 *.pt
 *.pth
+
+dist/
+
 /models/*
 !/models/.gitkeep
 !/models/README.md
