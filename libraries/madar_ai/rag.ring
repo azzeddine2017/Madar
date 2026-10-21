@@ -1,10 +1,75 @@
 # ====================================================================
 # Madar AI - Lightweight Vector Store & RAG Pipeline
 # Leverages Madar's native continuous tensors, f-strings, default args,
-# list comprehensions, and advanced slicing.
+# list comprehensions, advanced slicing, and AlQalam integration.
 # ====================================================================
 
 load "stdlibCore.ring"
+load "alqalam.ring"
+
+# --------------------------------------------------------------------
+# Global Function: vector_search
+# Performs fast cosine similarity search over chunks or document tensors.
+# If nTopK = 1, returns the text string of the best matching chunk directly!
+# --------------------------------------------------------------------
+func vector_search(query_vector, doc_source, nTopK = 1)
+	aChunksList = []
+
+	# Check if doc_source is a VectorStore instance
+	if isobject(doc_source)
+		aChunksList = doc_source.aChunks
+	elseif islist(doc_source)
+		aChunksList = doc_source
+	ok
+
+	if len(aChunksList) = 0
+		if nTopK = 1
+			return ""
+		ok
+		return []
+	ok
+
+	# Score all items using native tensor cosine similarity
+	aScored = []
+	for item in aChunksList
+		tEmb = ""
+		cTxt = ""
+		if isobject(item)
+			tEmb = item.tEmbedding
+			cTxt = item.cText
+		elseif islist(item)
+			if len(item) >= 2
+				cTxt = item[1]
+				tEmb = item[2]
+			ok
+		ok
+
+		if ispointer(tEmb)
+			fSim = tensor_cosine_similarity(query_vector, tEmb)
+			aScored + [fSim, cTxt, item]
+		ok
+	next
+
+	if len(aScored) = 0
+		if nTopK = 1
+			return ""
+		ok
+		return []
+	ok
+
+	# Sort descending by score
+	aScored = sort(aScored, 1)
+	aRanked = aScored[::-1] # Madar native slice reversal
+
+	if nTopK = 1
+		# Return the single best chunk text directly
+		return aRanked[1][2]
+	ok
+
+	if len(aRanked) > nTopK
+		return aRanked[1:nTopK]
+	ok
+	return aRanked
 
 class DocumentChunk
 	cId = ""
@@ -67,7 +132,37 @@ class VectorStore
 		next
 		return nCount
 
-	# 4. Semantic Search (Leverages Default Args, List Comprehensions & Advanced Slicing)
+	# 4. Add PDF file using AlQalam QalamReader integration
+	func addPDF(cFilePath, nMinChars = 40)
+		if not fexists(cFilePath)
+			raise(f"PDF File not found: {cFilePath}")
+		ok
+
+		cContent = ""
+		try
+			
+			oReader = new QalamReader
+			cContent = oReader.extractPDFText(cFilePath)
+		catch
+			see f"  [Warning] AlQalam PDF reader unavailable, fallback to direct text read." + nl
+			cContent = read(cFilePath)
+		done
+
+		if cContent = "" or trim(cContent) = ""
+			return 0
+		ok
+
+		aParagraphs = split(cContent, nl + nl)
+		aValid = [ trim(p) for p in aParagraphs if len(trim(p)) >= nMinChars ]
+
+		nCount = 0
+		for p in aValid
+			addText(p, f"{cFilePath}_p{nCount + 1}", ["source" = cFilePath, "type" = "pdf"])
+			nCount++
+		next
+		return nCount
+
+	# 5. Semantic Search (Leverages Default Args, List Comprehensions & Advanced Slicing)
 	func search(cQuery, nTopK = 3, fMinScore = 0.0)
 		if len(aChunks) = 0
 			return []

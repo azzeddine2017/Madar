@@ -3,6 +3,16 @@
 # Declarative LLM wrappers, sampling, and chat template formatting
 # ====================================================================
 
+
+func gguf_open(cPath)
+	if substr(lower(cPath), "deepseek") > 0
+		oModel = new DeepSeekModel(cPath)
+		return oModel
+	ok
+	oModel = new QwenModel(cPath)
+	return oModel
+
+
 class QwenModel
 	hModel
 	cLoadedPath = ""
@@ -38,6 +48,9 @@ class QwenModel
 
 	func embedding(cText)
 		return madar_model_embedding(hModel, cText)
+
+	func get_embedding(cText)
+		return embedding(cText)
 
 	func formatChatPrompt(cUserMessage, cSystemMessage)
 		# Official Qwen2.5 ChatML format
@@ -120,4 +133,5 @@ class DeepSeekModel from QwenModel
 			return trim(substr(cResponse, nEnd + 8))
 		ok
 		return trim(cResponse)
+
 

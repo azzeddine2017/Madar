@@ -45,7 +45,35 @@ A semantic equivalent of `grep` that searches files based on **meaning** rather 
 ```cmd
 bin\ring.exe examples\ai\doc_search.ring README.md "كيف يعمل محرك الذكاء الاصطناعي؟"
 ```
-Or run interactively:
 ```cmd
 bin\ring.exe examples\ai\doc_search.ring
 ```
+
+---
+
+### 4. `simple_rag.ring` - Minimal Declarative RAG Script
+The most clean and direct 4-step pipeline for RAG:
+```ring
+# 1. Open model
+embed_model = gguf_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
+llm         = embed_model
+
+# 2. Extract query embedding
+query_vector = embed_model.get_embedding("كيف أصلح خطأ الذاكرة؟")
+
+# 3. Fast Vector Search using C Tensors
+best_chunk = vector_search(query_vector, store)
+
+# 4. Generate grounded answer
+prompt = "<|im_start|>system" + nl + 
+         "أجب بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
+         "<|im_start|>user" + nl + "كيف أصلح خطأ الذاكرة؟<|im_end|>" + nl +
+         "<|im_start|>assistant" + nl
+
+see llm.generateStream(prompt, 128)
+```
+Run:
+```cmd
+bin\ring.exe examples\ai\simple_rag.ring
+```
+
