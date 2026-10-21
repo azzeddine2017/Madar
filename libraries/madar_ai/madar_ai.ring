@@ -66,9 +66,12 @@ class QwenModel
 		          "<|im_start|>assistant" + nl
 		return cPrompt
 
-	func generate(cPrompt, nTokens)
+	func generate(cPrompt, nTokens, temp = NULL)
 		if nTokens != NULL and nTokens > 0
 			nMaxTokens = nTokens
+		ok
+		if temp != NULL and temp > 0.0
+			fTemp = temp
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate(hModel, cPrompt, nMaxTokens, fTemp)
@@ -80,9 +83,12 @@ class QwenModel
 		ok
 		return cOutput
 
-	func generateStream(cPrompt, nTokens)
+	func generateStream(cPrompt, nTokens, temp = NULL)
 		if nTokens != NULL and nTokens > 0
 			nMaxTokens = nTokens
+		ok
+		if temp != NULL and temp > 0.0
+			fTemp = temp
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate_stream(hModel, cPrompt, nMaxTokens, fTemp)

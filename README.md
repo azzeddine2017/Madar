@@ -21,7 +21,7 @@
    - Zero-copy OS memory mapping (`MapViewOfFile` / `mmap`), enabling multi-gigabyte models to be mounted in fractions of a second with under 20 MB of active runtime RAM.
 
 3. **In-Core Transformer & LLM Inference Pipeline:**
-   - Standalone ANSI C99 inference runtime with RMSNorm, RoPE (with NeoX split mode & GQA support), SwiGLU FFN, and multi-thread worker dispatch.
+   - **FP16 Compressed KV-Cache (2048 Context Window)**: Halves KV cache memory usage and scales context window up to 2048 tokens with Anti-Looping repetition penalty.
    - Built-in GGUF Byte-Pair Encoding (BPE) and GPT-2 Byte-Level Tokenizer with full Arabic and multilingual UTF-8 multi-byte decoding.
    - Native Mean-Pooling Embedding generation with token-0 attention-sink skipping.
    - Prompt prefill acceleration (skipping redundant logits projection on prompt tokens).
@@ -31,11 +31,21 @@
    - **VectorStore & RAG Pipeline (`libraries/madar_ai/rag.ring`)**: In-memory and binary cached vector storage (`saveBinary`/`loadBinary`) with sub-10ms knowledge retrieval.
    - **AlQalam C++17 Hybrid Search**: Blends semantic dense vector embeddings (70%) with O(1) lexical inverted indexing (`QalamIndex`, 30%) and direct PDF ingestion via `QalamReader`.
 
-5. **Self-Healing AI Agent Feedback Loop (`--json-errors`):**
+5. **Autonomous AI Agents & Function Calling (`libraries/madar_ai/agent.ring`):**
+   - Declarative tool registration (`agent.registerTool`).
+   - Automated ReAct execution loop: intercepts `<tool_call>`, executes native Ring functions, injects `<tool_response>`, and synthesizes final factual answers.
+   - Built-in tools: exact mathematics (`calc`), system time/clock (`get_time`), file access (`read_file`), and OS diagnostics.
+
+6. **Madar DataFrame for Fast Table Analytics (`libraries/madar_ai/dataframe.ring`):**
+   - Pure Ring + C-Tensor table engine parsing CSVs with zero external dependencies.
+   - Binds numeric columns to continuous `RingTensor` views for microsecond statistical calculations (`mean`, `sum`, `min`, `max`, `std`, `describe`).
+   - High-productivity filtering (`df.filter("salary", ">", 4500)`) and column selection.
+
+7. **Self-Healing AI Agent Feedback Loop (`--json-errors`):**
    - RFC 8259 standardized structured JSON compiler and runtime diagnostics.
    - Provides line context, exact error codes, call stacks, and context-aware intelligent fix suggestions.
 
-6. **Native Python-Like Modern Syntax Enhancements:**
+8. **Native Python-Like Modern Syntax Enhancements:**
    - **Native `f-strings` (`f"Hello {name}, 1+2={1+2}"`):** Direct scanner-level expression interpolation with zero runtime overhead, nested expressions, and brace escaping (`{{...}}`, `\{...\}`).
    - **Default Arguments (`func add(a, b = 10)`):** Native C99 bytecode-level default parameters evaluated dynamically at call time, avoiding Python's shared mutable default bug. Includes `argcount()` / `paramcount()` introspection.
    - **Advanced Slicing (`seq[start:stop:step]`):** 1-based inclusive slicing for strings and lists with stride, negative steps (`seq[::-1]` reversal), negative indexing (`seq[-1]`), and full backward compatibility with Ring hash maps (`dict[:name]`).

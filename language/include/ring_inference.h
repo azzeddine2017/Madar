@@ -57,11 +57,12 @@ typedef struct RingModel {
 	RingGGUFTensorInfo *pOutputNorm;
 	RingGGUFTensorInfo *pOutput;
 
-	/* KV Cache */
-	uint32_t nMaxSeq;      /* Max context in KV cache, e.g. 512 */
+	/* KV Cache (Compressed FP16) */
+	uint32_t nMaxSeq;      /* Max context in KV cache, e.g. 2048 */
 	uint32_t nKVDim;       /* nHeadsKV * nHeadDim */
-	float *pKVCache_K;     /* [nLayers * nMaxSeq * nKVDim] */
-	float *pKVCache_V;     /* [nLayers * nMaxSeq * nKVDim] */
+	ggml_fp16_t *pKVCache_K;     /* [nLayers * nMaxSeq * nKVDim] (16-bit FP16) */
+	ggml_fp16_t *pKVCache_V;     /* [nLayers * nMaxSeq * nKVDim] (16-bit FP16) */
+	float *pAttScores;           /* [nMaxSeq] Attention scores scratch buffer */
 
 	/* Working Activation Buffers */
 	float *pActX;          /* [nEmbd] */

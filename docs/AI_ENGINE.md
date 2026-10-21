@@ -91,3 +91,45 @@ Madar seamlessly integrates with the **AlQalam** library to form an enterprise-g
 2. **Hybrid Search**: Combines deep semantic similarity (70% weight) with exact keyword lexical matching (30% weight via `QalamIndex`) to eliminate hallucination.
 3. **QalamInk Memory Buffers**: Builds LLM prompts dynamically with zero memory reallocation fragmentation.
 4. **QalamChronos**: High-resolution nanosecond timer profiling embedding extraction, indexing, and token generation speed.
+
+---
+
+## 6. FP16 Compressed KV-Cache & 2048 Context Window
+
+To allow extensive conversational memory and lengthy document retrieval without out-of-memory crashes, the Key and Value attention caches are compressed to 16-bit half-precision (`ggml_fp16_t`):
+- **Memory Footprint**: Halved compared to standard 32-bit floats.
+- **Context Capacity**: Scaled from 512 to **2048 tokens** (`nMaxSeq = 2048`).
+- **Dynamic Attention Buffer**: Replaced fixed stack allocation with a heap-backed scratch buffer (`pAttScores`) sized to `nMaxSeq`.
+- **Anti-Looping Filter**: Implements dynamic repetition penalty (`1.25x` over a 64-token window and `1.55x` for consecutive duplicates) to prevent generative infinite loops.
+
+---
+
+## 7. Autonomous Function Calling & AI Agents (`libraries/madar_ai/agent.ring`)
+
+The `AIAgent` class enables the LLM to interface with the host environment and execute native code dynamically:
+1. **Schema Generation**: Automatically renders registered tools and parameter signatures into the system prompt.
+2. **Tool Invocation Protocol**: Detects `<tool_call>` syntax emitted by the model:
+   ```text
+   <tool_call>
+   name: calc
+   args: 1450 * 32 + 890
+   </tool_call>
+   ```
+3. **Execution & Feedback Loop**: Executes the corresponding Ring function, encapsulates output into `<tool_response>`, and prompts the model to deliver the final factual response.
+4. **Built-in Core Tools**:
+   - `calc(expr)`: Exact mathematical evaluation.
+   - `get_time()`: Real-time clock and date.
+   - `read_file(path)`: Direct filesystem access.
+   - `sys_info()`: Operating system runtime telemetry.
+
+---
+
+## 8. High-Performance Madar DataFrame (`libraries/madar_ai/dataframe.ring`)
+
+Designed for memory-bound tabular data analysis:
+- **Direct C-Tensor Binding**: Numeric columns are converted to contiguous `RingTensor` (Float32) structures, enabling microsecond matrix reductions (`mean`, `sum`, `min`, `max`, `std`).
+- **Pandas-like Workflow**:
+  - Ingestion: `df = read_csv("data.csv")`
+  - Relational Filtering: `dfHigh = df.filter("salary", ">", 4500)`
+  - Summary Analytics: `df.describe()` outputs full tabular statistics.
+  - Zero Python Dependency: Executes entirely within the lightweight Madar VM and C core.

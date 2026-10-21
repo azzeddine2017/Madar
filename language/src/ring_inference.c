@@ -757,13 +757,14 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		return NULL;
 	}
 
-	/* Allocate KV Cache */
-	pModel->nMaxSeq = 512;
+	/* Allocate KV Cache (FP16 Compressed - 50% Memory Savings) */
+	pModel->nMaxSeq = 2048;
 	pModel->nKVDim = pModel->config.nHeadsKV * pModel->config.nHeadDim;
 	kvSize = (size_t)pModel->config.nLayers * pModel->nMaxSeq * pModel->nKVDim;
 
-	pModel->pKVCache_K = (float *)calloc(kvSize, sizeof(float));
-	pModel->pKVCache_V = (float *)calloc(kvSize, sizeof(float));
+	pModel->pKVCache_K = (ggml_fp16_t *)calloc(kvSize, sizeof(ggml_fp16_t));
+	pModel->pKVCache_V = (ggml_fp16_t *)calloc(kvSize, sizeof(ggml_fp16_t));
+	pModel->pAttScores = (float *)calloc(pModel->nMaxSeq, sizeof(float));
 
 	/* Working Activation Buffers */
 	pModel->pActX      = (float *)calloc(pModel->config.nEmbd, sizeof(float));
@@ -853,6 +854,7 @@ RING_API void ring_model_free(RingModel *pModel) {
 
 	if (pModel->pKVCache_K) free(pModel->pKVCache_K);
 	if (pModel->pKVCache_V) free(pModel->pKVCache_V);
+	if (pModel->pAttScores) free(pModel->pAttScores);
 
 	if (pModel->pActX)      free(pModel->pActX);
 	if (pModel->pActXB)     free(pModel->pActXB);
@@ -884,8 +886,8 @@ RING_API void ring_model_reset_kv(RingModel *pModel) {
 	size_t kvSize;
 	if (!pModel || !pModel->pKVCache_K || !pModel->pKVCache_V) return;
 	kvSize = (size_t)pModel->config.nLayers * pModel->nMaxSeq * pModel->nKVDim;
-	memset(pModel->pKVCache_K, 0, kvSize * sizeof(float));
-	memset(pModel->pKVCache_V, 0, kvSize * sizeof(float));
+	memset(pModel->pKVCache_K, 0, kvSize * sizeof(ggml_fp16_t));
+	memset(pModel->pKVCache_V, 0, kvSize * sizeof(ggml_fp16_t));
 	if (pModel->pTokenizer) pModel->pTokenizer->nUtf8BufLen = 0;
 }
 
@@ -907,8 +909,9 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 	int seqIdx, validTokens;
 	size_t kvOffset, tOffset;
 	int h, kvH, d, t, i;
-	float *qHead, *outHead, *kHead, *vHead;
-	float attScores[512];
+	float *qHead, *outHead;
+	const ggml_fp16_t *kHead, *vHead;
+	float *attScores = pModel->pAttScores;
 	float score, sumV, g, silu_g;
 	float *attnOut = pModel->pActAttnProj;
 	float *ffnOut = pModel->pActFFNOut;
@@ -960,11 +963,13 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 		apply_rope(pModel->pActQ, nHeads, nHeadDim, nPos, freqBase);
 		apply_rope(pModel->pActK, nHeadsKV, nHeadDim, nPos, freqBase);
 
-		/* Store K, V in KV Cache */
+		/* Store K, V in FP16 Compressed KV Cache */
 		seqIdx = nPos % pModel->nMaxSeq;
 		kvOffset = ((size_t)l * pModel->nMaxSeq + seqIdx) * nKVDim;
-		memcpy(pModel->pKVCache_K + kvOffset, pModel->pActK, nKVDim * sizeof(float));
-		memcpy(pModel->pKVCache_V + kvOffset, pModel->pActV, nKVDim * sizeof(float));
+		for (i = 0; i < nKVDim; i++) {
+			pModel->pKVCache_K[kvOffset + i] = ggml_fp32_to_fp16(pModel->pActK[i]);
+			pModel->pKVCache_V[kvOffset + i] = ggml_fp32_to_fp16(pModel->pActV[i]);
+		}
 
 		/* Scaled Dot-Product Attention with GQA */
 		scale = 1.0f / sqrtf((float)nHeadDim);
@@ -982,7 +987,7 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 				kHead = pModel->pKVCache_K + tOffset;
 				score = 0.0f;
 				for (d = 0; d < nHeadDim; d++) {
-					score += qHead[d] * kHead[d];
+					score += qHead[d] * fast_fp16_to_fp32(kHead[d]);
 				}
 				attScores[t] = score * scale;
 			}
@@ -997,7 +1002,7 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 				vHead = pModel->pKVCache_V + tOffset;
 				float a = attScores[t];
 				for (d = 0; d < nHeadDim; d++) {
-					outHead[d] += a * vHead[d];
+					outHead[d] += a * fast_fp16_to_fp32(vHead[d]);
 				}
 			}
 		}
@@ -1149,17 +1154,17 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
 */
 
 RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp, int bStreamStdout) {
-	int promptTokens[1024];
-	int genTokens[1024];
+	int promptTokens[2048];
+	int genTokens[2048];
 	int nPromptTokens, nGen = 0, i, curPos, nextToken;
 	char *tokenStr;
 
 	if (!pModel || !cPrompt) return _strdup("");
 	if (nMaxTokens <= 0) nMaxTokens = 64;
-	if (nMaxTokens > 1024) nMaxTokens = 1024;
+	if (nMaxTokens > 2048) nMaxTokens = 2048;
 
 	/* Tokenize Prompt */
-	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, 1024);
+	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, 2048);
 	if (nPromptTokens <= 0) return _strdup("");
 
 	ring_model_reset_kv(pModel);
@@ -1173,8 +1178,8 @@ RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt
 	/* Autoregressive Generation Loop */
 	curPos = nPromptTokens;
 	while (nGen < nMaxTokens) {
-		/* Gentle repetition penalty applied at most ONCE per unique token in the last 32 tokens */
-		int penaltyStart = (nGen > 32) ? (nGen - 32) : 0;
+		/* Repetition penalty (1.25x) over the last 64 generated tokens */
+		int penaltyStart = (nGen > 64) ? (nGen - 64) : 0;
 		for (i = penaltyStart; i < nGen; i++) {
 			int prevTok = genTokens[i];
 			int alreadyPenalized = 0;
@@ -1186,10 +1191,15 @@ RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt
 				}
 			}
 			if (!alreadyPenalized && prevTok >= 0 && (uint32_t)prevTok < pModel->config.nVocab) {
+				float fPenalty = 1.25f;
+				/* Extra consecutive penalty if token equals immediately preceding token to prevent loops */
+				if (nGen > 0 && prevTok == genTokens[nGen - 1]) {
+					fPenalty = 1.55f;
+				}
 				if (pModel->pLogits[prevTok] > 0.0f) {
-					pModel->pLogits[prevTok] /= 1.1f;
+					pModel->pLogits[prevTok] /= fPenalty;
 				} else {
-					pModel->pLogits[prevTok] *= 1.1f;
+					pModel->pLogits[prevTok] *= fPenalty;
 				}
 			}
 		}
@@ -1444,7 +1454,7 @@ RING_FUNC(ring_model_api_is_arabic) {
 }
 
 RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, const char *cText) {
-	int promptTokens[1024];
+	int promptTokens[2048];
 	int nPromptTokens, i, d;
 	int nEmbd;
 	size_t aShape[1];
@@ -1458,7 +1468,7 @@ RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, c
 	nEmbd = (int)pModel->config.nEmbd;
 	if (nEmbd <= 0) return NULL;
 
-	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cText, promptTokens, 1024);
+	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cText, promptTokens, 2048);
 	if (nPromptTokens <= 0) return NULL;
 
 	pMean = (float *)calloc(nEmbd, sizeof(float));

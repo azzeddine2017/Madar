@@ -162,3 +162,12 @@ Madar is extending Ring's grammar to incorporate high-productivity constructs wh
 | `madar_model_set_threads` | `madar_model_set_threads(h, n)` | Sets active CPU worker thread count. |
 | `madar_model_generate` | `madar_model_generate(h, prompt, maxTokens, temp)` | Executes autoregressive text generation. |
 | `madar_model_generate_stream`| `madar_model_generate_stream(h, prompt, maxTokens, temp, stream)` | Streams generated tokens to terminal in real time. |
+
+### Madar AI Suite APIs
+| Class / Function | Module | Description |
+| :--- | :--- | :--- |
+| `AIAgent` | `madar_ai/agent.ring` | Autonomous agent orchestrating function and tool calling. |
+| `registerTool` | `madar_ai/agent.ring` | Registers local Ring functions for autonomous model execution. |
+| `DataFrame` / `read_csv`| `madar_ai/dataframe.ring` | High-performance C-Tensor continuous table analytics. |
+| `VectorStore` | `madar_ai/rag.ring` | Persistent dense vector database with binary disk caching. |
+| `RAGPipeline` | `madar_ai/rag.ring` | Contextual question-answering retrieval pipeline. |

@@ -8,7 +8,7 @@
 #   - QalamChronos: Nanosecond-precision benchmarking
 # ====================================================================
 
-load "stdlibCore.ring"
+
 
 # Safely load AlQalam if available
 try

@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - Madar 0.2.0-alpha
 
 ### Added
+- **FP16 Compressed KV-Cache & 2048-Token Context Scaling (`language/src/ring_inference.c`, `language/include/ring_inference.h`):**
+  - Compressed Key and Value tensors from FP32 (32-bit) to half-precision `ggml_fp16_t` (16-bit), reducing memory consumption by 50%.
+  - Expanded KV context window from 512 to 2048 tokens (`nMaxSeq = 2048`), allowing multi-turn conversations and long-document RAG without running out of context.
+  - Implemented dynamic attention scores buffer `pAttScores` replacing fixed-size stack arrays.
+  - Hardened repetition penalty (`1.25x` over 64 tokens, and `1.55x` consecutive token penalty) to eliminate repetitive text looping.
+- **Autonomous Function Calling & AI Agent Runtime (`libraries/madar_ai/agent.ring`):**
+  - Added `AIAgent` class supporting declarative tool registration (`registerTool`).
+  - Built-in system tools: mathematical evaluation (`calc`), real-time clock/date (`get_time`), local file reader (`read_file`), and OS diagnostics (`sys_info`).
+  - Automated ReAct execution loop: intercepts `<tool_call>`, executes native Ring routines, injects `<tool_response>`, and synthesizes final factual answers.
+- **High-Performance C-Accelerated DataFrames (`libraries/madar_ai/dataframe.ring`):**
+  - Added `DataFrame` class and `read_csv()` function parsing CSV tables with zero external dependencies.
+  - Binds numerical columns directly to contiguous C-memory `RingTensor` views for microsecond statistical operations (`mean`, `sum`, `min`, `max`, `std`).
+  - Rich analytical API: relational filtering (`df.filter("salary", ">", 4500)`), column projection (`df.select(...)`), row previews (`df.head`, `df.tail`), and summary statistics tables (`df.describe()`).
 - **Hardware-Accelerated AVX2 & FMA SIMD Inference Core (`language/src/ring_inference.c`, `ring_tensor.c`, `language/build/buildvc_x64.bat`):**
   - Implemented 256-bit SIMD vector kernels for quantized tensor dot products (`dot_q4_0`, `dot_q8_0`, `dot_f16`, `dot_f32`).
   - `dot_q4_0`: Unpacks 32 x 4-bit nibbles across 4 AVX2 256-bit vector registers with zero-allocation, executing block multiply-adds concurrently.
