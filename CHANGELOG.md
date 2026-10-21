@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0-alpha] - 2026-10-21
 
 ### Added
+- **Modernized CLI Interface & Inline Evaluation (`language/src/state.c`, `language/include/state.h`):**
+  - Added `-v, --version` flag to print Madar version, core release, and author attribution cleanly.
+  - Added `-h, --help` flag displaying a beautifully categorized and grouped command-line help interface.
+  - Added `-e, --eval <code>` flag for immediate one-liner execution of Madar code directly from the terminal.
+  - Added `--sysinfo` flag presenting live hardware acceleration diagnostics (AVX2, FMA, F16C, 64-bit architecture) and AI inference runtime specs.
 - **Real-Time Token Streaming & Step-by-Step Generator Engine (`language/src/ring_inference.c`, `libraries/madar_ai/madar_ai.ring`, `agent.ring`):**
   - Implemented low-level autoregressive generator API (`ring_model_prefill`, `ring_model_has_more`, `ring_model_step`).
   - Added high-speed native C streaming directly to `stdout` (`ring_model_generate_stream`) with automated UTF-8 byte assembly flushing.

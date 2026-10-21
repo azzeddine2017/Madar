@@ -32,6 +32,18 @@
    - في خانة `Path`، أضف المسار الكامل لمجلد `bin` (مثال: `C:\Madar\bin`).
    - الآن يمكنك كتابة `ring` في أي موجه أوامر أو PowerShell.
 
+#### ⚡ فحص فوري للبيئة (Quick Commands):
+```cmd
+:: التحقق من الإصدار
+bin\ring.exe -v
+
+:: فحص دعم المعالج لتسريع AVX2 ومحرك الذكاء الاصطناعي
+bin\ring.exe --sysinfo
+
+:: تشغيل سطر كود مباشر
+bin\ring.exe -e "see [x*x for x in 1:5] + nl"
+```
+
 ---
 
 ### 3. تحميل نماذج الذكاء الاصطناعي (Download AI Models)
@@ -130,6 +142,18 @@ Welcome to **Madar** (مدار) - An AI-Native, High-Performance Dialect and Run
    - Open **System Properties** -> **Environment Variables**.
    - Edit the `Path` variable under User or System variables, and append: `C:\Madar\bin`.
    - Open a fresh terminal and run: `ring -v` or `ring`.
+
+#### ⚡ Quick Verification Commands:
+```cmd
+:: Check version
+bin\ring.exe -v
+
+:: Check CPU AVX2 SIMD acceleration & AI specs
+bin\ring.exe --sysinfo
+
+:: Execute one-line code directly
+bin\ring.exe -e "see [x*x for x in 1:5] + nl"
+```
 
 ---
 

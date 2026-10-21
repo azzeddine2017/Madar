@@ -477,6 +477,7 @@ RING_API void ring_state_cgiheader(RingState *pRingState) {
 
 RING_API void ring_state_main(int nArgc, char *pArgv[]) {
   char *cStr;
+  char *cEvalCode;
   char cFileName[RING_SMALLBUF];
   int x, lCGI, lRun, lPrintIC, lPrintICFinal, lTokens, lRules, lIns,
       lPerformance, lSrc, lGenObj, lGenCObj, lWarn;
@@ -490,6 +491,7 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
   lIns = 0;
   lPerformance = 0;
   cStr = NULL;
+  cEvalCode = NULL;
   lSrc = 0;
   lGenObj = 0;
   lGenCObj = 0;
@@ -509,7 +511,31 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
   }
   if ((nArgc > 1) && (lSrc == RING_FALSE)) {
     for (x = 1; x < nArgc; x++) {
-      if (strcmp(pArgv[x], "-cgi") == 0) {
+      if ((strcmp(pArgv[x], "-v") == 0) ||
+          (strcmp(pArgv[x], "--version") == 0) ||
+          (strcmp(pArgv[x], "-version") == 0)) {
+        ring_state_printversion();
+        return;
+      } else if ((strcmp(pArgv[x], "-h") == 0) ||
+                 (strcmp(pArgv[x], "--help") == 0) ||
+                 (strcmp(pArgv[x], "-help") == 0)) {
+        ring_state_usageinfo();
+        return;
+      } else if ((strcmp(pArgv[x], "--sysinfo") == 0) ||
+                 (strcmp(pArgv[x], "-sysinfo") == 0)) {
+        ring_state_printsysinfo();
+        return;
+      } else if ((strcmp(pArgv[x], "-e") == 0) ||
+                 (strcmp(pArgv[x], "-eval") == 0) ||
+                 (strcmp(pArgv[x], "--eval") == 0)) {
+        if (x + 1 < nArgc) {
+          x++;
+          cEvalCode = pArgv[x];
+        } else {
+          puts("Error: Option -e requires code string parameter");
+          return;
+        }
+      } else if (strcmp(pArgv[x], "-cgi") == 0) {
         lCGI = 1;
         lRingStateCGI = 1;
       } else if (strcmp(pArgv[x], "-tokens") == 0) {
@@ -558,7 +584,27 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
     ring_general_showtime();
   }
   srand(time(NULL));
-  /* Print Version */
+
+  /* Execute one-line code if -e was passed */
+  if (cEvalCode != NULL) {
+    RingState *pRingState = ring_state_new();
+    pRingState->nArgc = nArgc;
+    pRingState->pArgv = pArgv;
+    pRingState->lWarning = lWarn;
+    pRingState->lPrintIC = lPrintIC;
+    pRingState->lPrintICFinal = lPrintICFinal;
+    pRingState->lPrintTokens = lTokens;
+    pRingState->lPrintRules = lRules;
+    pRingState->lPrintInstruction = lIns;
+    ring_state_runstring(pRingState, cEvalCode);
+    ring_state_delete(pRingState);
+    if (lPerformance) {
+      ring_general_showtime();
+    }
+    return;
+  }
+
+  /* Print Version & Usage if no file or code */
   if (((nArgc == 1) && (lSrc == RING_FALSE)) || (cStr == NULL)) {
     ring_state_usageinfo();
   }
@@ -634,29 +680,77 @@ RING_API void ring_state_segfaultaction(int nSig) {
   exit(RING_EXIT_FAIL);
 }
 
-RING_API void ring_state_usageinfo(void) {
-  ring_general_printline();
-  printf("Madar (مدار) version %s (Ring Core %s)\n", MADAR_VERSION,
+RING_API void ring_state_printversion(void) {
+  printf("Madar version %s (Ring Core %s)\n", MADAR_VERSION,
          RING_STATE_VERSIONANDPATCH);
   printf("2026, Azzeddine Remmal / Madar Project\n");
   printf("2013-2026, Mahmoud Fayed <msfclipper@yahoo.com>\n");
-  puts("Usage : ring filename.ring [Options]");
+}
+
+RING_API void ring_state_printsysinfo(void) {
   ring_general_printline();
-  /* Options */
-  puts("-tokens        :  Print a list of tokens in the source code file");
-  puts("-rules         :  Print grammar rules applied on the tokens");
-  puts("-ic            :  Print the intermediate byte code (before execution)");
-  puts("-icfinal       :  Print the final byte code (after execution)");
-  puts("-cgi           :  Print http response header before error messages");
-  puts("-norun         :  Don't run the program after compiling");
-  puts("-ins           :  Print instruction operation code before execution");
-  puts("-clock         :  Print clock before and after program execution");
-#if RING_GENOBJ
-  puts("-go            :  Generate object file");
-  puts("-geo           :  Generate embedded object file (C source code)");
+  printf("Madar Platform & AI Architecture Diagnostics:\n");
+  printf("  Madar Version    : %s (Ring Core %s)\n", MADAR_VERSION,
+         RING_STATE_VERSIONANDPATCH);
+  printf("  Platform Target  : 64-bit (x86_64 Windows)\n");
+#if defined(__AVX2__) || defined(_M_X64)
+  printf("  CPU SIMD Kernels : AVX2 [Active], FMA [Active], F16C [Active]\n");
+#else
+  printf("  CPU SIMD Kernels : Portable ANSI C Scalar Fallback\n");
 #endif
-  puts("-w             :  Display Warnings");
-  puts("--json-errors  :  Output compiler & runtime errors in structured JSON "
-       "for AI Agents");
+  printf("  Tensor Core      : Contiguous C-Memory RingTensor (ITEMTYPE_TENSOR "
+         "= 6)\n");
+  printf("  KV-Cache Engine  : Half-Precision FP16 Compressed (2048 Context "
+         "Window)\n");
+  printf("  LLM Quantization : Q4_0, Q8_0, Q6_K, FP16, FP32, GGUF V2/V3\n");
+  printf(
+      "  Vector Database  : Cosine Similarity VectorStore & Persistent RAG\n");
+  ring_general_printline();
+}
+
+RING_API void ring_state_usageinfo(void) {
+  ring_general_printline();
+  printf("Madar version %s (Ring Core %s)\n", MADAR_VERSION,
+         RING_STATE_VERSIONANDPATCH);
+  printf("2026, Azzeddine Remmal / Madar Project\n");
+  printf("2013-2026, Mahmoud Fayed <msfclipper@yahoo.com>\n");
+  puts("Usage : ring [script.ring] [options] [arguments]");
+  puts("        ring -e \"<code>\"");
+  ring_general_printline();
+  /* General */
+  puts("General Options:");
+  puts("  -h, --help        :  Display this help information");
+  puts("  -v, --version     :  Print version and build information");
+  puts("  -e, --eval <code> :  Execute one-line Madar code directly");
+  puts("  --sysinfo         :  Display CPU SIMD capabilities and runtime "
+       "architecture");
+  puts("");
+  /* AI & Diagnostics */
+  puts("AI & Diagnostics:");
+  puts("  --json-errors     :  Output compiler & runtime errors in structured "
+       "JSON for AI Agents");
+  puts("");
+  /* Execution & Profiling */
+  puts("Execution & Profiling:");
+  puts("  -clock            :  Print clock before and after program execution");
+  puts("  -norun            :  Don't run the program after compiling (check "
+       "syntax only)");
+  puts("  -w                :  Display Warnings");
+  puts("  -cgi              :  Print HTTP response header before error "
+       "messages");
+  puts("");
+  /* Bytecode & Compilation */
+  puts("Bytecode & Compilation:");
+#if RING_GENOBJ
+  puts("  -go               :  Generate object file (.ringo)");
+  puts("  -geo              :  Generate embedded object file (C source code)");
+#endif
+  puts(
+      "  -ic               :  Print intermediate byte code (before execution)");
+  puts("  -icfinal          :  Print final byte code (after execution)");
+  puts("  -ins              :  Print instruction operation code before "
+       "execution");
+  puts("  -tokens           :  Print a list of tokens in the source code file");
+  puts("  -rules            :  Print grammar rules applied on the tokens");
   ring_general_printline();
 }

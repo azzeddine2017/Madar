@@ -159,4 +159,8 @@ RING_API void ring_state_execute(char *cFileName, int lISCGI, int lRun, int lPri
 RING_API void ring_state_segfaultaction(int nSig);
 
 RING_API void ring_state_usageinfo(void);
+
+RING_API void ring_state_printversion(void);
+
+RING_API void ring_state_printsysinfo(void);
 #endif
