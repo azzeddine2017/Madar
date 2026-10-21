@@ -55,7 +55,7 @@ bin\ring.exe examples\ai\doc_search.ring
 The most clean and direct 4-step pipeline for RAG:
 ```ring
 # 1. Open model
-embed_model = gguf_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
+embed_model = model_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
 llm         = embed_model
 
 # 2. Extract query embedding

@@ -4,13 +4,17 @@
 # ====================================================================
 
 
-func gguf_open(cPath)
+func model_open(cPath)
 	if substr(lower(cPath), "deepseek") > 0
 		oModel = new DeepSeekModel(cPath)
 		return oModel
 	ok
 	oModel = new QwenModel(cPath)
 	return oModel
+
+func ai_open(cPath)
+	return model_open(cPath)
+
 
 
 class QwenModel

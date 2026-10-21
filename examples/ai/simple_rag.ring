@@ -19,8 +19,9 @@ if not fexists(cModelPath)
 ok
 
 # فتح نموذج التضمين والتوليد (يمكن استخدام نفس النموذج أو نموذجين منفصلين)
-embed_model = gguf_open(cModelPath)
+embed_model = model_open(cModelPath)
 llm         = embed_model
+llm.setTemperature(0.2) # درجة حرارة منخفضة لضمان دقة الإجابة الحتمية والالتزام بالمرجع
 
 # إعداد قاعدة المعرفة السريعة (يمكن إضافة ملفات نصية أو PDF عبر store.addPDF)
 store = new VectorStore(embed_model)
@@ -36,9 +37,15 @@ see nl + "السؤال: " + cQuestion + nl + nl
 query_vector = embed_model.get_embedding(cQuestion)
 
 # 2. قياس التشابه الرياضي بين السؤال والملفات المخزنة (عبر مصفوفات التينسور في C)
-best_chunk = vector_search(query_vector, store)
+see "درجات التشابه الرياضي (Cosine Similarity):" + nl
+aMatches = vector_search(query_vector, store, 3)
+for m in aMatches
+	see f"  - [{m[1]}] {m[2]}" + nl
+next
+see nl
 
-see "المرجع المسترجع بدقة:" + nl
+best_chunk = aMatches[1][2]
+see "المرجع الأعلى تطابقاً:" + nl
 see ">>> " + best_chunk + nl + nl
 
 # 3. تمرير النتيجة فقط للنموذج لتوليد إجابة حتمية بدون هلوسة

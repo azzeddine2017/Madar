@@ -1326,7 +1326,9 @@ RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, c
 	size_t aShape[1];
 	RingTensor *pTensor;
 	float *pData;
-	double sumSq, invNorm;
+	float *pMean;
+	const float *outNormW;
+	double sumSq, invNorm, invN;
 
 	if (!pModel || !cText) return NULL;
 	nEmbd = (int)pModel->config.nEmbd;
@@ -1335,30 +1337,58 @@ RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, c
 	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cText, promptTokens, 1024);
 	if (nPromptTokens <= 0) return NULL;
 
+	pMean = (float *)calloc(nEmbd, sizeof(float));
+	if (!pMean) return NULL;
+
+	outNormW = pModel->pOutputNorm ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pOutputNorm) : NULL;
+
 	ring_model_reset_kv(pModel);
 
-	/* Forward all prompt tokens through Transformer layers (skip logits) */
+	/* Forward all prompt tokens through Transformer layers and accumulate hidden states for Mean Pooling */
 	for (i = 0; i < nPromptTokens; i++) {
 		ring_model_forward_ex(pModel, promptTokens[i], i, 0);
+
+		if (outNormW) {
+			rmsnorm(pModel->pActXB, pModel->pActX, outNormW, nEmbd, pModel->config.fNormEps);
+		} else {
+			memcpy(pModel->pActXB, pModel->pActX, nEmbd * sizeof(float));
+		}
+
+		/* Skip attention sink token at i=0 for significantly sharper semantic contrast */
+		if (nPromptTokens > 1 && i == 0) continue;
+
+		for (d = 0; d < nEmbd; d++) {
+			pMean[d] += pModel->pActXB[d];
+		}
 	}
 
 	/* Allocate a native 1D RingTensor of shape [nEmbd] */
 	aShape[0] = (size_t)nEmbd;
 	pTensor = ring_tensor_new(pRingState, RING_TENSOR_TYPE_FLOAT32, 1, aShape);
-	if (!pTensor) return NULL;
+	if (!pTensor) {
+		free(pMean);
+		return NULL;
+	}
 
 	pData = (float *)ring_tensor_data(pTensor);
 	if (!pData) {
+		free(pMean);
 		ring_tensor_delete(pRingState, pTensor);
 		return NULL;
 	}
 
-	/* Extract last-token hidden activation & L2-normalize for unit-vector cosine similarity */
+	/* Mean pooling average & L2-normalization for unit-vector cosine similarity */
 	sumSq = 0.0;
-	for (d = 0; d < nEmbd; d++) {
-		pData[d] = pModel->pActX[d];
-		sumSq += (double)pData[d] * (double)pData[d];
+	{
+		int nTokensCount = (nPromptTokens > 1) ? (nPromptTokens - 1) : 1;
+		invN = 1.0 / (double)nTokensCount;
 	}
+	for (d = 0; d < nEmbd; d++) {
+		double meanVal = (double)pMean[d] * invN;
+		pData[d] = (float)meanVal;
+		sumSq += meanVal * meanVal;
+	}
+	free(pMean);
 
 	if (sumSq > 1e-12) {
 		invNorm = 1.0 / sqrt(sumSq);
