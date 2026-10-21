@@ -1,6 +1,6 @@
 load "madar_ai.ring"
 
-cModel = "models/qwen2.5-3b-instruct-q4_0.gguf"
+cModel = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
 
 if not fexists(cModel)
 	cModel = "models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"

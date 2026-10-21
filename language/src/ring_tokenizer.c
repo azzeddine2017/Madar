@@ -371,27 +371,49 @@ static RingMergeEntry *tokenizer_find_merge(RingTokenizer *pTok, int id1, int id
 #define DEEPSEEK_TAG_USER "<\xef\xbd\x9c" "User\xef\xbd\x9c>"
 #define DEEPSEEK_TAG_ASST "<\xef\xbd\x9c" "Assistant\xef\xbd\x9c>"
 
-static int is_special_tag(const char *s, size_t rem, int *outLen, int *outId) {
+static int is_special_tag(RingTokenizer *pTok, const char *s, size_t rem, int *outLen, int *outId) {
+	int id;
 	if (rem >= 12 && strncmp(s, "<|im_start|>", 12) == 0) {
-		*outLen = 12; *outId = 151644; return 1;
+		*outLen = 12;
+		id = pTok ? ring_tokenizer_find_token(pTok, "<|im_start|>") : -1;
+		*outId = (id >= 0) ? id : 151644;
+		return 1;
 	}
 	if (rem >= 10 && strncmp(s, "<|im_end|>", 10) == 0) {
-		*outLen = 10; *outId = 151645; return 1;
+		*outLen = 10;
+		id = pTok ? ring_tokenizer_find_token(pTok, "<|im_end|>") : -1;
+		*outId = (id >= 0) ? id : 151645;
+		return 1;
 	}
 	if (rem >= 13 && strncmp(s, "<|endoftext|>", 13) == 0) {
-		*outLen = 13; *outId = 151643; return 1;
+		*outLen = 13;
+		id = pTok ? ring_tokenizer_find_token(pTok, "<|endoftext|>") : -1;
+		*outId = (id >= 0) ? id : 151643;
+		return 1;
 	}
 	if (rem >= sizeof(DEEPSEEK_TAG_USER) - 1 && strncmp(s, DEEPSEEK_TAG_USER, sizeof(DEEPSEEK_TAG_USER) - 1) == 0) {
-		*outLen = (int)(sizeof(DEEPSEEK_TAG_USER) - 1); *outId = 151644; return 1;
+		*outLen = (int)(sizeof(DEEPSEEK_TAG_USER) - 1);
+		id = pTok ? ring_tokenizer_find_token(pTok, DEEPSEEK_TAG_USER) : -1;
+		*outId = (id >= 0) ? id : 151644;
+		return 1;
 	}
 	if (rem >= sizeof(DEEPSEEK_TAG_ASST) - 1 && strncmp(s, DEEPSEEK_TAG_ASST, sizeof(DEEPSEEK_TAG_ASST) - 1) == 0) {
-		*outLen = (int)(sizeof(DEEPSEEK_TAG_ASST) - 1); *outId = 151645; return 1;
+		*outLen = (int)(sizeof(DEEPSEEK_TAG_ASST) - 1);
+		id = pTok ? ring_tokenizer_find_token(pTok, DEEPSEEK_TAG_ASST) : -1;
+		*outId = (id >= 0) ? id : 151645;
+		return 1;
 	}
 	if (rem >= 7 && strncmp(s, "<think>", 7) == 0) {
-		*outLen = 7; *outId = 151648; return 1;
+		*outLen = 7;
+		id = pTok ? ring_tokenizer_find_token(pTok, "<think>") : -1;
+		*outId = (id >= 0) ? id : 151648;
+		return 1;
 	}
 	if (rem >= 8 && strncmp(s, "</think>", 8) == 0) {
-		*outLen = 8; *outId = 151649; return 1;
+		*outLen = 8;
+		id = pTok ? ring_tokenizer_find_token(pTok, "</think>") : -1;
+		*outId = (id >= 0) ? id : 151649;
+		return 1;
 	}
 	return 0;
 }
@@ -416,12 +438,12 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 
 	/* If Byte-Level BPE (Qwen, GPT-2), convert raw bytes to GPT-2 Unicode string, keeping special tags untouched */
 	if (pTok->bIsByteLevelBPE) {
-		gpt2Str = (char *)malloc(tLen * 2 + 1);
+		gpt2Str = (char *)malloc(tLen * 3 + 1);
 		if (gpt2Str) {
 			gpt2Len = 0;
 			for (i = 0; i < tLen; i++) {
 				tagLen = 0; tagId = 0;
-				if (cText[i] == '<' && is_special_tag(cText + i, tLen - i, &tagLen, &tagId)) {
+				if (cText[i] == '<' && is_special_tag(pTok, cText + i, tLen - i, &tagLen, &tagId)) {
 					memcpy(gpt2Str + gpt2Len, cText + i, tagLen);
 					gpt2Len += tagLen;
 					i += tagLen - 1;
@@ -452,7 +474,7 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 
 		/* Check for standard control / special ChatML and DeepSeek tokens */
 		tagLen = 0; tagId = 0;
-		if (workText[i] == '<' && is_special_tag(workText + i, workLen - i, &tagLen, &tagId)) {
+		if (workText[i] == '<' && is_special_tag(pTok, workText + i, workLen - i, &tagLen, &tagId)) {
 			aOutTokens[nTokens++] = tagId;
 			i += tagLen;
 			continue;
@@ -476,7 +498,7 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 			aOutTokens[nTokens++] = matchedId;
 			i += matchedLen;
 		} else {
-			/* Fallback to single character/byte token */
+			/* Fallback to single GPT-2 character */
 			unsigned char c1 = (unsigned char)workText[i];
 			size_t cLen = 1;
 			if ((c1 & 0xE0) == 0xC0) cLen = 2;
@@ -488,14 +510,9 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 				id = ring_tokenizer_find_token(pTok, buf);
 				if (id >= 0) {
 					aOutTokens[nTokens++] = id;
-				} else if (pTok->aByteToToken[c1] >= 0) {
-					aOutTokens[nTokens++] = pTok->aByteToToken[c1];
 				}
 				i += cLen;
 			} else {
-				if (pTok->aByteToToken[c1] >= 0) {
-					aOutTokens[nTokens++] = pTok->aByteToToken[c1];
-				}
 				i++;
 			}
 		}
@@ -534,6 +551,83 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 	return nTokens;
 }
 
+/*
+================================================================================
+  UTF-8 Multi-Byte Assembly Helper for Byte-Fallback Detokenization
+================================================================================
+*/
+
+static void tokenizer_emit_byte(RingTokenizer *pTok, uint8_t b, char *cOutBuf, int *pW, int nMaxLen) {
+	int expected, k;
+	uint8_t lead;
+
+	if (!pTok) {
+		if (*pW + 1 < nMaxLen) {
+			cOutBuf[(*pW)++] = (char)b;
+		}
+		return;
+	}
+
+	if (pTok->nUtf8BufLen == 0) {
+		if (b < 0x80) {
+			/* Standard 1-byte ASCII */
+			if (*pW + 1 < nMaxLen) {
+				cOutBuf[(*pW)++] = (char)b;
+			}
+		} else if ((b & 0xE0) == 0xC0 || (b & 0xF0) == 0xE0 || (b & 0xF8) == 0xF0) {
+			/* Start of multi-byte sequence (2-byte, 3-byte, or 4-byte) */
+			pTok->aUtf8Buf[0] = b;
+			pTok->nUtf8BufLen = 1;
+		} else {
+			/* Continuation byte without leading byte or invalid raw byte */
+			if (*pW + 1 < nMaxLen) {
+				cOutBuf[(*pW)++] = (char)b;
+			}
+		}
+	} else {
+		lead = pTok->aUtf8Buf[0];
+		if ((lead & 0xF8) == 0xF0) expected = 4;
+		else if ((lead & 0xF0) == 0xE0) expected = 3;
+		else expected = 2;
+
+		if ((b & 0xC0) == 0x80) {
+			/* Valid continuation byte */
+			pTok->aUtf8Buf[pTok->nUtf8BufLen++] = b;
+			if (pTok->nUtf8BufLen == expected) {
+				/* Full multi-byte character successfully assembled */
+				for (k = 0; k < expected; k++) {
+					if (*pW + 1 < nMaxLen) {
+						cOutBuf[(*pW)++] = (char)pTok->aUtf8Buf[k];
+					}
+				}
+				pTok->nUtf8BufLen = 0;
+			}
+		} else {
+			/* Interrupted sequence - flush previous incomplete bytes */
+			for (k = 0; k < pTok->nUtf8BufLen; k++) {
+				if (*pW + 1 < nMaxLen) {
+					cOutBuf[(*pW)++] = (char)pTok->aUtf8Buf[k];
+				}
+			}
+			pTok->nUtf8BufLen = 0;
+
+			/* Re-process current byte fresh */
+			tokenizer_emit_byte(pTok, b, cOutBuf, pW, nMaxLen);
+		}
+	}
+}
+
+RING_API void ring_tokenizer_flush(RingTokenizer *pTok, char *cOutBuf, int *pW, int nMaxLen) {
+	int k;
+	if (!pTok || pTok->nUtf8BufLen <= 0) return;
+	for (k = 0; k < pTok->nUtf8BufLen; k++) {
+		if (*pW + 1 < nMaxLen) {
+			cOutBuf[(*pW)++] = (char)pTok->aUtf8Buf[k];
+		}
+	}
+	pTok->nUtf8BufLen = 0;
+}
+
 RING_API int ring_tokenizer_decode(RingTokenizer *pTok, int nTokenId, char *cOutBuf, int nMaxLen) {
 	const char *src;
 	int w = 0;
@@ -560,8 +654,8 @@ RING_API int ring_tokenizer_decode(RingTokenizer *pTok, int nTokenId, char *cOut
 		hex[1] = src[4];
 		hex[2] = '\0';
 		byteVal = 0;
-		if (sscanf(hex, "%x", &byteVal) == 1 && w + 1 < nMaxLen) {
-			cOutBuf[w++] = (char)byteVal;
+		if (sscanf(hex, "%x", &byteVal) == 1 && byteVal < 256) {
+			tokenizer_emit_byte(pTok, (uint8_t)byteVal, cOutBuf, &w, nMaxLen);
 			cOutBuf[w] = '\0';
 			return w;
 		}
@@ -569,39 +663,26 @@ RING_API int ring_tokenizer_decode(RingTokenizer *pTok, int nTokenId, char *cOut
 
 	gpt2_init_mapping();
 
-	if (pTok->bIsByteLevelBPE) {
-		while (r < sLen && w + 1 < nMaxLen) {
-			unsigned char c1 = (unsigned char)src[r];
-			if (c1 < 128) {
-				cOutBuf[w++] = (char)s_gpt2_code_to_byte[c1];
-				r++;
-			} else if ((c1 & 0xE0) == 0xC0 && r + 1 < sLen) {
-				unsigned char c2 = (unsigned char)src[r + 1];
-				int code = ((c1 & 0x1F) << 6) | (c2 & 0x3F);
-				if (code < 1024 && (code == 256 || s_gpt2_code_to_byte[code] != 0)) {
-					cOutBuf[w++] = (char)s_gpt2_code_to_byte[code];
-				} else {
-					cOutBuf[w++] = (char)c1;
-					if (w + 1 < nMaxLen) cOutBuf[w++] = (char)c2;
-				}
-				r += 2;
+	while (r < sLen && w + 1 < nMaxLen) {
+		unsigned char c1 = (unsigned char)src[r];
+		if (c1 < 128) {
+			uint8_t b = s_gpt2_code_to_byte[c1];
+			tokenizer_emit_byte(pTok, b, cOutBuf, &w, nMaxLen);
+			r++;
+		} else if ((c1 & 0xE0) == 0xC0 && r + 1 < sLen) {
+			unsigned char c2 = (unsigned char)src[r + 1];
+			int code = ((c1 & 0x1F) << 6) | (c2 & 0x3F);
+			if (code < 1024 && (code == 256 || s_gpt2_code_to_byte[code] != 0)) {
+				uint8_t b = s_gpt2_code_to_byte[code];
+				tokenizer_emit_byte(pTok, b, cOutBuf, &w, nMaxLen);
 			} else {
-				cOutBuf[w++] = (char)c1;
-				r++;
+				tokenizer_emit_byte(pTok, c1, cOutBuf, &w, nMaxLen);
+				tokenizer_emit_byte(pTok, c2, cOutBuf, &w, nMaxLen);
 			}
-		}
-	} else {
-		while (r < sLen && w + 1 < nMaxLen) {
-			unsigned char c1 = (unsigned char)src[r];
-			if (c1 == 0xC4 && r + 1 < sLen && (unsigned char)src[r + 1] == 0xA0) {
-				cOutBuf[w++] = ' ';
-				r += 2;
-			} else if (c1 == 0xC4 && r + 1 < sLen && (unsigned char)src[r + 1] == 0x8A) {
-				cOutBuf[w++] = '\n';
-				r += 2;
-			} else {
-				cOutBuf[w++] = src[r++];
-			}
+			r += 2;
+		} else {
+			tokenizer_emit_byte(pTok, c1, cOutBuf, &w, nMaxLen);
+			r++;
 		}
 	}
 
@@ -634,6 +715,28 @@ RING_API char *ring_tokenizer_decode_tokens(RingTokenizer *pTok, const int *aTok
 			memcpy(outStr + curLen, buf, len);
 			curLen += len;
 			outStr[curLen] = '\0';
+		}
+	}
+
+	/* Flush any incomplete trailing byte-fallback sequence */
+	if (pTok->nUtf8BufLen > 0) {
+		int flushLen = 0;
+		ring_tokenizer_flush(pTok, buf, &flushLen, sizeof(buf));
+		if (flushLen > 0) {
+			if (curLen + (size_t)flushLen + 1 > allocSize) {
+				allocSize = (curLen + (size_t)flushLen + 1) * 2;
+				newStr = (char *)realloc(outStr, allocSize);
+				if (newStr) {
+					outStr = newStr;
+					memcpy(outStr + curLen, buf, flushLen);
+					curLen += flushLen;
+					outStr[curLen] = '\0';
+				}
+			} else {
+				memcpy(outStr + curLen, buf, flushLen);
+				curLen += flushLen;
+				outStr[curLen] = '\0';
+			}
 		}
 	}
 

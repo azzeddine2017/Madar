@@ -51,6 +51,10 @@ typedef struct RingTokenizer {
 
 	/* Direct raw byte -> Token ID (0..255) */
 	int aByteToToken[256];
+
+	/* Multi-byte UTF-8 assembly buffer for byte-fallback / streaming detokenization */
+	uint8_t aUtf8Buf[8];
+	int nUtf8BufLen;
 } RingTokenizer;
 
 /* Tokenizer Lifecycle */
@@ -62,6 +66,7 @@ RING_API int ring_tokenizer_find_token(RingTokenizer *pTok, const char *cStr);
 RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *aOutTokens, int nMaxTokens);
 RING_API int ring_tokenizer_decode(RingTokenizer *pTok, int nTokenId, char *cOutBuf, int nMaxLen);
 RING_API char *ring_tokenizer_decode_tokens(RingTokenizer *pTok, const int *aTokens, int nTokenCount);
+RING_API void ring_tokenizer_flush(RingTokenizer *pTok, char *cOutBuf, int *pW, int nMaxLen);
 
 /* VM Registration */
 RING_API void ring_tokenizer_loadfunctions(void *pRingState);

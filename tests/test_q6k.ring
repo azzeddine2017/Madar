@@ -10,9 +10,9 @@ cModelPath = ""
 
 # Find a model
 aModels = [
-	"../../models/qwen2.5-3b-instruct-q4_0.gguf",
+	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
-	"models/qwen2.5-3b-instruct-q4_0.gguf",
+	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
 ]
 

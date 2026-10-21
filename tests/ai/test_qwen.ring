@@ -52,9 +52,9 @@ remove(cTokGGUF)
 
 # 3. Test Full Qwen Model (Qwen-3B preferred, 0.5B fallback)
 aQwenPaths = [
-	"models/qwen2.5-3b-instruct-q4_0.gguf",
-	"../../models/qwen2.5-3b-instruct-q4_0.gguf",
-	"../models/qwen2.5-3b-instruct-q4_0.gguf"
+	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
+	"../models/qwen2.5-0.5b-instruct-q4_0.gguf"
 ]
 cModelPath = ""
 for p in aQwenPaths
@@ -104,7 +104,7 @@ if fexists(cModelPath)
 
 	model.close()
 else
-	see nl + "  [NOTE] Full model not present at models/qwen2.5-3b-instruct-q4_0.gguf." + nl
+	see nl + "  [NOTE] Full model not present at models/qwen2.5-0.5b-instruct-q4_0.gguf." + nl
 	see "         Run 'tools\\download_model.bat' to download and test live generation." + nl
 ok
 

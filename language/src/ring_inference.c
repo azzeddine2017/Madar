@@ -164,7 +164,8 @@ typedef struct MatVecTask {
 	RingGGUFTensorInfo *pInfo;
 	const float *pX;
 	float *pY;
-	const float *pBias;
+	const void *pBias;
+	RingGGUFTensorInfo *pBiasInfo;
 	int nStartRow;
 	int nEndRow;
 	int K;
@@ -211,7 +212,11 @@ static void matvec_compute_rows(MatVecTask *task) {
 		}
 
 		if (task->pBias) {
-			val += task->pBias[r];
+			if (task->pBiasInfo && task->pBiasInfo->nType == RING_GGUF_TENSOR_F16) {
+				val += fast_fp16_to_fp32(((const ggml_fp16_t *)task->pBias)[r]);
+			} else {
+				val += ((const float *)task->pBias)[r];
+			}
 		}
 		task->pY[r] = val;
 	}
@@ -276,6 +281,7 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo, const 
 			pTask->pX = x;
 			pTask->pY = y;
 			pTask->pBias = pBias;
+			pTask->pBiasInfo = pBiasInfo;
 			pTask->nStartRow = i * nChunk;
 			pTask->nEndRow = (i + 1) * nChunk;
 			pTask->K = K;
@@ -288,6 +294,7 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo, const 
 		task.pX = x;
 		task.pY = y;
 		task.pBias = pBias;
+		task.pBiasInfo = pBiasInfo;
 		task.nStartRow = nWorkers * nChunk;
 		task.nEndRow = N;
 		task.K = K;
@@ -304,6 +311,7 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo, const 
 	task.pX = x;
 	task.pY = y;
 	task.pBias = pBias;
+	task.pBiasInfo = pBiasInfo;
 	task.nStartRow = 0;
 	task.nEndRow = N;
 	task.K = K;
@@ -337,18 +345,19 @@ static void apply_rope(float *vec, int nHeads, int headDim, int pos, float freqB
 	int h, i;
 	float *head;
 	float freq, val, cosVal, sinVal, v0, v1;
+	int half = headDim / 2;
 
 	for (h = 0; h < nHeads; h++) {
 		head = vec + h * headDim;
-		for (i = 0; i < headDim; i += 2) {
-			freq = 1.0f / powf(freqBase, (float)i / (float)headDim);
+		for (i = 0; i < half; i++) {
+			freq = 1.0f / powf(freqBase, (float)(2 * i) / (float)headDim);
 			val = (float)pos * freq;
 			cosVal = cosf(val);
 			sinVal = sinf(val);
 			v0 = head[i];
-			v1 = head[i + 1];
-			head[i]     = v0 * cosVal - v1 * sinVal;
-			head[i + 1] = v0 * sinVal + v1 * cosVal;
+			v1 = head[i + half];
+			head[i]        = v0 * cosVal - v1 * sinVal;
+			head[i + half] = v0 * sinVal + v1 * cosVal;
 		}
 	}
 }
@@ -408,6 +417,11 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	uint32_t l;
 	size_t kvSize;
 
+#ifdef _WIN32
+	SetConsoleCP(CP_UTF8);
+	SetConsoleOutputCP(CP_UTF8);
+#endif
+
 	pGGUF = ring_gguf_open(cFileName);
 	if (!pGGUF) {
 		printf("\n[MADAR AI] Error: ring_gguf_open failed to open '%s'!\n", cFileName);
@@ -464,13 +478,21 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	/* Attention Heads */
 	snprintf(key, sizeof(key), "%s.attention.head_count", arch);
 	kv = ring_gguf_find_kv(pGGUF, key);
+	if (!kv) kv = ring_gguf_find_kv(pGGUF, "attention.head_count");
 	pModel->config.nHeads = gguf_get_u32_val(kv, 14);
 
 	snprintf(key, sizeof(key), "%s.attention.head_count_kv", arch);
 	kv = ring_gguf_find_kv(pGGUF, key);
-	pModel->config.nHeadsKV = gguf_get_u32_val(kv, 2);
+	if (!kv) kv = ring_gguf_find_kv(pGGUF, "attention.head_count_kv");
+	pModel->config.nHeadsKV = gguf_get_u32_val(kv, pModel->config.nHeads);
 
-	pModel->config.nHeadDim = pModel->config.nHeads > 0 ? (pModel->config.nEmbd / pModel->config.nHeads) : 64;
+	snprintf(key, sizeof(key), "%s.attention.key_length", arch);
+	kv = ring_gguf_find_kv(pGGUF, key);
+	if (kv) {
+		pModel->config.nHeadDim = gguf_get_u32_val(kv, 64);
+	} else {
+		pModel->config.nHeadDim = pModel->config.nHeads > 0 ? (pModel->config.nEmbd / pModel->config.nHeads) : 64;
+	}
 
 	/* Feed-Forward Length */
 	snprintf(key, sizeof(key), "%s.feed_forward_length", arch);
@@ -740,6 +762,7 @@ RING_API void ring_model_reset_kv(RingModel *pModel) {
 	kvSize = (size_t)pModel->config.nLayers * pModel->nMaxSeq * pModel->nKVDim;
 	memset(pModel->pKVCache_K, 0, kvSize * sizeof(float));
 	memset(pModel->pKVCache_V, 0, kvSize * sizeof(float));
+	if (pModel->pTokenizer) pModel->pTokenizer->nUtf8BufLen = 0;
 }
 
 /*
@@ -774,7 +797,8 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 	nHeadsKV = (int)pModel->config.nHeadsKV;
 	nKVDim = (int)pModel->nKVDim;
 	nFF = (int)pModel->config.nFF;
-	groupSize = nHeads / nHeadsKV;
+	groupSize = (nHeadsKV > 0) ? (nHeads / nHeadsKV) : 1;
+	if (groupSize <= 0) groupSize = 1;
 	eps = pModel->config.fNormEps;
 	freqBase = pModel->config.fRopeFreqBase;
 
@@ -824,11 +848,13 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 
 		for (h = 0; h < nHeads; h++) {
 			kvH = h / groupSize;
+			if (kvH >= nHeadsKV) kvH = nHeadsKV - 1;
+
 			qHead = pModel->pActQ + h * nHeadDim;
 			outHead = pModel->pActAttOut + h * nHeadDim;
 
 			for (t = 0; t < validTokens; t++) {
-				tOffset = ((size_t)l * pModel->nMaxSeq + t) * nKVDim + kvH * nHeadDim;
+				tOffset = ((size_t)l * pModel->nMaxSeq + t) * nKVDim + (size_t)kvH * nHeadDim;
 				kHead = pModel->pKVCache_K + tOffset;
 				score = 0.0f;
 				for (d = 0; d < nHeadDim; d++) {
@@ -840,13 +866,15 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 			softmax(attScores, validTokens);
 
 			for (d = 0; d < nHeadDim; d++) {
-				sumV = 0.0f;
-				for (t = 0; t < validTokens; t++) {
-					tOffset = ((size_t)l * pModel->nMaxSeq + t) * nKVDim + kvH * nHeadDim;
-					vHead = pModel->pKVCache_V + tOffset;
-					sumV += attScores[t] * vHead[d];
+				outHead[d] = 0.0f;
+			}
+			for (t = 0; t < validTokens; t++) {
+				tOffset = ((size_t)l * pModel->nMaxSeq + t) * nKVDim + (size_t)kvH * nHeadDim;
+				vHead = pModel->pKVCache_V + tOffset;
+				float a = attScores[t];
+				for (d = 0; d < nHeadDim; d++) {
+					outHead[d] += a * vHead[d];
 				}
-				outHead[d] = sumV;
 			}
 		}
 
@@ -1074,6 +1102,17 @@ RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt
 		}
 
 		ring_model_forward_ex(pModel, nextToken, curPos++, 1);
+	}
+
+	if (bStreamStdout && pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
+		char flushBuf[16];
+		int flushW = 0;
+		ring_tokenizer_flush(pModel->pTokenizer, flushBuf, &flushW, sizeof(flushBuf));
+		if (flushW > 0) {
+			flushBuf[flushW] = '\0';
+			fputs(flushBuf, stdout);
+			fflush(stdout);
+		}
 	}
 
 	return ring_tokenizer_decode_tokens(pModel->pTokenizer, genTokens, nGen);
