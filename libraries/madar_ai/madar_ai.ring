@@ -36,6 +36,9 @@ class QwenModel
 	func isArabic(cText)
 		return madar_is_arabic(cText)
 
+	func embedding(cText)
+		return madar_model_embedding(hModel, cText)
+
 	func formatChatPrompt(cUserMessage, cSystemMessage)
 		# Official Qwen2.5 ChatML format
 		if cSystemMessage = NULL or cSystemMessage = ""

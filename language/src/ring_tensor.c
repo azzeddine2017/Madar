@@ -909,6 +909,54 @@ RING_API double ring_tensor_min(const RingTensor *pTensor) {
 	return minVal;
 }
 
+RING_API double ring_tensor_cosine_similarity(const RingTensor *pA, const RingTensor *pB) {
+	size_t nA, nB, nTotal, i;
+	double dot = 0.0, normA = 0.0, normB = 0.0, eps = 1e-12;
+	if (pA == NULL || pB == NULL) return 0.0;
+	nA = ring_tensor_total_elements(pA);
+	nB = ring_tensor_total_elements(pB);
+	if (nA != nB || nA == 0) return 0.0;
+	nTotal = nA;
+
+	if (pA->lContiguous && pB->lContiguous) {
+		if (pA->nDataType == RING_TENSOR_TYPE_FLOAT32 && pB->nDataType == RING_TENSOR_TYPE_FLOAT32) {
+			const float *a = (const float *)ring_tensor_data(pA);
+			const float *b = (const float *)ring_tensor_data(pB);
+			for (i = 0; i < nTotal; i++) {
+				dot += (double)a[i] * (double)b[i];
+				normA += (double)a[i] * (double)a[i];
+				normB += (double)b[i] * (double)b[i];
+			}
+		} else if (pA->nDataType == RING_TENSOR_TYPE_FLOAT64 && pB->nDataType == RING_TENSOR_TYPE_FLOAT64) {
+			const double *a = (const double *)ring_tensor_data(pA);
+			const double *b = (const double *)ring_tensor_data(pB);
+			for (i = 0; i < nTotal; i++) {
+				dot += a[i] * b[i];
+				normA += a[i] * a[i];
+				normB += b[i] * b[i];
+			}
+		} else {
+			for (i = 0; i < nTotal; i++) {
+				double va = ring_tensor_get_element(pA, &i);
+				double vb = ring_tensor_get_element(pB, &i);
+				dot += va * vb;
+				normA += va * va;
+				normB += vb * vb;
+			}
+		}
+	} else {
+		for (i = 0; i < nTotal; i++) {
+			double va = ring_tensor_get_element(pA, &i);
+			double vb = ring_tensor_get_element(pB, &i);
+			dot += va * vb;
+			normA += va * va;
+			normB += vb * vb;
+		}
+	}
+	if (normA <= eps || normB <= eps) return 0.0;
+	return dot / (sqrt(normA) * sqrt(normB));
+}
+
 /* ==================================================================== */
 /*                  Ring Scripting API Functions                        */
 /* ==================================================================== */
@@ -1699,6 +1747,21 @@ RING_FUNC(ring_tensor_api_min) {
 	RING_API_RETNUMBER(ring_tensor_min(pTensor));
 }
 
+RING_FUNC(ring_tensor_api_cosine_similarity) {
+	RingTensor *pA, *pB;
+	if (RING_API_PARACOUNT != 2) {
+		RING_API_ERROR(RING_API_MISS2PARA);
+		return;
+	}
+	if (!RING_API_ISCPOINTER(1) || !RING_API_ISCPOINTER(2)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	pA = (RingTensor *)RING_API_GETCPOINTER(1, "TENSOR");
+	pB = (RingTensor *)RING_API_GETCPOINTER(2, "TENSOR");
+	RING_API_RETNUMBER(ring_tensor_cosine_similarity(pA, pB));
+}
+
 RING_FUNC(ring_tensor_api_ggml_version) {
 	RING_API_RETSTRING("GGML Core (ANSI C99 Embedded)");
 }
@@ -1776,11 +1839,12 @@ RING_API void ring_tensor_loadfunctions(RingState *pRingState) {
 	RING_API_REGISTER("tensor_sigmoid", ring_tensor_api_sigmoid);
 	RING_API_REGISTER("tensor_softmax", ring_tensor_api_softmax);
 
-	/* Reductions */
+	/* Reductions & Similarities */
 	RING_API_REGISTER("tensor_sum", ring_tensor_api_sum);
 	RING_API_REGISTER("tensor_mean", ring_tensor_api_mean);
 	RING_API_REGISTER("tensor_max", ring_tensor_api_max);
 	RING_API_REGISTER("tensor_min", ring_tensor_api_min);
+	RING_API_REGISTER("tensor_cosine_similarity", ring_tensor_api_cosine_similarity);
 
 	/* GGML Integration & Precision */
 	RING_API_REGISTER("ggml_version", ring_tensor_api_ggml_version);

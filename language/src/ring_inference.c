@@ -1319,6 +1319,79 @@ RING_FUNC(ring_model_api_is_arabic) {
 	RING_API_RETNUMBER(0);
 }
 
+RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, const char *cText) {
+	int promptTokens[1024];
+	int nPromptTokens, i, d;
+	int nEmbd;
+	size_t aShape[1];
+	RingTensor *pTensor;
+	float *pData;
+	double sumSq, invNorm;
+
+	if (!pModel || !cText) return NULL;
+	nEmbd = (int)pModel->config.nEmbd;
+	if (nEmbd <= 0) return NULL;
+
+	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cText, promptTokens, 1024);
+	if (nPromptTokens <= 0) return NULL;
+
+	ring_model_reset_kv(pModel);
+
+	/* Forward all prompt tokens through Transformer layers (skip logits) */
+	for (i = 0; i < nPromptTokens; i++) {
+		ring_model_forward_ex(pModel, promptTokens[i], i, 0);
+	}
+
+	/* Allocate a native 1D RingTensor of shape [nEmbd] */
+	aShape[0] = (size_t)nEmbd;
+	pTensor = ring_tensor_new(pRingState, RING_TENSOR_TYPE_FLOAT32, 1, aShape);
+	if (!pTensor) return NULL;
+
+	pData = (float *)ring_tensor_data(pTensor);
+	if (!pData) {
+		ring_tensor_delete(pRingState, pTensor);
+		return NULL;
+	}
+
+	/* Extract last-token hidden activation & L2-normalize for unit-vector cosine similarity */
+	sumSq = 0.0;
+	for (d = 0; d < nEmbd; d++) {
+		pData[d] = pModel->pActX[d];
+		sumSq += (double)pData[d] * (double)pData[d];
+	}
+
+	if (sumSq > 1e-12) {
+		invNorm = 1.0 / sqrt(sumSq);
+		for (d = 0; d < nEmbd; d++) {
+			pData[d] = (float)((double)pData[d] * invNorm);
+		}
+	}
+
+	return pTensor;
+}
+
+RING_FUNC(ring_model_api_embedding) {
+	RingModel *pModel;
+	const char *cText;
+	RingTensor *pTensor;
+
+	if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) || !RING_API_ISSTRING(2)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+	RING_API_CHECKNULLPOINTER(pModel);
+
+	cText = RING_API_GETSTRING(2);
+	pTensor = ring_model_embedding(RING_API_STATE, pModel, cText);
+	if (!pTensor) {
+		RING_API_ERROR("Failed to compute text embedding vector!");
+		return;
+	}
+
+	RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR", (void (*)(void *, void *))ring_tensor_delete);
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
 	RING_API_REGISTER("madar_model_open", ring_model_api_open);
 	RING_API_REGISTER("madar_model_close", ring_model_api_close);
@@ -1329,4 +1402,5 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
 	RING_API_REGISTER("madar_model_generate_stream", ring_model_api_generate_stream);
 	RING_API_REGISTER("madar_model_reset", ring_model_api_reset);
 	RING_API_REGISTER("madar_is_arabic", ring_model_api_is_arabic);
+	RING_API_REGISTER("madar_model_embedding", ring_model_api_embedding);
 }

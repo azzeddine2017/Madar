@@ -79,11 +79,12 @@ RING_API RingTensor *ring_tensor_gelu(void *pState, RingTensor *pSource);
 RING_API RingTensor *ring_tensor_sigmoid(void *pState, RingTensor *pSource);
 RING_API RingTensor *ring_tensor_softmax(void *pState, RingTensor *pSource, int nDim);
 
-/* Reductions */
+/* Reductions & Similarities */
 RING_API double ring_tensor_sum(const RingTensor *pTensor);
 RING_API double ring_tensor_mean(const RingTensor *pTensor);
 RING_API double ring_tensor_max(const RingTensor *pTensor);
 RING_API double ring_tensor_min(const RingTensor *pTensor);
+RING_API double ring_tensor_cosine_similarity(const RingTensor *pA, const RingTensor *pB);
 
 /* Data access and geometry helpers */
 RING_API size_t ring_tensor_element_size(RingTensorType nType);

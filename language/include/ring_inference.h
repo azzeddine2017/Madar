@@ -9,6 +9,7 @@
 
 #include "ring_gguf.h"
 #include "ring_tokenizer.h"
+#include "ring_tensor.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,6 +101,7 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 RING_API int ring_model_sample(RingModel *pModel, float fTemp);
 RING_API char *ring_model_generate(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp);
 RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp, int bStreamStdout);
+RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, const char *cText);
 
 /* VM Registration */
 RING_API void ring_inference_loadfunctions(void *pRingState);
