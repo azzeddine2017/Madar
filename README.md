@@ -34,7 +34,7 @@
 5. **Autonomous AI Agents & Function Calling (`libraries/madar_ai/agent.ring`):**
    - Declarative tool registration (`agent.registerTool`).
    - Automated ReAct execution loop: intercepts `<tool_call>`, executes native Ring functions, injects `<tool_response>`, and synthesizes final factual answers.
-   - Built-in tools: exact mathematics (`calc`), system time/clock (`get_time`), file access (`read_file`), and OS diagnostics.
+   - Built-in tools: exact mathematics (`calc`), system time/clock (`get_time`), file access (`read_file`), OS diagnostics (`sys_info`), and CSV DataFrame analytics (`csv_summary`, `csv_query`).
 
 6. **Madar DataFrame for Fast Table Analytics (`libraries/madar_ai/dataframe.ring`):**
    - Pure Ring + C-Tensor table engine parsing CSVs with zero external dependencies.

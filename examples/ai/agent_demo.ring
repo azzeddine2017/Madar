@@ -44,6 +44,11 @@ see "3. Query: Custom Application Tool (Currency Rate)" + nl
 res3 = agent.query("كم سعر صرف الدولار مقابل الدينار الجزائري؟")
 see "Agent Response: " + res3 + nl
 
+see nl + "--------------------------------------------------------------------" + nl
+see "4. Query: Table Analytics & C-Tensor Data Query (DataFrame Integration)" + nl
+res4 = agent.query("ما هو أعلى راتب في جدول الموظفين؟")
+see "Agent Response: " + res4 + nl
+
 see nl + "====================================================================" + nl
 see "  Agent Demo Completed Successfully." + nl
 see "====================================================================" + nl

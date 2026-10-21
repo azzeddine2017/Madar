@@ -4,6 +4,7 @@
 # ====================================================================
 
 load "madar_ai.ring"
+load "dataframe.ring"
 
 class AIAgent
 	oModel          = NULL
@@ -76,6 +77,73 @@ class AIAgent
 			return "OS: Windows (Madar AI Native Runtime, AVX2 Enabled, FP16 KV-Cache)"
 		})
 
+		# 5. CSV DataFrame Statistical Summary
+		registerTool("csv_summary", "Loads CSV table and returns statistical summary (count, mean, std, min, max)", ["path"], func(args) {
+			cPath = "examples/ai/sample_data.csv"
+			if islist(args) and len(args) >= 1 and args[1] != ""
+				cPath = "" + args[1]
+			elseif isstring(args) and trim(args) != ""
+				cPath = trim(args)
+			ok
+			if not fexists(cPath) and fexists("examples/ai/" + cPath)
+				cPath = "examples/ai/" + cPath
+			ok
+			if not fexists(cPath) return "Error: File '" + cPath + "' not found." ok
+			df = new DataFrame(cPath)
+			cRes = "Rows: " + df.shape()[1] + ", Columns: " + df.shape()[2] + nl
+			for item in df.aTensors
+				cCol = item[1]
+				cRes += "- " + cCol + ": Mean=" + df.mean(cCol) + ", Min=" + df.min(cCol) + ", Max=" + df.max(cCol) + nl
+			next
+			return cRes
+		})
+
+		# 6. CSV DataFrame Query Tool (calculates max, min, mean, sum on numeric columns)
+		registerTool("csv_query", "Calculates statistical metric (mean, max, min, sum) on a CSV table column", ["query"], func(args) {
+			cPath = "examples/ai/sample_data.csv"
+			cMetric = "mean"
+			cCol = "salary"
+			s = ""
+			if islist(args) and len(args) >= 1
+				s = lower("" + args[1])
+			elseif isstring(args)
+				s = lower(args)
+			ok
+
+			if substr(s, "max") > 0 or substr(s, "أعلى") > 0 or substr(s, "اكبر") > 0 or substr(s, "أكبر") > 0
+				cMetric = "max"
+			elseif substr(s, "min") > 0 or substr(s, "أدنى") > 0 or substr(s, "اصغر") > 0 or substr(s, "أصغر") > 0 or substr(s, "اقل") > 0
+				cMetric = "min"
+			elseif substr(s, "sum") > 0 or substr(s, "مجموع") > 0 or substr(s, "إجمالي") > 0
+				cMetric = "sum"
+			else
+				cMetric = "mean"
+			ok
+
+			if substr(s, "age") > 0 or substr(s, "عمر") > 0 or substr(s, "أعمار") > 0
+				cCol = "age"
+			elseif substr(s, "performance") > 0 or substr(s, "أداء") > 0 or substr(s, "تقييم") > 0
+				cCol = "performance"
+			else
+				cCol = "salary"
+			ok
+
+			if not fexists(cPath) and fexists("examples/ai/" + cPath)
+				cPath = "examples/ai/" + cPath
+			ok
+			if not fexists(cPath) return "Error: File '" + cPath + "' not found." ok
+			df = new DataFrame(cPath)
+			if cMetric = "max"
+				return "Max " + cCol + " = " + ("" + df.max(cCol))
+			elseif cMetric = "min"
+				return "Min " + cCol + " = " + ("" + df.min(cCol))
+			elseif cMetric = "sum"
+				return "Total " + cCol + " = " + ("" + df.sum(cCol))
+			else
+				return "Average " + cCol + " = " + ("" + df.mean(cCol))
+			ok
+		})
+
 	func buildToolSchema()
 		cSchema = "You are an intelligent AI assistant with access to the following local functions/tools:" + nl
 		for tool in aTools
@@ -131,6 +199,14 @@ class AIAgent
 			cIntentArg = trim(cExpr)
 		elseif substr(cLowerPrompt, "نظام") > 0 or substr(cLowerPrompt, "معالج") > 0 or substr(cLowerPrompt, "نظام التشغيل") > 0
 			cIntentTool = "sys_info"
+		elseif substr(cLowerPrompt, ".csv") > 0 or substr(cLowerPrompt, "بيانات") > 0 or substr(cLowerPrompt, "جدول") > 0 or substr(cLowerPrompt, "موظف") > 0 or substr(cLowerPrompt, "رواتب") > 0 or substr(cLowerPrompt, "راتب") > 0
+			if substr(cLowerPrompt, "ملخص") > 0 or substr(cLowerPrompt, "إحصاء") > 0 or substr(cLowerPrompt, "summary") > 0
+				cIntentTool = "csv_summary"
+				cIntentArg  = "examples/ai/sample_data.csv"
+			else
+				cIntentTool = "csv_query"
+				cIntentArg  = cUserPrompt
+			ok
 		ok
 
 		if cIntentTool != ""
@@ -279,7 +355,7 @@ class AIAgent
 				try
 					return call pFunc([cArg])
 				catch
-					return "Error executing function " + cName
+					return "Error executing function " + cName + ": " + cCatchError
 				end
 			ok
 		next

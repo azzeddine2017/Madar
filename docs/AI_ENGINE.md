@@ -121,6 +121,8 @@ The `AIAgent` class enables the LLM to interface with the host environment and e
    - `get_time()`: Real-time clock and date.
    - `read_file(path)`: Direct filesystem access.
    - `sys_info()`: Operating system runtime telemetry.
+   - `csv_summary(path)`: Statistical summary of tabular data using C-Tensor engines.
+   - `csv_query(query)`: High-speed relational queries (max, min, mean, sum) on dataset columns.
 
 ---
 
