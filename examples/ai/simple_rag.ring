@@ -50,7 +50,7 @@ see ">>> " + best_chunk + nl + nl
 
 # 3. تمرير النتيجة فقط للنموذج لتوليد إجابة حتمية بدون هلوسة
 prompt = "<|im_start|>system" + nl + 
-         "أجب باختصار ودقة بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
+         "أجب دائماً باللغة العربية الفصحى باختصار ودقة بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
          "<|im_start|>user" + nl + cQuestion + "<|im_end|>" + nl +
          "<|im_start|>assistant" + nl
 

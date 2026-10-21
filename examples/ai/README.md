@@ -77,3 +77,18 @@ Run:
 bin\ring.exe examples\ai\simple_rag.ring
 ```
 
+---
+
+### 5. `qalam_rag.ring` - Hybrid Search & Vector Persistence (Madar + AlQalam)
+The ultimate showcase combining **Madar C Core** with **AlQalam C++17**:
+- **PDF Extraction:** Index raw PDF manuals via `QalamReader`.
+- **Hybrid Search:** Combines semantic continuous tensor similarity (70%) with lexical keyword matching (30%).
+- **Binary Persistence:** Caches vector stores on disk (`.bin`) and reloads thousands of embeddings in microseconds.
+- **QalamInk:** Zero-fragmentation C++ prompt accumulation.
+- **QalamChronos:** Nanosecond profiling of retrieval, embedding, and generation.
+
+```cmd
+bin\ring.exe examples\ai\qalam_rag.ring
+```
+
+
