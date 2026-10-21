@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - Madar 0.2.0-alpha
 
 ### Added
+- **Real-Time Token Streaming & Step-by-Step Generator Engine (`language/src/ring_inference.c`, `libraries/madar_ai/madar_ai.ring`, `agent.ring`):**
+  - Implemented low-level autoregressive generator API (`ring_model_prefill`, `ring_model_has_more`, `ring_model_step`).
+  - Added high-speed native C streaming directly to `stdout` (`ring_model_generate_stream`) with automated UTF-8 byte assembly flushing.
+  - Added custom Ring-level token interceptor callbacks (`model.generateStream(prompt, tokens, func(token) { ... })`).
+  - Integrated live response streaming into `AIAgent` (`bStream = 1`, `agent.queryStream(...)`), streaming synthesized answers in real time as the agent thinks.
+  - Added comprehensive interactive streaming demo `examples/ai/stream_demo.ring`.
 - **FP16 Compressed KV-Cache & 2048-Token Context Scaling (`language/src/ring_inference.c`, `language/include/ring_inference.h`):**
   - Compressed Key and Value tensors from FP32 (32-bit) to half-precision `ggml_fp16_t` (16-bit), reducing memory consumption by 50%.
   - Expanded KV context window from 512 to 2048 tokens (`nMaxSeq = 2048`), allowing multi-turn conversations and long-document RAG without running out of context.

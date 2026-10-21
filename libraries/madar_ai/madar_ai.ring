@@ -15,6 +15,14 @@ func model_open(cPath)
 func ai_open(cPath)
 	return model_open(cPath)
 
+func round(val, nDec)
+	s = "" + val
+	nDot = substr(s, ".")
+	if nDot > 0 and len(s) > nDot + nDec
+		return left(s, nDot + nDec)
+	ok
+	return s
+
 
 
 class QwenModel
@@ -66,12 +74,9 @@ class QwenModel
 		          "<|im_start|>assistant" + nl
 		return cPrompt
 
-	func generate(cPrompt, nTokens, temp = NULL)
+	func generate(cPrompt, nTokens)
 		if nTokens != NULL and nTokens > 0
 			nMaxTokens = nTokens
-		ok
-		if temp != NULL and temp > 0.0
-			fTemp = temp
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate(hModel, cPrompt, nMaxTokens, fTemp)
@@ -83,12 +88,19 @@ class QwenModel
 		ok
 		return cOutput
 
-	func generateStream(cPrompt, nTokens, temp = NULL)
-		if nTokens != NULL and nTokens > 0
+	func prefill(cPrompt, nTokens)
+		if nTokens = NULL or nTokens <= 0 nTokens = nMaxTokens ok
+		return madar_model_prefill(hModel, cPrompt, nTokens, fTemp)
+
+	func hasMore()
+		return madar_model_has_more(hModel)
+
+	func step()
+		return madar_model_step(hModel)
+
+	func generateStream(cPrompt, nTokens)
+		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
 			nMaxTokens = nTokens
-		ok
-		if temp != NULL and temp > 0.0
-			fTemp = temp
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate_stream(hModel, cPrompt, nMaxTokens, fTemp)
@@ -99,6 +111,33 @@ class QwenModel
 			fTokensPerSec = len(aGenTokens) / nDurationSec
 		ok
 		return cOutput
+
+	func generateStreamCallback(cPrompt, nTokens, pCallback)
+		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
+			nMaxTokens = nTokens
+		ok
+		t0 = clock()
+		cOutput = ""
+		prefill(cPrompt, nMaxTokens)
+		while hasMore()
+			cChunk = step()
+			if cChunk != ""
+				cOutput += cChunk
+				if pCallback != NULL
+					call pCallback(cChunk)
+				ok
+			ok
+		end
+		t1 = clock()
+		nDurationSec = (t1 - t0) / clockspersecond()
+		if nDurationSec > 0
+			aGenTokens = tokenize(cOutput)
+			fTokensPerSec = len(aGenTokens) / nDurationSec
+		ok
+		return cOutput
+
+	func stream(cPrompt, nTokens, pCallback)
+		return generateStreamCallback(cPrompt, nTokens, pCallback)
 
 	func chat(cUserMessage, nTokens)
 		cPrompt = formatChatPrompt(cUserMessage, "")

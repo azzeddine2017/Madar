@@ -86,6 +86,15 @@ typedef struct RingModel {
 	void *hDoneEvents[RING_MODEL_MAX_WORKERS];
 	void *pWorkerTasks[RING_MODEL_MAX_WORKERS];
 	volatile int bWorkerShutdown;
+
+	/* Step-by-Step Generator & Streaming State */
+	int aGenTokens[2048];
+	int nPromptTokens;
+	int nGenCount;
+	int nMaxGenTokens;
+	int nCurPos;
+	float fCurrentTemp;
+	int bGenFinished;
 } RingModel;
 
 /* Inference Engine Lifecycle */
@@ -102,6 +111,9 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 RING_API int ring_model_sample(RingModel *pModel, float fTemp);
 RING_API char *ring_model_generate(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp);
 RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp, int bStreamStdout);
+RING_API int ring_model_prefill(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp);
+RING_API char *ring_model_step(RingModel *pModel);
+RING_API int ring_model_has_more(RingModel *pModel);
 RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, const char *cText);
 
 /* VM Registration */

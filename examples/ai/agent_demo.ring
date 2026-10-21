@@ -24,6 +24,7 @@ model = new QwenModel(cModelPath)
 model.setThreads(4)
 
 agent = new AIAgent(model)
+agent.bStream = 1  # Real-Time Token Streaming Enabled
 
 # Register custom application tools
 agent.registerTool("currency_rate", "Returns exchange rate between two currencies", ["from_curr", "to_curr"], func(args) {
@@ -31,23 +32,19 @@ agent.registerTool("currency_rate", "Returns exchange rate between two currencie
 })
 
 see nl + "1. Query: What is the current system date and time?" + nl
-res1 = agent.query("ما هو التاريخ والوقت الحالي للنظام؟")
-see "Agent Response: " + res1 + nl
+agent.query("ما هو التاريخ والوقت الحالي للنظام؟")
 
 see nl + "--------------------------------------------------------------------" + nl
 see "2. Query: Complex Mathematical Calculation" + nl
-res2 = agent.query("احسب لي ناتج العملية الحسابية بدقة: 1450 * 32 + 890")
-see "Agent Response: " + res2 + nl
+agent.query("احسب لي ناتج العملية الحسابية بدقة: 1450 * 32 + 890")
 
 see nl + "--------------------------------------------------------------------" + nl
 see "3. Query: Custom Application Tool (Currency Rate)" + nl
-res3 = agent.query("كم سعر صرف الدولار مقابل الدينار الجزائري؟")
-see "Agent Response: " + res3 + nl
+agent.query("كم سعر صرف الدولار مقابل الدينار الجزائري؟")
 
 see nl + "--------------------------------------------------------------------" + nl
 see "4. Query: Table Analytics & C-Tensor Data Query (DataFrame Integration)" + nl
-res4 = agent.query("ما هو أعلى راتب في جدول الموظفين؟")
-see "Agent Response: " + res4 + nl
+agent.query("ما هو أعلى راتب في جدول الموظفين؟")
 
 see nl + "====================================================================" + nl
 see "  Agent Demo Completed Successfully." + nl

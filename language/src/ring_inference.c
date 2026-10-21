@@ -1149,95 +1149,145 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
 
 /*
 ================================================================================
-  Text Generation Loop
+  Text Generation & Streaming Generator
 ================================================================================
 */
 
-RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp, int bStreamStdout) {
+RING_API int ring_model_prefill(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp) {
 	int promptTokens[2048];
-	int genTokens[2048];
-	int nPromptTokens, nGen = 0, i, curPos, nextToken;
-	char *tokenStr;
+	int i;
 
-	if (!pModel || !cPrompt) return _strdup("");
+	if (!pModel || !cPrompt) return 0;
 	if (nMaxTokens <= 0) nMaxTokens = 64;
 	if (nMaxTokens > 2048) nMaxTokens = 2048;
 
-	/* Tokenize Prompt */
-	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, 2048);
-	if (nPromptTokens <= 0) return _strdup("");
+	pModel->nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, 2048);
+	if (pModel->nPromptTokens <= 0) {
+		pModel->bGenFinished = 1;
+		return 0;
+	}
 
 	ring_model_reset_kv(pModel);
 
 	/* Evaluate Prompt - ONLY compute logits on the LAST prompt token to skip huge matrix multiply on prefill! */
-	for (i = 0; i < nPromptTokens; i++) {
-		int bComputeLogits = (i == nPromptTokens - 1) ? 1 : 0;
+	for (i = 0; i < pModel->nPromptTokens; i++) {
+		int bComputeLogits = (i == pModel->nPromptTokens - 1) ? 1 : 0;
 		ring_model_forward_ex(pModel, promptTokens[i], i, bComputeLogits);
 	}
 
-	/* Autoregressive Generation Loop */
-	curPos = nPromptTokens;
-	while (nGen < nMaxTokens) {
-		/* Repetition penalty (1.25x) over the last 64 generated tokens */
-		int penaltyStart = (nGen > 64) ? (nGen - 64) : 0;
-		for (i = penaltyStart; i < nGen; i++) {
-			int prevTok = genTokens[i];
-			int alreadyPenalized = 0;
-			int k;
-			for (k = penaltyStart; k < i; k++) {
-				if (genTokens[k] == prevTok) {
-					alreadyPenalized = 1;
-					break;
-				}
-			}
-			if (!alreadyPenalized && prevTok >= 0 && (uint32_t)prevTok < pModel->config.nVocab) {
-				float fPenalty = 1.25f;
-				/* Extra consecutive penalty if token equals immediately preceding token to prevent loops */
-				if (nGen > 0 && prevTok == genTokens[nGen - 1]) {
-					fPenalty = 1.55f;
-				}
-				if (pModel->pLogits[prevTok] > 0.0f) {
-					pModel->pLogits[prevTok] /= fPenalty;
-				} else {
-					pModel->pLogits[prevTok] *= fPenalty;
-				}
-			}
-		}
+	pModel->nCurPos = pModel->nPromptTokens;
+	pModel->nGenCount = 0;
+	pModel->nMaxGenTokens = nMaxTokens;
+	pModel->fCurrentTemp = fTemp;
+	pModel->bGenFinished = 0;
 
-		/* Suppress immediate EOS on the very first generated token */
-		if (nGen == 0) {
-			if (pModel->pTokenizer->nEosToken >= 0 && (uint32_t)pModel->pTokenizer->nEosToken < pModel->config.nVocab) {
-				pModel->pLogits[pModel->pTokenizer->nEosToken] = -1e9f;
-			}
-			if (pModel->config.nVocab > 151645) {
-				pModel->pLogits[151643] = -1e9f; /* <|endoftext|> */
-				pModel->pLogits[151645] = -1e9f; /* <|im_end|> */
+	return pModel->nPromptTokens;
+}
+
+RING_API int ring_model_has_more(RingModel *pModel) {
+	if (!pModel) return 0;
+	return (!pModel->bGenFinished && pModel->nGenCount < pModel->nMaxGenTokens);
+}
+
+RING_API char *ring_model_step(RingModel *pModel) {
+	int i, nextToken;
+	int penaltyStart;
+	char *tokenStr;
+
+	if (!pModel || pModel->bGenFinished || pModel->nGenCount >= pModel->nMaxGenTokens) {
+		if (pModel && pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
+			char flushBuf[16];
+			int flushW = 0;
+			ring_tokenizer_flush(pModel->pTokenizer, flushBuf, &flushW, sizeof(flushBuf));
+			if (flushW > 0) {
+				flushBuf[flushW] = '\0';
+				return _strdup(flushBuf);
 			}
 		}
-
-		nextToken = ring_model_sample(pModel, fTemp);
-
-		/* Check Qwen & Standard Stop Tokens (only after producing at least one token) */
-		if (nGen > 0 && (nextToken == pModel->pTokenizer->nEosToken ||
-			nextToken == 151643 || /* <|endoftext|> */
-			nextToken == 151645)) { /* <|im_end|> */
-			break;
-		}
-
-		genTokens[nGen++] = nextToken;
-
-		if (bStreamStdout) {
-			tokenStr = ring_tokenizer_decode_tokens(pModel->pTokenizer, &nextToken, 1);
-			if (tokenStr) {
-				fputs(tokenStr, stdout);
-				fflush(stdout);
-				free(tokenStr);
-			}
-		}
-
-		ring_model_forward_ex(pModel, nextToken, curPos++, 1);
+		return _strdup("");
 	}
 
+	/* Repetition penalty (1.25x) over the last 64 generated tokens */
+	penaltyStart = (pModel->nGenCount > 64) ? (pModel->nGenCount - 64) : 0;
+	for (i = penaltyStart; i < pModel->nGenCount; i++) {
+		int prevTok = pModel->aGenTokens[i];
+		int alreadyPenalized = 0;
+		int k;
+		for (k = penaltyStart; k < i; k++) {
+			if (pModel->aGenTokens[k] == prevTok) {
+				alreadyPenalized = 1;
+				break;
+			}
+		}
+		if (!alreadyPenalized && prevTok >= 0 && (uint32_t)prevTok < pModel->config.nVocab) {
+			float fPenalty = 1.25f;
+			/* Extra consecutive penalty if token equals immediately preceding token to prevent loops */
+			if (pModel->nGenCount > 0 && prevTok == pModel->aGenTokens[pModel->nGenCount - 1]) {
+				fPenalty = 1.55f;
+			}
+			if (pModel->pLogits[prevTok] > 0.0f) {
+				pModel->pLogits[prevTok] /= fPenalty;
+			} else {
+				pModel->pLogits[prevTok] *= fPenalty;
+			}
+		}
+	}
+
+	/* Suppress immediate EOS on the very first generated token */
+	if (pModel->nGenCount == 0) {
+		if (pModel->pTokenizer->nEosToken >= 0 && (uint32_t)pModel->pTokenizer->nEosToken < pModel->config.nVocab) {
+			pModel->pLogits[pModel->pTokenizer->nEosToken] = -1e9f;
+		}
+		if (pModel->config.nVocab > 151645) {
+			pModel->pLogits[151643] = -1e9f; /* <|endoftext|> */
+			pModel->pLogits[151645] = -1e9f; /* <|im_end|> */
+		}
+	}
+
+	nextToken = ring_model_sample(pModel, pModel->fCurrentTemp);
+
+	/* Check Qwen & Standard Stop Tokens */
+	if (pModel->nGenCount > 0 && (nextToken == pModel->pTokenizer->nEosToken ||
+		nextToken == 151643 || /* <|endoftext|> */
+		nextToken == 151645)) { /* <|im_end|> */
+		pModel->bGenFinished = 1;
+		if (pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
+			char flushBuf[16];
+			int flushW = 0;
+			ring_tokenizer_flush(pModel->pTokenizer, flushBuf, &flushW, sizeof(flushBuf));
+			if (flushW > 0) {
+				flushBuf[flushW] = '\0';
+				return _strdup(flushBuf);
+			}
+		}
+		return _strdup("");
+	}
+
+	pModel->aGenTokens[pModel->nGenCount++] = nextToken;
+
+	tokenStr = ring_tokenizer_decode_tokens(pModel->pTokenizer, &nextToken, 1);
+
+	ring_model_forward_ex(pModel, nextToken, pModel->nCurPos++, 1);
+
+	if (!tokenStr) return _strdup("");
+	return tokenStr;
+}
+
+RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp, int bStreamStdout) {
+	if (!ring_model_prefill(pModel, cPrompt, nMaxTokens, fTemp)) return _strdup("");
+
+	while (ring_model_has_more(pModel)) {
+		char *tokenStr = ring_model_step(pModel);
+		if (tokenStr) {
+			if (bStreamStdout && tokenStr[0] != '\0') {
+				fputs(tokenStr, stdout);
+				fflush(stdout);
+			}
+			free(tokenStr);
+		}
+	}
+
+	/* Flush any remaining UTF-8 bytes to stdout if streaming */
 	if (bStreamStdout && pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
 		char flushBuf[16];
 		int flushW = 0;
@@ -1249,7 +1299,7 @@ RING_API char *ring_model_generate_stream(RingModel *pModel, const char *cPrompt
 		}
 	}
 
-	return ring_tokenizer_decode_tokens(pModel->pTokenizer, genTokens, nGen);
+	return ring_tokenizer_decode_tokens(pModel->pTokenizer, pModel->aGenTokens, pModel->nGenCount);
 }
 
 RING_API char *ring_model_generate(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp) {
@@ -1556,6 +1606,63 @@ RING_FUNC(ring_model_api_embedding) {
 	RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR", (void (*)(void *, void *))ring_tensor_delete);
 }
 
+RING_FUNC(ring_model_api_prefill) {
+	RingModel *pModel;
+	const char *cPrompt;
+	int nMaxTokens = 128;
+	float fTemp = 0.7f;
+	int nPromptTokens;
+
+	if (RING_API_PARACOUNT < 2 || !RING_API_ISPOINTER(1) || !RING_API_ISSTRING(2)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+	RING_API_CHECKNULLPOINTER(pModel);
+
+	cPrompt = RING_API_GETSTRING(2);
+	if (RING_API_PARACOUNT >= 3 && RING_API_ISNUMBER(3)) {
+		nMaxTokens = (int)RING_API_GETNUMBER(3);
+	}
+	if (RING_API_PARACOUNT >= 4 && RING_API_ISNUMBER(4)) {
+		fTemp = (float)RING_API_GETNUMBER(4);
+	}
+
+	nPromptTokens = ring_model_prefill(pModel, cPrompt, nMaxTokens, fTemp);
+	RING_API_RETNUMBER(nPromptTokens);
+}
+
+RING_FUNC(ring_model_api_has_more) {
+	RingModel *pModel;
+	if (RING_API_PARACOUNT != 1 || !RING_API_ISPOINTER(1)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+	RING_API_CHECKNULLPOINTER(pModel);
+
+	RING_API_RETNUMBER(ring_model_has_more(pModel));
+}
+
+RING_FUNC(ring_model_api_step) {
+	RingModel *pModel;
+	char *cChunk;
+	if (RING_API_PARACOUNT != 1 || !RING_API_ISPOINTER(1)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+	RING_API_CHECKNULLPOINTER(pModel);
+
+	cChunk = ring_model_step(pModel);
+	if (cChunk) {
+		RING_API_RETSTRING(cChunk);
+		free(cChunk);
+	} else {
+		RING_API_RETSTRING("");
+	}
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
 	RING_API_REGISTER("madar_model_open", ring_model_api_open);
 	RING_API_REGISTER("madar_model_close", ring_model_api_close);
@@ -1564,6 +1671,9 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
 	RING_API_REGISTER("madar_model_detokenize", ring_model_api_detokenize);
 	RING_API_REGISTER("madar_model_generate", ring_model_api_generate);
 	RING_API_REGISTER("madar_model_generate_stream", ring_model_api_generate_stream);
+	RING_API_REGISTER("madar_model_prefill", ring_model_api_prefill);
+	RING_API_REGISTER("madar_model_has_more", ring_model_api_has_more);
+	RING_API_REGISTER("madar_model_step", ring_model_api_step);
 	RING_API_REGISTER("madar_model_reset", ring_model_api_reset);
 	RING_API_REGISTER("madar_is_arabic", ring_model_api_is_arabic);
 	RING_API_REGISTER("madar_model_embedding", ring_model_api_embedding);

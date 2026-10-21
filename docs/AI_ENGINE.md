@@ -135,3 +135,42 @@ Designed for memory-bound tabular data analysis:
   - Relational Filtering: `dfHigh = df.filter("salary", ">", 4500)`
   - Summary Analytics: `df.describe()` outputs full tabular statistics.
   - Zero Python Dependency: Executes entirely within the lightweight Madar VM and C core.
+
+---
+
+## 9. Real-Time Token Streaming & Low-Level Generator API
+
+Madar AI provides comprehensive streaming architectures for interactive terminal, web, and agent applications:
+
+### 1. Direct Native C Streaming
+Directly pipes generated token characters to `stdout` with automatic UTF-8 byte assembly flushing:
+```ring
+model.generateStream(cPrompt, 128)
+```
+
+### 2. Custom Token-by-Token Callbacks
+Intercept and format individual token chunks in pure Ring:
+```ring
+model.generateStream(cPrompt, 128, func(cChunk) {
+    # Real-time WebSocket emission, UI update, or custom styling
+    see cChunk
+})
+```
+
+### 3. Step-by-Step Generator Engine
+Offers fine-grained autoregressive control:
+```ring
+model.prefill(cPrompt, 100, 0.7)
+while model.hasMore()
+    cToken = model.step()
+    if cToken != ""
+        see cToken
+    ok
+end
+```
+
+### 4. AIAgent Streaming Synthesis
+```ring
+agent = new AIAgent(model)
+agent.queryStream("ما هو أعلى راتب في جدول الموظفين؟")
+```

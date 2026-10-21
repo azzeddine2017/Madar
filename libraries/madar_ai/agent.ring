@@ -11,6 +11,7 @@ class AIAgent
 	aTools          = []       # List of registered tools [ [name, desc, params, func], ... ]
 	nMaxSteps       = 4        # Maximum tool execution iterations
 	bVerbose        = 1        # Print tool calls & observations to terminal
+	bStream         = 0        # Real-time token streaming to terminal
 	cSystemPrompt   = ""
 
 	func init(model)
@@ -170,6 +171,13 @@ class AIAgent
 		cSchema += "After receiving the <tool_response>, synthesize the final helpful response in Arabic."
 		return cSchema
 
+	func queryStream(cUserPrompt)
+		oldStream = bStream
+		bStream = 1
+		res = query(cUserPrompt)
+		bStream = oldStream
+		return res
+
 	func query(cUserPrompt)
 		if oModel = NULL
 			return "Error: AI Model is not initialized in Agent."
@@ -227,8 +235,15 @@ class AIAgent
 			          "الإجابة: "
 
 			oModel.setTemperature(0.3)
-			cFinalAnswer = oModel.generate(cPrompt, 128)
-			return cleanResponse(cFinalAnswer)
+			if bStream
+				see "Agent Response: "
+				cFinalAnswer = oModel.generateStream(cPrompt, 128)
+				see nl
+				return cleanResponse(cFinalAnswer)
+			else
+				cFinalAnswer = oModel.generate(cPrompt, 128)
+				return cleanResponse(cFinalAnswer)
+			ok
 		ok
 
 		cSys = buildToolSchema()

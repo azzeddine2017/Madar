@@ -86,8 +86,19 @@ func executeSearch(cSearchQuery)
 		see nl + f"--- Match #{nRank} [Cosine Similarity: {fScore}] ---" + nl
 		see chunk.cText + nl
 		nRank++
-	next
 	see "----------------------------------------------------" + nl
+
+	# Real-Time Streaming Answer from top matched context
+	if len(aMatches) > 0
+		see nl + "AI Answer (Streaming):" + nl
+		cTopChunk = aMatches[1][2].cText
+		cPrompt = "<|im_start|>system" + nl +
+		          "أجب عن السؤال باختصار وبدقة باللغة العربية بناءً على هذا النص المرجعي: " + cTopChunk + "<|im_end|>" + nl +
+		          "<|im_start|>user" + nl + cSearchQuery + "<|im_end|>" + nl +
+		          "<|im_start|>assistant" + nl
+		aiModel.generateStream(cPrompt, 80)
+		see nl + "----------------------------------------------------" + nl
+	ok
 
 if cQuery != ""
 	executeSearch(cQuery)
