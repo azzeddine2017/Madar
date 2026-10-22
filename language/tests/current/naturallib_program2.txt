@@ -1,9 +1,0 @@
-
-File: G:\RingProject\Madar\bin\load/naturalsyntaxon.ring doesn't exist!
-
-
-Error (E9) : Can't open file naturallib.ring 
-
-naturallib/program2.ring Line (4) Error (C27) : Syntax Error!
-
-naturallib/program2.ring errors count : 1 

@@ -10,6 +10,6 @@ mix2 LIVE 3  0  mix
 Line 247 Error (R21) : Using operator with values of incorrect type 
 In function size() in file general/refsim.ring
 
-Called from line 288 In function printmemory() in file general/refsim.ring
+Called from line 286 In function printmemory() in file general/refsim.ring
 
 Called from line 114 in file general/refsim.ring 

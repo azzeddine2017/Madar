@@ -133,6 +133,9 @@ Madar is extending Ring's grammar to incorporate high-productivity constructs wh
 4. **Chained Comparisons**: `10 <= x <= 100` evaluated without re-evaluating intermediate expressions.
 5. **List Comprehensions**: `[x * x for x in items if x > 2]` compiled into optimized inline builder loops.
 6. **Resource Management (`with ... as`)**: Automatic resource cleanup blocks using Ring's unreserved `with` construct.
+7. **High-Performance Loop & Iterator Engine**:
+   - **Anonymous Expression Hoisting**: Temporary iterable expressions (such as range literals `for x in 1:N`, list literals `for x in [1, 2, 3]`, or generator functions) are evaluated strictly **once** before entering loop bytecode, assigning to an internal register `cStrSource`. This eliminates the $2 \times N$ redundant heap allocations ($O(N^2)$ algorithmic bottleneck) of legacy bytecode generators.
+   - **`lFastLen` Zero-Copy Container Traversal**: Variables (`for l in str`, `for x in aList`) bypass value duplication and connect directly to internal memory pointers via `RING_OBJTYPE_SUBSTRING` and `RING_OBJTYPE_LISTITEM` references, achieving zero allocation and C-speed string mutation.
 
 ---
 

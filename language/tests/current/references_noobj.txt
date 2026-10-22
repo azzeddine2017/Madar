@@ -3,19 +3,5 @@ OBJECT
 t: NULL
 
 
-{
-  "madar_error": {
-    "status": "error",
-    "stage": "runtime",
-    "error_code": "R16",
-    "message": "Error (R16) : Using braces to access unknown object",
-    "file": "references/noobj.ring",
-    "line": 6,
-    "source_snippet": "y { t = :t } # We expect error here!",
-    "hint": "Review the syntax and ensure all expressions and identifiers are valid.",
-    "call_stack": [
-
-    ]
-  }
-}
-
+Line 6 Error (R16) : Using braces to access unknown object 
+in file references/noobj.ring 

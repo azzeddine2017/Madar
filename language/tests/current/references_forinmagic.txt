@@ -1,21 +1,6 @@
 1
-1
-1
+[...] (RC:2)
 2
+3
 
-{
-  "madar_error": {
-    "status": "error",
-    "stage": "runtime",
-    "error_code": "R2",
-    "message": "Error (R2) : Array Access (Index out of range)",
-    "file": "references/forinmagic.ring",
-    "line": 12,
-    "source_snippet": "list[1] = ref(list)",
-    "hint": "Function was not found in the global functions map. If this function belongs to a library or extension, make sure to add: load '<module>.ring'.",
-    "call_stack": [
-      {"function": "test", "file": "references/forinmagic.ring", "line": 5}
-    ]
-  }
-}
 

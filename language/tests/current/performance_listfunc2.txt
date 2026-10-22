@@ -9,4 +9,4 @@
 2
 1
 0
-Slow
+Fast

@@ -11,13 +11,15 @@ A list comprehension provides a concise, expressive way to construct new lists b
 ### General Grammar
 
 ```
-"[" Expr "for" Identifier "in" SourceExpr [ "if" CondExpr ]* "]"
+"[" Expr ("for" | "dour") Identifier "in" SourceExpr [ "if" CondExpr ]* "]"
 ```
 
-It can also feature multiple (nested) `for` clauses:
+> **Note on `dour` (دُر):** In Madar, you can use the Arabic-derived native keyword `dour` interchangeably with `for` in list comprehensions (`[x*x dour x in 1:N]`). See [DOUR Loops Documentation](DOUR_LOOPS.md) for full details.
+
+It can also feature multiple (nested) `for` / `dour` clauses:
 
 ```
-"[" Expr "for" Var1 "in" Source1 [ "if" Cond1 ]* "for" Var2 "in" Source2 [ "if" Cond2 ]* ... "]"
+"[" Expr ("for" | "dour") Var1 "in" Source1 [ "if" Cond1 ]* ("for" | "dour") Var2 "in" Source2 [ "if" Cond2 ]* ... "]"
 ```
 
 ---

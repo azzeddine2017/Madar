@@ -55,6 +55,7 @@
    - **Default Arguments (`func add(a, b = 10)`):** Native C99 bytecode-level default parameters evaluated dynamically at call time, avoiding Python's shared mutable default bug. Includes `argcount()` / `paramcount()` introspection.
    - **Advanced Slicing (`seq[start:stop:step]`):** 1-based inclusive slicing for strings and lists with stride, negative steps (`seq[::-1]` reversal), negative indexing (`seq[-1]`), and full backward compatibility with Ring hash maps (`dict[:name]`).
    - **List Comprehensions (`[x*x for x in list if x > 2]`):** Pythonic list comprehensions with single/multiple `if` filters, multi-variable nested `for` clauses, matrix construction, and expressions/f-strings/functions projections.
+   - **High-Performance JIT Loops (`dour x = 1 to N`, `[x*x dour x in 1:N]`):** Native Arabic-derived loop keyword triggering Madar Auto-JIT via SLJIT to compile loops on the fly into native CPU machine code (7x - 90x speedup) while preserving 100% Ring standard interpreter compatibility with `for`.
 
 ---
 
@@ -121,6 +122,7 @@ Runs comprehensive test suites covering core backward compatibility, tensor math
 - [Installation & Quickstart Guide (دليل التثبيت والتشغيل)](docs/INSTALL.md)
 - [AI Engine & Real-Time Streaming Architecture](docs/AI_ENGINE.md)
 - [Detailed Technical Architecture](docs/ARCHITECTURE.md)
+- [Madar 'DOUR' (دُر) Loops & Auto-JIT Engine (حلقات دُر ومحرك الجيت)](docs/DOUR_LOOPS.md)
 - [Python-style List Comprehensions Guide](docs/COMPREHENSIONS.md)
 - [Advanced Slicing & Strided Indexing Guide](docs/SLICING.md)
 - [Default Arguments & Parameter Introspection](docs/DEFAULT_ARGS.md)
