@@ -1,6 +1,11 @@
-Command: I want window
-Command: Window title is Hello World
-Command: I want button
-Command: I want window
-Command: I want button
-Command: Window title is nice
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+G:\RingProject\Madar\language\tests\scripts\naturallib/mylanguage.ring Line (2) Error (C27) : Syntax Error!
+
+G:\RingProject\Madar\language\tests\scripts\naturallib/mylanguage.ring errors count : 1 
+
+naturallib/program15.ring Line (4) Error (C27) : Syntax Error!
+
+naturallib/program15.ring errors count : 1 

@@ -179,6 +179,9 @@ int ring_parser_class(Parser *pParser) {
 			if (ring_parser_isidentifier(pParser) || ring_parser_isoperator2(pParser, OP_FOPEN)) {
 				x = ring_parser_paralist(pParser);
 			} else {
+				pList = ring_parser_icg_getactiveoperation(pParser);
+				ring_list_addstring_gc(pParser->pRingState, pList, RING_CSTR_EMPTY);
+				ring_list_addint_gc(pParser->pRingState, pList, RING_ZERO);
 				x = RING_PARSER_OK;
 			}
 			/* Set Global Scope */
@@ -256,8 +259,10 @@ int ring_parser_stmt(Parser *pParser) {
 	char cStr[RING_MEDIUMBUF];
 	char cFileName[RING_PATHSIZE];
 	char cCurrentDir[RING_PATHSIZE];
+	unsigned int lIsDour;
 	nLoadPackage = 0;
 	nLoadAgain = 0;
+	lIsDour = 0;
 	/* Statement --> Load Literal */
 	if (ring_parser_iskeyword(pParser, K_LOAD)) {
 		ring_parser_nexttoken(pParser);
@@ -437,7 +442,8 @@ int ring_parser_stmt(Parser *pParser) {
 		}
 	}
 	/* Statement --> For Identifier = Expr to Expr {Statement} Next  |  For Identifier in Expr {Statement } */
-	if (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_FOREACH)) {
+	if (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_FOREACH) ||
+	    (lIsDour = ring_parser_iskeyword(pParser, K_DOUR))) {
 		ring_parser_nexttoken(pParser);
 		RING_PARSER_IGNORENEWLINE;
 		if (ring_parser_isidentifier(pParser)) {
@@ -524,6 +530,9 @@ int ring_parser_stmt(Parser *pParser) {
 								ring_parser_icg_newoperandint(pParser, nLine2);
 								/* Complete JumpFor instruction */
 								ring_parser_icg_addoperandint(pParser, pMark, nMark2);
+								if (lIsDour) {
+									ring_parser_icg_addoperandint(pParser, pMark, 1);
+								}
 								/*
 								**  The ICO_FREETEMPLISTS will be called by ICO_JUMPFOR
 								**  Complete SETOPCODE instruction
@@ -575,74 +584,50 @@ int ring_parser_stmt(Parser *pParser) {
 				ring_parser_icg_newoperand(pParser, ring_string_get(pString));
 				ring_parser_icg_newoperation(pParser, ICO_KILLREFERENCE);
 				ring_parser_icg_newoperandint(pParser, RING_TRUE);
-				/* Generate Code */
+				ring_parser_nexttoken(pParser);
+				RING_PARSER_IGNORENEWLINE;
+				pParser->lAssignmentFlag = 0;
+				nLine = pParser->nLineNumber;
+				nStart = ring_parser_icg_instructionslistsize(pParser) + 1;
+				if (!ring_parser_csexpr(pParser)) {
+					ring_string_delete_gc(pParser->pRingState, pString);
+					return RING_PARSER_FAIL;
+				}
+				nEnd = ring_parser_icg_instructionslistsize(pParser);
+				pParser->lAssignmentFlag = 1;
+
+				/* Setup Loop Counter: cStr = 1 */
 				sprintf(cStr, "n_sys_var_%d", ring_parser_icg_instructionscount(pParser));
 				/* Mark for Exit command to go to outside the loop */
 				ring_parser_icg_newoperation(pParser, ICO_EXITMARK);
 				pMark3 = ring_parser_icg_getactiveoperation(pParser);
 				ring_parser_icg_loadaddress(pParser, cStr);
 				ring_parser_icg_pushn(pParser, RING_ONEF);
-				/* Before Equal ( = ) not += , -= ,... etc */
 				ring_parser_icg_beforeequal(pParser, OP_EQUAL);
 				ring_parser_icg_newoperation(pParser, ICO_ASSIGNMENT);
-				/* Generate Code */
+
+				/* Loop Start Label (nMark1) */
 				nLine2 = pParser->nLineNumber;
 				ring_parser_icg_newline(pParser, pParser->nLineNumber);
 				nMark1 = ring_parser_icg_newlabel(pParser);
+
+				/* Condition: cStr <= len(expr) */
 				ring_parser_icg_newoperation(pParser, ICO_LOADAPUSHV);
 				ring_parser_icg_newoperand(pParser, cStr);
-				nStart = ring_parser_icg_instructionslistsize(pParser) + 1;
-				ring_parser_nexttoken(pParser);
-				RING_PARSER_IGNORENEWLINE;
-				pParser->lAssignmentFlag = 0;
-				nLine = pParser->nLineNumber;
-				if (ring_parser_csexpr(pParser)) {
-					pParser->lAssignmentFlag = 1;
-					/* Generate Code */
-					nEnd = ring_parser_icg_instructionslistsize(pParser);
-					/* Check if we can avoid pushing the Variable to the Stack and avoid string copy
-					 */
-					nDiff = nEnd - nStart;
-					lFastLen =
-					    (nDiff == 1) &&
-					    (ring_parser_icg_getoperationatpos(pParser, nStart) == ICO_LOADADDRESS) &&
-					    (ring_parser_icg_getoperationatpos(pParser, nEnd) == ICO_PUSHV);
-					lFastLen =
-					    lFastLen ||
-					    ((nDiff == 2) &&
-					     (ring_parser_icg_getoperationatpos(pParser, nStart) == ICO_LOADADDRESS) &&
-					     (ring_parser_icg_getoperationatpos(pParser, nStart + 1) == ICO_PUSHV));
-					/* Note (nEnd-1) , -1 to remove instruction PushV (avoid error with for x in
-					 * string) */
-					switch (ring_parser_icg_getlastoperation(pParser)) {
-					case ICO_PUSHV:
-						nEnd--;
-						break;
-					case ICO_NEWLINE:
-						/* Check the instruction before ICO_NEWLINE - It could be ICO_PUSHV */
-						if (ring_parser_icg_getoperationbeforelastoperation(pParser) ==
-						    ICO_PUSHV) {
-							nEnd -= 2;
-						}
-						break;
-					}
-					/* Generate ICO_LEN */
-					ring_parser_icg_newline(pParser, nLine);
-					ring_parser_icg_newoperation(pParser, ICO_LEN);
-					/* Disable PUSHV if we have FastLen */
-					if (lFastLen) {
-						ring_parser_icg_setoperationatpos(pParser, nStart + 1, ICO_NOOP);
-					}
-					ring_parser_icg_newoperation(pParser, ICO_JUMPFOR);
-					pMark = ring_parser_icg_getactiveoperation(pParser);
-					ring_parser_icg_newoperation(pParser, ICO_LOADAFIRST);
-					ring_parser_icg_newoperand(pParser, ring_string_get(pString));
-					ring_parser_icg_duplicate(pParser, nStart, nEnd);
-					ring_parser_icg_newoperation(pParser, ICO_LOADAPUSHV);
-					ring_parser_icg_newoperand(pParser, cStr);
-					ring_parser_icg_newoperation(pParser, ICO_LOADINDEXADDRESS);
-					/* Item by reference */
-					ring_parser_icg_newoperation(pParser, ICO_SETREFERENCE);
+				ring_parser_icg_duplicate(pParser, nStart, nEnd);
+				ring_parser_icg_newline(pParser, nLine);
+				ring_parser_icg_newoperation(pParser, ICO_LEN);
+				ring_parser_icg_newoperation(pParser, ICO_JUMPFOR);
+				pMark = ring_parser_icg_getactiveoperation(pParser);
+
+				/* Loop Body: pString = expr[cStr] by reference */
+				ring_parser_icg_newoperation(pParser, ICO_LOADAFIRST);
+				ring_parser_icg_newoperand(pParser, ring_string_get(pString));
+				ring_parser_icg_duplicate(pParser, nStart, nEnd);
+				ring_parser_icg_newoperation(pParser, ICO_LOADAPUSHV);
+				ring_parser_icg_newoperand(pParser, cStr);
+				ring_parser_icg_newoperation(pParser, ICO_LOADINDEXADDRESS);
+				ring_parser_icg_newoperation(pParser, ICO_SETREFERENCE);
 					/* Step <expr> */
 					x = ring_parser_step(pParser, &nMark1);
 					if (x == RING_PARSER_FAIL) {
@@ -658,7 +643,6 @@ int ring_parser_stmt(Parser *pParser) {
 					if (ring_parser_iskeyword(pParser, K_NEXT) ||
 					    ring_parser_iskeyword(pParser, K_ENDFOR) ||
 					    ring_parser_iskeyword(pParser, K_END) || ring_parser_csbraceend(pParser)) {
-						ring_parser_nexttoken(pParser);
 						/* Generate Code */
 						nMark3 = ring_parser_icg_newlabel(pParser);
 						/* Increment Jump */
@@ -705,6 +689,7 @@ int ring_parser_stmt(Parser *pParser) {
 						}
 						/* Optional Loop */
 						ring_parser_icg_newoperation(pParser, ICO_OPTIONALLOOP);
+						ring_parser_nexttoken(pParser);
 						/* Print the rule */
 						RING_STATE_PRINTRULE(RING_RULE_NEXT);
 						ring_string_delete_gc(pParser->pRingState, pString);
@@ -713,11 +698,10 @@ int ring_parser_stmt(Parser *pParser) {
 						ring_parser_error(pParser, RING_PARSER_ERROR_NEXT);
 					}
 				}
+				ring_string_delete_gc(pParser->pRingState, pString);
 			}
-			ring_string_delete_gc(pParser->pRingState, pString);
+			return RING_PARSER_FAIL;
 		}
-		return RING_PARSER_FAIL;
-	}
 	/* Statement --> IF Expr Statements OK */
 	if (ring_parser_iskeyword(pParser, K_IF)) {
 		pParser->nIfCounter++;
@@ -1216,6 +1200,8 @@ int ring_parser_paralist(Parser *pParser) {
 	/* ParaList --> epsilon */
 	if (ring_parser_isendline(pParser) || (nStart && ring_parser_isoperator2(pParser, OP_FCLOSE))) {
 		ring_parser_nexttoken(pParser);
+		ring_list_addstring_gc(pParser->pRingState, pNewFuncOp, RING_CSTR_EMPTY);
+		ring_list_addint_gc(pParser->pRingState, pNewFuncOp, RING_ZERO);
 		RING_STATE_PRINTRULE(RING_RULE_PARALISTEPSILON);
 		ring_string_delete_gc(pParser->pRingState, pParametersStr);
 		return RING_PARSER_OK;
@@ -1356,6 +1342,7 @@ int ring_parser_paralist(Parser *pParser) {
 typedef struct RingComprehensionLoop {
 	String *pVarName;
 	char cStrCounter[RING_MEDIUMBUF];
+	char cStrSource[RING_MEDIUMBUF];
 	List *pMarkJumpFor;
 	List *pMarkSetOp;
 	List *pMarkExit;
@@ -1377,8 +1364,8 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 		ring_parser_icg_deletelastoperation(pParser);
 	}
 
-	/* 2. Parse clauses: for <var> in <source> [if <cond> ...] */
-	while (ring_parser_iskeyword(pParser, K_FOR)) {
+	/* 2. Parse clauses: for/dour <var> in <source> [if <cond> ...] */
+	while (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_DOUR)) {
 		if (nLoopsCount >= RING_COMPREHENSION_MAXLOOPS) {
 			ring_parser_error(pParser, "Error (C32) : Too many nested for clauses in list comprehension");
 			return RING_PARSER_FAIL;
@@ -1412,7 +1399,22 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 		ring_parser_icg_newoperation(pParser, ICO_KILLREFERENCE);
 		ring_parser_icg_newoperandint(pParser, RING_TRUE);
 
-		/* Generate unique loop counter */
+		/* Hoist Source Expression: Evaluate ONCE into cStrSource before loop start */
+		sprintf(aLoops[nLoopsCount].cStrSource, "n_sys_src_%d", ring_parser_icg_instructionscount(pParser));
+		ring_parser_icg_loadaddress(pParser, aLoops[nLoopsCount].cStrSource);
+		ring_parser_nexttoken(pParser);
+		RING_PARSER_IGNORENEWLINE;
+		pParser->lAssignmentFlag = 0;
+		nLine = pParser->nLineNumber;
+		if (!ring_parser_csexpr(pParser)) {
+			ring_string_delete_gc(pParser->pRingState, aLoops[nLoopsCount].pVarName);
+			return RING_PARSER_FAIL;
+		}
+		pParser->lAssignmentFlag = 1;
+		ring_parser_icg_beforeequal(pParser, OP_EQUAL);
+		ring_parser_icg_newoperation(pParser, ICO_ASSIGNMENT);
+
+		/* Setup Loop Counter: cStrCounter = 1 */
 		sprintf(aLoops[nLoopsCount].cStrCounter, "n_sys_var_%d", ring_parser_icg_instructionscount(pParser));
 
 		/* SETOPCODE command mark */
@@ -1430,64 +1432,31 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 		ring_parser_icg_beforeequal(pParser, OP_EQUAL);
 		ring_parser_icg_newoperation(pParser, ICO_ASSIGNMENT);
 
-		/* Generate Code for Loop Start */
+		/* Loop Start Label (nMarkLoopStart) */
 		aLoops[nLoopsCount].nLine2 = pParser->nLineNumber;
 		ring_parser_icg_newline(pParser, pParser->nLineNumber);
 		aLoops[nLoopsCount].nMarkLoopStart = ring_parser_icg_newlabel(pParser);
+
+		/* Condition: cStrCounter <= len(cStrSource) */
 		ring_parser_icg_newoperation(pParser, ICO_LOADAPUSHV);
 		ring_parser_icg_newoperand(pParser, aLoops[nLoopsCount].cStrCounter);
 
-		/* Parse Source Expression directly at [nStart, nEnd] */
-		ring_parser_icg_newoperation(pParser, ICO_COMPSTART);
 		nStart = ring_parser_icg_instructionslistsize(pParser) + 1;
-		ring_parser_nexttoken(pParser);
-		RING_PARSER_IGNORENEWLINE;
-		pParser->lAssignmentFlag = 0;
-		nLine = pParser->nLineNumber;
-		if (!ring_parser_csexpr(pParser)) {
-			ring_string_delete_gc(pParser->pRingState, aLoops[nLoopsCount].pVarName);
-			return RING_PARSER_FAIL;
-		}
-		pParser->lAssignmentFlag = 1;
+		ring_parser_icg_loadaddress(pParser, aLoops[nLoopsCount].cStrSource);
+		ring_parser_icg_newoperation(pParser, ICO_PUSHV);
 		nEnd = ring_parser_icg_instructionslistsize(pParser);
-		ring_parser_icg_newoperation(pParser, ICO_COMPEND);
 
-		/* FastLen check */
-		nDiff = nEnd - nStart;
-		lFastLen = (nDiff == 1) &&
-			(ring_parser_icg_getoperationatpos(pParser, nStart) == ICO_LOADADDRESS) &&
-			(ring_parser_icg_getoperationatpos(pParser, nEnd) == ICO_PUSHV);
-		lFastLen = lFastLen ||
-			((nDiff == 2) &&
-			(ring_parser_icg_getoperationatpos(pParser, nStart) == ICO_LOADADDRESS) &&
-			(ring_parser_icg_getoperationatpos(pParser, nStart + 1) == ICO_PUSHV));
-		switch (ring_parser_icg_getlastoperation(pParser)) {
-		case ICO_PUSHV:
-			nEnd--;
-			break;
-		case ICO_NEWLINE:
-			if (ring_parser_icg_getoperationbeforelastoperation(pParser) == ICO_PUSHV) {
-				nEnd -= 2;
-			}
-			break;
-		}
-
-		/* Generate ICO_LEN */
 		ring_parser_icg_newline(pParser, nLine);
 		ring_parser_icg_newoperation(pParser, ICO_LEN);
-		if (lFastLen) {
-			ring_parser_icg_setoperationatpos(pParser, nStart + 1, ICO_NOOP);
-		}
+		ring_parser_icg_setoperationatpos(pParser, nStart + 1, ICO_NOOP);
 
 		ring_parser_icg_newoperation(pParser, ICO_JUMPFOR);
 		aLoops[nLoopsCount].pMarkJumpFor = ring_parser_icg_getactiveoperation(pParser);
 
-		/* Item by reference: duplicate [nStart, nEnd] */
+		/* Loop Body: pVarName = cStrSource[cStrCounter] by reference */
 		ring_parser_icg_newoperation(pParser, ICO_LOADAFIRST);
 		ring_parser_icg_newoperand(pParser, ring_string_get(aLoops[nLoopsCount].pVarName));
-		ring_parser_icg_newoperation(pParser, ICO_COMPSTART);
-		ring_parser_icg_duplicate(pParser, nStart, nEnd);
-		ring_parser_icg_newoperation(pParser, ICO_COMPEND);
+		ring_parser_icg_loadaddress(pParser, aLoops[nLoopsCount].cStrSource);
 		ring_parser_icg_newoperation(pParser, ICO_LOADAPUSHV);
 		ring_parser_icg_newoperand(pParser, aLoops[nLoopsCount].cStrCounter);
 		ring_parser_icg_newoperation(pParser, ICO_LOADINDEXADDRESS);
@@ -1635,8 +1604,8 @@ int ring_parser_list(Parser *pParser) {
 				RING_STATE_PRINTRULE(RING_RULE_LIST);
 				return RING_PARSER_OK;
 			}
-			/* Flow-style comprehension: [ for var in source ... : expr ] */
-			if (lFirstItem && ring_parser_iskeyword(pParser, K_FOR)) {
+			/* Flow-style comprehension: [ for/dour var in source ... : expr ] */
+			if (lFirstItem && (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_DOUR))) {
 				return ring_parser_list_comprehension(pParser, 0, ring_list_getsize(pParser->pGenCode));
 			}
 			pParser->lAssignmentFlag = RING_FALSE;
@@ -1644,7 +1613,7 @@ int ring_parser_list(Parser *pParser) {
 			nGenCodeStart = ring_list_getsize(pParser->pGenCode);
 			if (ring_parser_expr(pParser)) {
 				RING_PARSER_IGNORENEWLINE;
-				if (lFirstItem && ring_parser_iskeyword(pParser, K_FOR)) {
+				if (lFirstItem && (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_DOUR))) {
 					return ring_parser_list_comprehension(pParser, nStartToken, nGenCodeStart);
 				}
 				lFirstItem = RING_FALSE;

@@ -41,6 +41,16 @@ void ring_vm_jumpfor(VM *pVM) {
 	if (ring_vm_timetofreetemplists(pVM)) {
 		ring_vm_freetemplists(pVM);
 	}
+	/* Auto Loop JIT Acceleration: ONLY for Madar 'dour' loops! Standard 'for' runs 100% on standard VM */
+	int lIsDour = (pVM->pByteCodeIR->nReg2Type == RING_VM_REGTYPE_INT && pVM->pByteCodeIR->aReg[1].iNumber == 1);
+	if (lIsDour && ring_jit_is_available() && !pVM->pByteCodeIR->lFlagReg2 && (nStep == 1.0) && ((nEnd - nStart) >= 50.0)) {
+		int nExitPC = pVM->pByteCodeIR->aReg[0].iNumber;
+		if (ring_jit_try_execute_for_loop(pVM, nStart, nEnd, nStep, nExitPC)) {
+			pVM->nPC = nExitPC;
+			return;
+		}
+		pVM->pByteCodeIR->lFlagReg2 = 1;
+	}
 }
 
 void ring_vm_jumpzero(VM *pVM) {
@@ -198,7 +208,8 @@ void ring_vm_checkarg(VM *pVM) {
 	FuncCall *pFuncCall;
 	pFuncCall = RING_VM_LASTFUNCCALL;
 	if (pFuncCall != NULL && pFuncCall->nStatus == RING_FUNCSTATUS_STARTED) {
-		if (pFuncCall->nActualParaCount >= (unsigned int)RING_VM_IR_READIVALUE(RING_VM_IR_REG2)) {
+		if (pVM->pByteCodeIR->nReg2Type == RING_VM_REGTYPE_INT &&
+		    pFuncCall->nActualParaCount >= (unsigned int)RING_VM_IR_READIVALUE(RING_VM_IR_REG2)) {
 			/* Parameter was provided by caller -> Jump over default value assignment */
 			RING_VM_JUMP;
 		}

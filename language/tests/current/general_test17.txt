@@ -1,1 +1,3 @@
-6
+
+Line 8 Error (R41) : Invalid numeric string 
+in file general/test17.ring 

@@ -10,7 +10,7 @@ stmt.c expr.c codegen.c vm.c vmerror.c vmeval.c vmthread.c vmexpr.c vmvars.c ^
 vmlists.c vmfuncs.c ringapi.c vmoop.c  ^
 vmtry.c vmstr.c vmjump.c vmrange.c ^
 vmperf.c vmexit.c vmstack.c vmstate.c genlib_e.c math_e.c file_e.c os_e.c list_e.c meta_e.c vminfo_e.c ^
-ext.c dll_e.c objfile.c -I"..\include" 
+ext.c dll_e.c objfile.c ring_jit.c -I"..\include" -I"..\src" 
 if errorlevel 1 (
     echo [ERROR] cl compilation failed!
     exit /b 1
@@ -22,7 +22,7 @@ stmt.obj expr.obj codegen.obj vm.obj vmerror.obj vmeval.obj vmthread.obj vmexpr.
 vmlists.obj vmfuncs.obj ringapi.obj vmoop.obj  ^
 vmtry.obj vmstr.obj vmjump.obj vmrange.obj ^
 vmperf.obj vmexit.obj vmstack.obj vmstate.obj genlib_e.obj math_e.obj file_e.obj os_e.obj list_e.obj meta_e.obj vminfo_e.obj ^
-ext.obj dll_e.obj objfile.obj 
+ext.obj dll_e.obj objfile.obj ring_jit.obj 
 if errorlevel 1 (
     echo [ERROR] link failed!
     exit /b 1
@@ -34,7 +34,7 @@ stmt.obj expr.obj codegen.obj vm.obj vmerror.obj vmeval.obj vmthread.obj vmexpr.
 vmlists.obj vmfuncs.obj ringapi.obj vmoop.obj  ^
 vmtry.obj vmstr.obj vmjump.obj vmrange.obj ^
 vmperf.obj vmexit.obj vmstack.obj vmstate.obj genlib_e.obj math_e.obj file_e.obj os_e.obj list_e.obj meta_e.obj vminfo_e.obj ^
-ext.obj dll_e.obj objfile.obj 
+ext.obj dll_e.obj objfile.obj ring_jit.obj 
 
 copy ..\..\lib\ring.dll ..\..\bin\
 

@@ -1,1 +1,19 @@
-greatwow
+
+
+Error (E9) : Can't open file postgresqllib.ring 
+
+G:\RingProject\Madar\libraries\stdlib\stdpostgresql.ring Line (9) Error (C3) : Unclosed control structure, 'ok' is missing
+
+G:\RingProject\Madar\libraries\stdlib\stdpostgresql.ring errors count : 1 
+
+G:\RingProject\Madar\bin\load//../../libraries/stdlib/stdclasses.ring Line (24) Error (C27) : Syntax Error!
+
+G:\RingProject\Madar\bin\load//../../libraries/stdlib/stdclasses.ring errors count : 1 
+
+G:\RingProject\Madar\bin\load/stdlibclasses.ring Line (3) Error (C27) : Syntax Error!
+
+G:\RingProject\Madar\bin\load/stdlibclasses.ring errors count : 1 
+
+new/new.ring Line (1) Error (C27) : Syntax Error!
+
+new/new.ring errors count : 1 

@@ -1,26 +1,7 @@
-Hello, Sir!
 
 
-The Numbers!
+Error (E9) : Can't open file naturallib.ring 
 
-1
+naturallib/start.ring Line (2) Error (C27) : Syntax Error!
 
-2
-
-3
-
-4
-
-5
-
-I will count Again!
-
-5
-
-4
-
-3
-
-2
-
-1
+naturallib/start.ring errors count : 1 

@@ -854,6 +854,10 @@ int ring_parser_factor(Parser *pParser, int *nFlag) {
 		if (ring_parser_isidentifier(pParser) || ring_parser_isoperator2(pParser, OP_FOPEN)) {
 			if (!ring_parser_paralist(pParser))
 				return RING_PARSER_FAIL;
+		} else {
+			pList = ring_parser_icg_getactiveoperation(pParser);
+			ring_list_addstring_gc(pParser->pRingState, pList, RING_CSTR_EMPTY);
+			ring_list_addint_gc(pParser->pRingState, pList, RING_ZERO);
 		}
 		RING_PARSER_PASSNEWLINE;
 		/* Get Function Code */

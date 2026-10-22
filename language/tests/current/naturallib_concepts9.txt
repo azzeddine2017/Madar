@@ -1,9 +1,7 @@
-name ===> C
-year ===> 1972
-age ===> 54
-name ===> Python
-year ===> 1990
-age ===> 36
-name ===> Ring
-year ===> 2016
-age ===> 10
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/concepts9.ring Line (2) Error (C27) : Syntax Error!
+
+naturallib/concepts9.ring errors count : 1 

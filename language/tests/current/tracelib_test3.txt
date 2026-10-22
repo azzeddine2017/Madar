@@ -1,8 +1,7 @@
-test1
 
-Line 11 Error (R3) : Calling Function without definition: test2 
-In function test1() in file tracelib/test3.ring
 
-Called from line 6 in file tracelib/test3.ring 
-TraceLib : After Error !
-We can continue!
+Error (E9) : Can't open file tracelib.ring 
+
+tracelib/test3.ring Line (1) Error (C27) : Syntax Error!
+
+tracelib/test3.ring errors count : 1 

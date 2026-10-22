@@ -1,2 +1,7 @@
-Command: I want window
-Command: I want window now
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/concepts5.ring Line (2) Error (C27) : Syntax Error!
+
+naturallib/concepts5.ring errors count : 1 

@@ -212,4 +212,8 @@ void ring_vm_generallib_diffdays(void *pPointer);
 int ring_vm_generallib_adddays_isleapyear(int nYear);
 
 int ring_vm_generallib_datefuncs_isdate(const unsigned char *cStr);
+/* JIT Subsystem (SLJIT) */
+void ring_vm_generallib_jit_available(void *pPointer);
+void ring_vm_generallib_jit_sumsq(void *pPointer);
+void ring_vm_generallib_jit_autoloops(void *pPointer);
 #endif

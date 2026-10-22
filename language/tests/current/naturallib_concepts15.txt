@@ -1,19 +1,7 @@
-Command: I want window
-Command: Window Title
-Command: Window title is welcome
-========
-Command: Window Title
-Command: Window title is Hello, World!
-========
-Command: Window Title
-Command: Window Title
-Command: Window Title
-Command: Window Title
-Command: Window Title
-========
-********************
-Command: I want window
-Command: Window Title
-Command: Window title is Welcome
-Command: Window Title
-Welcome
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/concepts15.ring Line (2) Error (C27) : Syntax Error!
+
+naturallib/concepts15.ring errors count : 1 

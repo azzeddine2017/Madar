@@ -1,2 +1,7 @@
-Command: I want window
-Pass NaturalLib Error when using I want nothing
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/concepts11.ring Line (2) Error (C27) : Syntax Error!
+
+naturallib/concepts11.ring errors count : 1 

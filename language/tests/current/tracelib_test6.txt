@@ -1,25 +1,7 @@
-test1
 
 
-============================================================
-                    Interactive Debugger
-============================================================
-Command (Exit)        : End Program
-Command (Cont)        : Continue Execution
-Command (Locals)      : Print local variables names
-Command (LocalsData)  : Print local variables data
-Command (Globals)     : Print global variables names
-Command (CallStack)   : Print call stack
-We can execute Ring code
-============================================================
+Error (E9) : Can't open file tracelib.ring 
 
-code:> x
-t
+tracelib/test6.ring Line (1) Error (C27) : Syntax Error!
 
-code:> 
-Variable : x      Type : NUMBER          Value : 10
-Variable : t      Type : NUMBER          Value : 12
-
-code:> After breakpoint!
-t = 12
-End of program!
+tracelib/test6.ring errors count : 1 

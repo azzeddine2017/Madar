@@ -474,19 +474,24 @@ void ring_vm_newfunc(VM *pVM) {
 	/* Set the SP then Check Parameters */
 	pFuncCall = RING_VM_LASTFUNCCALL;
 	pFuncCall->nStatus = RING_FUNCSTATUS_STARTED;
-	nParaCount = (unsigned int)RING_VM_IR_READIVALUE(RING_VM_IR_REG2);
-	if ((nParaCount >> 16) > 0) {
-		nMinParams = (nParaCount >> 16) - 1;
-		nParaCount = nParaCount & 0xFFFF;
+	if (pVM->pByteCodeIR->nReg2Type == RING_VM_REGTYPE_INT) {
+		nParaCount = (unsigned int)RING_VM_IR_READIVALUE(RING_VM_IR_REG2);
+		if ((nParaCount >> 16) > 0) {
+			nMinParams = (nParaCount >> 16) - 1;
+			nParaCount = nParaCount & 0xFFFF;
+		} else {
+			nMinParams = nParaCount;
+		}
 	} else {
-		nMinParams = nParaCount;
+		nParaCount = 0;
+		nMinParams = 0;
 	}
 	pFuncCall->nParaCount = nParaCount;
 	nSP = pFuncCall->nSP;
 	pVM->nFuncSP = nSP;
 	nActualArgs = (pVM->nSP > nSP) ? (pVM->nSP - nSP) : 0;
 	pFuncCall->nActualParaCount = nActualArgs;
-	if (nParaCount > 0) {
+	if (nParaCount > 0 && pVM->pByteCodeIR->nReg1Type == RING_VM_REGTYPE_STRING) {
 		/* Read Parameters (Separated by Space) */
 		cParameters = RING_VM_IR_READCVALUE(RING_VM_IR_REG1);
 		nMax = strlen(cParameters);

@@ -130,6 +130,10 @@ RING_API void ring_vm_generallib_loadfunctions(RingState *pRingState) {
 	RING_API_REGISTER("date", ring_vm_generallib_date);
 	RING_API_REGISTER("adddays", ring_vm_generallib_adddays);
 	RING_API_REGISTER("diffdays", ring_vm_generallib_diffdays);
+	/* JIT Subsystem (SLJIT) */
+	RING_API_REGISTER("jit_available", ring_vm_generallib_jit_available);
+	RING_API_REGISTER("jit_sumsq", ring_vm_generallib_jit_sumsq);
+	RING_API_REGISTER("jit_autoloops", ring_vm_generallib_jit_autoloops);
 }
 /* General */
 
@@ -2705,3 +2709,36 @@ int ring_vm_generallib_datefuncs_isdate(const unsigned char *cStr) {
 	}
 	return RING_FALSE;
 }
+
+/* JIT Subsystem (SLJIT) Built-in Functions */
+
+void ring_vm_generallib_jit_available(void *pPointer) {
+	RING_API_RETNUMBER(ring_jit_is_available());
+}
+
+void ring_vm_generallib_jit_sumsq(void *pPointer) {
+	int64_t nLimit, nResult;
+	ring_jit_sumsq_func fn;
+	if (RING_API_PARACOUNT != 1) {
+		RING_API_ERROR(RING_API_MISS1PARA);
+		return;
+	}
+	if (!RING_API_ISNUMBER(1)) {
+		RING_API_ERROR(RING_API_BADPARATYPE);
+		return;
+	}
+	nLimit = (int64_t)RING_API_GETNUMBER(1);
+	fn = ring_jit_compile_sumsq_test();
+	if (!fn) {
+		RING_API_ERROR("JIT compilation failed");
+		return;
+	}
+	nResult = fn(nLimit);
+	ring_jit_free_func((void *)fn);
+	RING_API_RETNUMBER((double)nResult);
+}
+
+void ring_vm_generallib_jit_autoloops(void *pPointer) {
+	RING_API_RETNUMBER((double)ring_jit_get_auto_loops_count());
+}
+

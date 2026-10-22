@@ -1,4 +1,7 @@
-test1
-After breakpoint!
-t = 12
-End of program!
+
+
+Error (E9) : Can't open file tracelib.ring 
+
+tracelib/test7.ring Line (1) Error (C27) : Syntax Error!
+
+tracelib/test7.ring errors count : 1 

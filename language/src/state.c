@@ -53,6 +53,7 @@ RING_API RingState *ring_state_new(void) {
   pRingState->nScannerError = 0;
   pRingState->nInstructionsCount = 0;
   pRingState->lRunFromObjectFile = 0;
+  pRingState->lJSONErrors = 0;
   return pRingState;
 }
 

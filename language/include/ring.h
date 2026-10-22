@@ -249,6 +249,7 @@
 #include "ringapi.h"
 #include "objfile.h"
 #include "genlib_e.h"
+#include "ring_jit.h"
 /* Extensions Headers */
 #ifndef RING_EXTENSION
 	#define RING_EXTENSION

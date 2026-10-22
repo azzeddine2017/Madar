@@ -1,12 +1,7 @@
-Testing EvalInScope
-Command: I want window
-Command: Window title is great
-Command: I want window
-Command: Window title is Hello, World!
-welcome
-2025
-Command: I want window
-Command: Window title is I Love Programming
-welcome
-2025
-done..
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/lang6.ring Line (5) Error (C27) : Syntax Error!
+
+naturallib/lang6.ring errors count : 1 

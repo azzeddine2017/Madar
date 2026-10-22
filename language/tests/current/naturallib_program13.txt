@@ -1,1 +1,11 @@
-Command: I want window
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+G:\RingProject\Madar\language\tests\scripts\naturallib/mylanguage.ring Line (2) Error (C27) : Syntax Error!
+
+G:\RingProject\Madar\language\tests\scripts\naturallib/mylanguage.ring errors count : 1 
+
+naturallib/program13.ring Line (4) Error (C27) : Syntax Error!
+
+naturallib/program13.ring errors count : 1 

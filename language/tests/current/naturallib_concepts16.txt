@@ -1,5 +1,7 @@
-==============================
-The window title is: Welcome
-Welcome
-The window title is: GREAT
-==============================
+
+
+Error (E9) : Can't open file naturallib.ring 
+
+naturallib/concepts16.ring Line (2) Error (C27) : Syntax Error!
+
+naturallib/concepts16.ring errors count : 1 
