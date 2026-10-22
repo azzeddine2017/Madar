@@ -9,7 +9,7 @@ func main
     oTimer = new QalamChronos()
     
     # حجم البيانات للاختبار
-    N = 20000
+    N = 1000000
     tDour = 0
     tJIT = 0
 
