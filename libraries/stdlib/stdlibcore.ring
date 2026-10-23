@@ -104,6 +104,21 @@ func JustFileName cFile
 	return cFile 
 
 /*
+	Function Name	: JustFileExt
+	Usage		: get the extension of the file (without dot)
+	Parameters	: File Name or Path
+*/
+
+func JustFileExt cFile
+	cName = JustFileName(cFile)
+	for x = len(cName) to 1 step -1
+		if cName[x] = "."
+			return substr(cName, x + 1)
+		ok
+	next
+	return ""
+
+/*
 	Function Name	: value
 	Usage		: create a copy from a list or object
 	Parameters	: the list or the object

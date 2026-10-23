@@ -15,7 +15,7 @@ class AIAgent
 	bStream          = 0        # Real-time token streaming to terminal
 	cSystemPrompt    = ""
 	aConversation    = []       # Multi-turn conversational history: [ [role, text], ... ]
-	nMaxHistoryTurns = 6        # Max conversation turns to retain
+	nMaxHistoryTurns = 3        # Max conversation turns to retain
 	bMemoryEnabled   = 1        # Enable/disable conversation memory
 	oMemory          = NULL     # Long-term VectorStore instance
 	cMemoryPath      = ""       # Disk path for binary memory persistence
@@ -51,7 +51,8 @@ class AIAgent
 		ok
 		cFact = trim(cFact)
 		if cFact = "" return false ok
-		oMemory.addText(cFact)
+		cId = f"fact_{oMemory.count() + 1}"
+		oMemory.addText(cFact, cId, ["source" = "user_remember"])
 		saveMemory()
 		return true
 
@@ -60,17 +61,110 @@ class AIAgent
 		if nTopK = NULL or nTopK <= 0 nTopK = 3 ok
 		return oMemory.search(cQuery, nTopK)
 
-	func learnFile(cFilePath)
+	func learnPath(cPath, pCallback = NULL)
 		if oMemory = NULL
 			initMemory("agent_memory.bin")
 		ok
-		if not fexists(cFilePath) and fexists("examples/ai/" + cFilePath)
-			cFilePath = "examples/ai/" + cFilePath
+		cPath = trim(cPath)
+		cPath = substr(cPath, '"', "")
+		cPath = substr(cPath, "'", "")
+		cPath = trim(cPath)
+
+		# Check directory
+		cCheckDir = cPath
+		if not direxists(cCheckDir) and direxists("../../" + cPath)
+			cCheckDir = "../../" + cPath
+		elseif not direxists(cCheckDir) and direxists("../" + cPath)
+			cCheckDir = "../" + cPath
 		ok
-		if not fexists(cFilePath) return 0 ok
-		nAdded = oMemory.addFile(cFilePath)
-		saveMemory()
-		return nAdded
+
+		if direxists(cCheckDir)
+			aAllFiles = ListAllFiles(cCheckDir, NULL)
+			aExts = ["md", "txt", "pdf", "ring", "rh", "csv"]
+			aTargetFiles = []
+			for f in aAllFiles
+				cExt = lower(JustFileExt(f))
+				if cExt != "" and find(aExts, cExt) > 0
+					aTargetFiles + f
+				ok
+			next
+
+			nTotalAdded = 0
+			nProcessed = 0
+			aProcessedFiles = []
+
+			for i = 1 to len(aTargetFiles)
+				cFile = aTargetFiles[i]
+				cTimeStr = ""
+				nChunks = 0
+
+				try
+					oTimer = new QalamChronos()
+					nChunks = oMemory.addDocument(cFile)
+					cTimeStr = oTimer.elapsed()
+				catch
+					t0 = clock()
+					nChunks = oMemory.addDocument(cFile)
+					t1 = clock()
+					cTimeStr = "" + round((t1 - t0) / clockspersecond(), 2) + "s"
+				done
+
+				# Save immediately after each file to persistent disk!
+				saveMemory()
+
+				nTotalAdded += nChunks
+				nProcessed++
+				aProcessedFiles + [cFile, nChunks]
+
+				if pCallback != NULL
+					call pCallback(cFile, i, len(aTargetFiles), nChunks, cTimeStr)
+				ok
+			next
+
+			return [nTotalAdded, nProcessed, aProcessedFiles]
+		ok
+
+		# Check single file
+		cCheckFile = cPath
+		if not fexists(cCheckFile) and fexists("../../" + cPath)
+			cCheckFile = "../../" + cPath
+		elseif not fexists(cCheckFile) and fexists("../" + cPath)
+			cCheckFile = "../" + cPath
+		elseif not fexists(cCheckFile) and fexists("examples/ai/" + cPath)
+			cCheckFile = "examples/ai/" + cPath
+		ok
+
+		if fexists(cCheckFile)
+			cTimeStr = ""
+			nAdded = 0
+			try
+				oTimer = new QalamChronos()
+				nAdded = oMemory.addDocument(cCheckFile)
+				cTimeStr = oTimer.elapsed()
+			catch
+				t0 = clock()
+				nAdded = oMemory.addDocument(cCheckFile)
+				t1 = clock()
+				cTimeStr = "" + round((t1 - t0) / clockspersecond(), 2) + "s"
+			done
+
+			# Save immediately to disk!
+			saveMemory()
+
+			if pCallback != NULL
+				call pCallback(cCheckFile, 1, 1, nAdded, cTimeStr)
+			ok
+			return [nAdded, 1, [ [cCheckFile, nAdded] ]]
+		ok
+
+		return [0, 0, []]
+
+	func learnFile(cFilePath)
+		aRes = learnPath(cFilePath)
+		if islist(aRes) and len(aRes) >= 1
+			return aRes[1]
+		ok
+		return 0
 
 	func resetHistory()
 		aConversation = []
@@ -148,7 +242,9 @@ class AIAgent
 			cPath = substr(cPath, "'", "")
 			cPath = substr(cPath, "؟", "")
 			cPath = substr(cPath, "?", "")
-			cPath = substr(cPath, ":", "")
+			if right(cPath, 1) = ":"
+				cPath = left(cPath, len(cPath) - 1)
+			ok
 			cPath = trim(cPath)
 
 			if not fexists(cPath) and fexists("examples/ai/" + cPath)
@@ -265,6 +361,36 @@ class AIAgent
 			return "Saved successfully to long-term memory: " + s
 		})
 
+		# 9. Directory Listing Tool
+		registerTool("list_files", "Lists files in current or specified directory", ["dir"], func(args) {
+			cDir = "."
+			if islist(args) and len(args) >= 1 and trim(args[1]) != ""
+				cDir = trim(args[1])
+			elseif isstring(args) and trim(args) != ""
+				cDir = trim(args)
+			ok
+			cDir = substr(cDir, '"', "")
+			cDir = substr(cDir, "'", "")
+			cDir = trim(cDir)
+			if not direxists(cDir) and direxists("examples/ai/" + cDir)
+				cDir = "examples/ai/" + cDir
+			ok
+			if not direxists(cDir)
+				return "Error: Directory '" + cDir + "' not found."
+			ok
+			aFiles = dir(cDir)
+			cList = ""
+			nCount = 0
+			for f in aFiles
+				if f[1] != "." and f[1] != ".."
+					cList += f[1] + "  "
+					nCount++
+					if nCount >= 25 exit ok
+				ok
+			next
+			return "Files in '" + cDir + "': " + cList
+		})
+
 	func buildToolSchema()
 		cSchema = "You are an intelligent AI assistant with access to the following local functions/tools:" + nl
 		for tool in aTools
@@ -332,9 +458,63 @@ class AIAgent
 		elseif substr(cLowerPrompt, "دولار") > 0 or substr(cLowerPrompt, "دينار") > 0 or substr(cLowerPrompt, "صرف") > 0 or substr(cLowerPrompt, "عملة") > 0 or substr(cLowerPrompt, "currency") > 0 or substr(cLowerPrompt, "exchange") > 0
 			cIntentTool = "currency_rate"
 			cIntentArg  = "USD to DZD"
-		elseif substr(cLowerPrompt, "احسب") > 0 or substr(cLowerPrompt, "ناتج") > 0 or substr(cLowerPrompt, "calc") > 0 or substr(cLowerPrompt, "calculate") > 0 or substr(cLowerPrompt, "*") > 0 or substr(cLowerPrompt, "+") > 0 or substr(cLowerPrompt, "/") > 0
+		elseif substr(cLowerPrompt, "list_files") > 0 or substr(cLowerPrompt, "محتويات المجلد") > 0 or substr(cLowerPrompt, "محتوى المجلد") > 0 or substr(cLowerPrompt, "اعرض ملفات") > 0 or substr(cLowerPrompt, "قائمة الملفات") > 0 or substr(cLowerPrompt, "ملفات المجلد") > 0 or substr(cLowerPrompt, "list files") > 0
+			cIntentTool = "list_files"
+			# Check for quoted directory first
+			nQ1 = substr(cUserPrompt, '"')
+			if nQ1 > 0
+				cSubQ = substr(cUserPrompt, nQ1 + 1)
+				nQ2 = substr(cSubQ, '"')
+				if nQ2 > 0
+					cIntentArg = trim(left(cSubQ, nQ2 - 1))
+				ok
+			ok
+			if cIntentArg = ""
+				cWords = split(cUserPrompt, " ")
+				for w in cWords
+					wClean = trim(w)
+					if substr(wClean, "/") > 0 or substr(wClean, "\\") > 0 or substr(wClean, ":") > 0
+						wClean = substr(wClean, '"', "")
+						wClean = substr(wClean, "'", "")
+						wClean = substr(wClean, "؟", "")
+						wClean = substr(wClean, "?", "")
+						cIntentArg = trim(wClean)
+						exit
+					ok
+				next
+			ok
+			if cIntentArg = "" cIntentArg = "." ok
+		elseif substr(cLowerPrompt, "اقرأ") > 0 or substr(cLowerPrompt, "ملف") > 0 or substr(cLowerPrompt, "read") > 0 or substr(cLowerPrompt, "محتوى") > 0 or substr(cLowerPrompt, "file") > 0 or substr(cLowerPrompt, ".md") > 0 or substr(cLowerPrompt, ".txt") > 0 or substr(cLowerPrompt, ".ring") > 0
+			cIntentTool = "read_file"
+			# Check for quoted path first
+			nQ1 = substr(cUserPrompt, '"')
+			if nQ1 > 0
+				cSubQ = substr(cUserPrompt, nQ1 + 1)
+				nQ2 = substr(cSubQ, '"')
+				if nQ2 > 0
+					cIntentArg = trim(left(cSubQ, nQ2 - 1))
+				ok
+			ok
+			if cIntentArg = ""
+				cWords = split(cUserPrompt, " ")
+				for w in cWords
+					wClean = trim(w)
+					if substr(wClean, ".") > 0 or substr(wClean, "/") > 0 or substr(wClean, "\\") > 0
+						wClean = substr(wClean, "؟", "")
+						wClean = substr(wClean, "?", "")
+						wClean = substr(wClean, '"', "")
+						wClean = substr(wClean, "'", "")
+						if right(wClean, 1) = ":"
+							wClean = left(wClean, len(wClean) - 1)
+						ok
+						cIntentArg = trim(wClean)
+						exit
+					ok
+				next
+			ok
+			if cIntentArg = "" cIntentArg = "README.md" ok
+		elseif substr(cLowerPrompt, "احسب") > 0 or substr(cLowerPrompt, "ناتج") > 0 or substr(cLowerPrompt, "calc") > 0 or substr(cLowerPrompt, "calculate") > 0 or substr(cLowerPrompt, "كم حاصل") > 0 or (substr(cLowerPrompt, "*") > 0 and substr(cLowerPrompt, "=") = 0) or (substr(cLowerPrompt, "+") > 0 and substr(cLowerPrompt, "++") = 0)
 			cIntentTool = "calc"
-			# Extract arithmetic expression
 			cExpr = ""
 			for i = 1 to len(cUserPrompt)
 				ch = cUserPrompt[i]
@@ -344,22 +524,6 @@ class AIAgent
 				ok
 			next
 			cIntentArg = trim(cExpr)
-		elseif substr(cLowerPrompt, "اقرأ") > 0 or substr(cLowerPrompt, "ملف") > 0 or substr(cLowerPrompt, "read") > 0 or substr(cLowerPrompt, "محتوى") > 0 or substr(cLowerPrompt, "file") > 0
-			cIntentTool = "read_file"
-			cWords = split(cUserPrompt, " ")
-			for w in cWords
-				wClean = trim(w)
-				if substr(wClean, ".") > 0 or substr(wClean, "/") > 0 or substr(wClean, "\\") > 0
-					wClean = substr(wClean, "؟", "")
-					wClean = substr(wClean, "?", "")
-					wClean = substr(wClean, ":", "")
-					wClean = substr(wClean, '"', "")
-					wClean = substr(wClean, "'", "")
-					cIntentArg = trim(wClean)
-					exit
-				ok
-			next
-			if cIntentArg = "" cIntentArg = "README.md" ok
 		elseif substr(cLowerPrompt, "نظام") > 0 or substr(cLowerPrompt, "معالج") > 0 or substr(cLowerPrompt, "نظام التشغيل") > 0 or substr(cLowerPrompt, "system") > 0 or substr(cLowerPrompt, "os") > 0 or substr(cLowerPrompt, "specs") > 0
 			cIntentTool = "sys_info"
 		elseif substr(cLowerPrompt, ".csv") > 0 or substr(cLowerPrompt, "بيانات") > 0 or substr(cLowerPrompt, "جدول") > 0 or substr(cLowerPrompt, "موظف") > 0 or substr(cLowerPrompt, "رواتب") > 0 or substr(cLowerPrompt, "راتب") > 0 or substr(cLowerPrompt, "csv") > 0 or substr(cLowerPrompt, "salary") > 0 or substr(cLowerPrompt, "dataframe") > 0
@@ -381,16 +545,14 @@ class AIAgent
 				see "  [Tool Observation] Result: " + cToolResult + nl
 			ok
 
-			# Prompt model to formulate final answer using tool result and conversation history
-			cSysPrompt = "أنت مساعد ذكي وموثوق. أجب المستخدم باختصار ودقة باللغة العربية بناءً على نتيجة الأداة وسياق المحادثة."
-			cPrompt = "<|im_start|>system" + nl + cSysPrompt + "<|im_end|>" + nl
-			if bMemoryEnabled and len(aConversation) > 0
-				cPrompt += formatHistory()
-			ok
-			cPrompt += "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
-			          "<|im_start|>assistant" + nl +
-			          "نتيجة أداة " + cIntentTool + ": " + cToolResult + nl +
-			          "الإجابة: "
+			# Prompt model to formulate final answer using tool result in a standard ChatML schema
+			cSysPrompt = "أنت مساعد ذكي وموثوق. أجب المستخدم بدقة باللغة العربية اعتماداً على نتيجة الأداة التالية:" + nl +
+			              "--- نتيجة " + cIntentTool + " ---" + nl +
+			              cToolResult + nl +
+			              "-------------------------"
+			cPrompt = "<|im_start|>system" + nl + cSysPrompt + "<|im_end|>" + nl +
+			          "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
+			          "<|im_start|>assistant" + nl
 
 			if cIntentTool = "remember_fact"
 				cClean = "تم حفظ ذلك في الذاكرة الدائمة بنجاح: " + cIntentArg
@@ -408,10 +570,10 @@ class AIAgent
 			cFinalAnswer = ""
 			if bStream
 				see "Agent Response: "
-				cFinalAnswer = oModel.generateStream(cPrompt, 160)
+				cFinalAnswer = oModel.generateStream(cPrompt, 512)
 				see nl
 			else
-				cFinalAnswer = oModel.generate(cPrompt, 160)
+				cFinalAnswer = oModel.generate(cPrompt, 512)
 			ok
 
 			cClean = cleanResponse(cFinalAnswer)
@@ -428,34 +590,57 @@ class AIAgent
 		# Automatic Contextual Recall from Persistent Memory (if available)
 		cMemContext = ""
 		if bVectorMemory and oMemory != NULL and oMemory.count() > 0
-			aMemMatches = oMemory.search(cUserPrompt, 2)
-			for mm in aMemMatches
-				if mm[1] >= 0.50
-					cMemContext += "- " + mm[2].cText + nl
+			aMemMatches = oMemory.search(cUserPrompt, 3)
+			if len(aMemMatches) > 0
+				fTopScore = aMemMatches[1][1]
+				# Adaptive threshold: if top match is strong, keep only closely related chunks (prevent context pollution)
+				fMinThreshold = 0.30
+				if fTopScore >= 0.60
+					fMinThreshold = fTopScore - 0.20
+					if fMinThreshold < 0.45 fMinThreshold = 0.45 ok
 				ok
-			next
+				nMatchesCount = 0
+				for mm in aMemMatches
+					if mm[1] >= fMinThreshold
+						cMemContext += "- " + mm[2].cText + nl
+						nMatchesCount++
+					ok
+				next
+				if bVerbose and nMatchesCount > 0
+					see "  [RAG Context Injected: " + nMatchesCount + " relevant memories (Top Score: " + round(fTopScore, 3) + ")]" + nl
+				ok
+			ok
 		ok
 
 		if cMemContext != ""
-			cSysPrompt += nl + "معلومات مؤكدة ومحفوظة في ذاكرتك الدائمة عن المستخدم:" + nl + cMemContext + nl +
-			              "أجب المستخدم بدقة وبشكل مباشر اعتماداً على هذه المعلومات المحفوظة."
+			cSysPrompt += nl + "حقائق ومعلومات مؤكدة مسترجعة من الذاكرة وقاعدة المعرفة:" + nl + cMemContext + nl +
+			              "أجب المستخدم بدقة وبشكل مباشر اعتماداً على هذه الحقائق المحددة. إذا كانت الإجابة رقماً أو اسماً أو تفصيلاً، فاذكره له في بداية الرد فوراً وبوضوح."
 		ok
 
 		cPrompt = "<|im_start|>system" + nl + cSysPrompt + "<|im_end|>" + nl
 		if bMemoryEnabled and len(aConversation) > 0
-			cPrompt += formatHistory()
+			# Only include conversational history if no strong independent RAG memory was injected,
+			# or if the user is asking a follow-up question
+			bIsFollowUp = (len(cUserPrompt) < 30 and (substr(cLowerPrompt, "وماذا") > 0 or substr(cLowerPrompt, "المزيد") > 0 or substr(cLowerPrompt, "أيضا") > 0 or substr(cLowerPrompt, "أيضاً") > 0 or substr(cLowerPrompt, "ثم") > 0 or substr(cLowerPrompt, "وكيف") > 0))
+			if cMemContext = "" or bIsFollowUp
+				cPrompt += formatHistory()
+			ok
 		ok
 		cPrompt += "<|im_start|>user" + nl + cUserPrompt + "<|im_end|>" + nl +
 		          "<|im_start|>assistant" + nl
 
-		oModel.setTemperature(0.6)
+		if cMemContext != ""
+			oModel.setTemperature(0.2)
+		else
+			oModel.setTemperature(0.5)
+		ok
 		cFinalAnswer = ""
 		if bStream
 			see "Agent Response: "
-			cFinalAnswer = oModel.generateStream(cPrompt, 200)
+			cFinalAnswer = oModel.generateStream(cPrompt, 512)
 			see nl
 		else
-			cFinalAnswer = oModel.generate(cPrompt, 200)
+			cFinalAnswer = oModel.generate(cPrompt, 512)
 		ok
 
 		cClean = cleanResponse(cFinalAnswer)
@@ -632,4 +817,10 @@ class AIAgent
 		# Strip any lingering tags
 		cText = substr(cText, "<|im_end|>", "")
 		cText = substr(cText, "<|endoftext|>", "")
+		cText = substr(cText, "<i_end|>", "")
+		cText = substr(cText, "<|im_start|>", "")
+		nPos = substr(cText, "أجب المستخدم بدقة")
+		if nPos > 0
+			cText = left(cText, nPos - 1)
+		ok
 		return trim(cText)

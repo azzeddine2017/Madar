@@ -9,6 +9,7 @@
 # ====================================================================
 
 
+load "stdlibCore.ring"
 
 # Safely load AlQalam if available
 try
@@ -124,20 +125,62 @@ class VectorStore
 			addText(text)
 		next
 
-	# 3. Add text file and split into paragraph chunks
+	# Fast Cohesive Text Chunker using QalamInk
+	func chunkText(cContent, nTargetChars = 500, nMinChars = 40)
+		aParagraphs = split(cContent, nl + nl)
+		aResultChunks = []
+		cBuffer = ""
+
+		try
+			oInk = new QalamInk()
+			for p in aParagraphs
+				p = trim(p)
+				if len(p) < nMinChars loop ok
+				if oInk.size() > 0 and (oInk.size() + len(p)) > nTargetChars
+					aResultChunks + oInk.reveal()
+					oInk.wipe()
+				ok
+				if oInk.size() > 0
+					oInk.inscribe(nl + nl)
+				ok
+				oInk.inscribe(p)
+			next
+			if oInk.size() >= nMinChars
+				aResultChunks + oInk.reveal()
+			ok
+			oInk.wipe()
+		catch
+			# Fallback if AlQalam is not loaded
+			for p in aParagraphs
+				p = trim(p)
+				if len(p) < nMinChars loop ok
+				if len(cBuffer) > 0 and (len(cBuffer) + len(p)) > nTargetChars
+					aResultChunks + cBuffer
+					cBuffer = ""
+				ok
+				if len(cBuffer) > 0
+					cBuffer += nl + nl
+				ok
+				cBuffer += p
+			next
+			if len(cBuffer) >= nMinChars
+				aResultChunks + cBuffer
+			ok
+		done
+		return aResultChunks
+
+	# 3. Add text file and split into cohesive paragraph chunks
 	func addFile(cFilePath, nMinChars = 40)
 		if not fexists(cFilePath)
 			raise(f"File not found: {cFilePath}")
 		ok
 		cContent = read(cFilePath)
-		aParagraphs = split(cContent, nl + nl)
-
-		# Use list comprehension to filter empty / short paragraphs
-		aValidParagraphs = [ trim(p) for p in aParagraphs if len(trim(p)) >= nMinChars ]
+		aValidParagraphs = chunkText(cContent, 500, nMinChars)
+		cFileName = JustFileName(cFilePath)
 
 		nCount = 0
 		for p in aValidParagraphs
-			addText(p, f"{cFilePath}_p{nCount + 1}", ["source" = cFilePath])
+			addText(p, f"{cFileName}_p{nCount + 1}", ["source" = cFilePath])
 			nCount++
 		next
 		return nCount
@@ -150,7 +193,7 @@ class VectorStore
 
 		cContent = ""
 		try
-			oReader = new QalamReader
+			oReader = new QalamReader()
 			cContent = oReader.extractPDFText(cFilePath)
 		catch
 			see f"  [Warning] QalamReader unavailable, fallback to direct read: {cFilePath}" + nl
@@ -161,75 +204,251 @@ class VectorStore
 			return 0
 		ok
 
-		aParagraphs = split(cContent, nl + nl)
-		aValid = [ trim(p) for p in aParagraphs if len(trim(p)) >= nMinChars ]
+		aValid = chunkText(cContent, 500, nMinChars)
+		cFileName = JustFileName(cFilePath)
 
 		nCount = 0
 		for p in aValid
-			addText(p, f"{cFilePath}_p{nCount + 1}", ["source" = cFilePath, "type" = "pdf"])
+			addText(p, f"{cFileName}_p{nCount + 1}", ["source" = cFilePath, "type" = "pdf"])
 			nCount++
 		next
 		return nCount
 
-	# 5. Semantic Search (Leverages Default Args, List Comprehensions & Advanced Slicing)
-	func search(cQuery, nTopK = 3, fMinScore = 0.0)
-		if len(aChunks) = 0
-			return []
-		ok
+	# Fast Markdown-Aware Chunker splitting by #, ##, ### Headings
+	func chunkMarkdown(cContent, cDocTitle = "", nMaxSectionChars = 800, nMinChars = 30)
+		aLines = split(cContent, nl)
+		aResultChunks = []
+		cCurrentHeader = cDocTitle
 
-		# Compute query embedding
-		qVec = model.embedding(cQuery)
+		try
+			oInk = new QalamInk()
+			for line in aLines
+				sLine = trim(line)
+				bIsHeader = false
+				if len(sLine) >= 2
+					if left(sLine, 2) = "# "
+						bIsHeader = true
+					elseif len(sLine) >= 3 and left(sLine, 3) = "## "
+						bIsHeader = true
+					elseif len(sLine) >= 4 and left(sLine, 4) = "### "
+						bIsHeader = true
+					elseif len(sLine) >= 5 and left(sLine, 5) = "#### "
+						bIsHeader = true
+					ok
+				ok
 
-		# Compute similarity scores for all chunks using list comprehension & native tensor cosine similarity
-		aScored = [ [tensor_cosine_similarity(qVec, ch.tEmbedding), ch] for ch in aChunks ]
-
-		# Filter by minimum score threshold using list comprehension
-		aFiltered = [ item for item in aScored if item[1] >= fMinScore ]
-
-		# Sort in descending order by similarity score
-		aFiltered = sort(aFiltered, 1)
-		aReversed = aFiltered[::-1] # Leverages Madar's native slicing reversal!
-
-		# Take top-K results using Madar's native slicing
-		if len(aReversed) > nTopK
-			return aReversed[1:nTopK]
-		ok
-		return aReversed
-
-	# 6. Hybrid Search (Semantic Dense Vectors + AlQalam QalamIndex Lexical Search)
-	func hybridSearch(cQuery, nTopK = 3, fAlpha = 0.7)
-		if len(aChunks) = 0
-			return []
-		ok
-
-		# 1. Compute Semantic Vector Scores
-		qVec = model.embedding(cQuery)
-		aTokens = split(lower(cQuery), " ")
-
-		aScored = []
-		for ch in aChunks
-			fSemSim = tensor_cosine_similarity(qVec, ch.tEmbedding)
-
-			# 2. Compute Lexical Keyword Overlap
-			nMatches = 0
-			cChunkLower = lower(ch.cText)
-			for tok in aTokens
-				tok = trim(tok)
-				if len(tok) >= 3 and substr(cChunkLower, tok) > 0
-					nMatches++
+				if bIsHeader
+					if oInk.size() >= nMinChars
+						aResultChunks + oInk.reveal()
+						oInk.wipe()
+					ok
+					cCurrentHeader = sLine
+					if cDocTitle != "" and cDocTitle != sLine
+						oInk.inscribe("[" + cDocTitle + " > " + sLine + "]" + nl + nl)
+					else
+						oInk.inscribe(sLine + nl + nl)
+					ok
+				else
+					if oInk.size() > nMaxSectionChars and sLine = ""
+						if oInk.size() >= nMinChars
+							aResultChunks + oInk.reveal()
+							oInk.wipe()
+							if cCurrentHeader != ""
+								oInk.inscribe(cCurrentHeader + " (cont.)" + nl + nl)
+							ok
+						ok
+					else
+						oInk.inscribe(line + nl)
+					ok
 				ok
 			next
-			if len(aTokens) > 0
-				fLexScore = nMatches / len(aTokens)
+
+			if oInk.size() >= nMinChars
+				aResultChunks + oInk.reveal()
+			ok
+			oInk.wipe()
+		catch
+			cBuffer = ""
+			for line in aLines
+				sLine = trim(line)
+				bIsHeader = false
+				if len(sLine) >= 2
+					if left(sLine, 2) = "# " or (len(sLine) >= 3 and left(sLine, 3) = "## ") or (len(sLine) >= 4 and left(sLine, 4) = "### ")
+						bIsHeader = true
+					ok
+				ok
+
+				if bIsHeader
+					if len(trim(cBuffer)) >= nMinChars
+						aResultChunks + cBuffer
+						cBuffer = ""
+					ok
+					cCurrentHeader = sLine
+					if cDocTitle != "" and cDocTitle != sLine
+						cBuffer = "[" + cDocTitle + " > " + sLine + "]" + nl + nl
+					else
+						cBuffer = sLine + nl + nl
+					ok
+				else
+					if len(cBuffer) > nMaxSectionChars and sLine = ""
+						if len(trim(cBuffer)) >= nMinChars
+							aResultChunks + cBuffer
+							cBuffer = cCurrentHeader + " (cont.)" + nl + nl
+						ok
+					else
+						cBuffer += line + nl
+					ok
+				ok
+			next
+
+			if len(trim(cBuffer)) >= nMinChars
+				aResultChunks + cBuffer
+			ok
+		done
+
+		return aResultChunks
+
+	# 4. Add Markdown file with heading-aware chunking
+	func addMarkdown(cFilePath, nMinChars = 30)
+		if not fexists(cFilePath)
+			raise(f"Markdown file not found: {cFilePath}")
+		ok
+		cContent = read(cFilePath)
+		cDocName = JustFileName(cFilePath)
+
+		aChunksList = chunkMarkdown(cContent, cDocName, 800, nMinChars)
+
+		nCount = 0
+		for ch in aChunksList
+			addText(trim(ch), f"{cDocName}_h{nCount + 1}", ["source" = cFilePath, "type" = "markdown"])
+			nCount++
+		next
+		return nCount
+
+	# 5. Add single document (auto-routes .pdf to addPDF, .md to addMarkdown, others to addFile)
+	func addDocument(cFilePath, nMinChars = 40)
+		if not fexists(cFilePath)
+			raise(f"Document file not found: {cFilePath}")
+		ok
+		cExt = lower(JustFileExt(cFilePath))
+		if cExt = "pdf"
+			return addPDF(cFilePath, nMinChars)
+		elseif cExt = "md" or cExt = "markdown"
+			return addMarkdown(cFilePath, nMinChars)
+		else
+			return addFile(cFilePath, nMinChars)
+		ok
+
+	# 6. Add directory of documents recursively (.md, .txt, .pdf, .ring, etc.)
+	func addDirectory(cDirPath, aExts = ["md", "txt", "pdf", "ring", "rh"], nMinChars = 40, pCallback = NULL)
+		if not direxists(cDirPath)
+			raise(f"Directory not found: {cDirPath}")
+		ok
+
+		aAllFiles = ListAllFiles(cDirPath, NULL)
+		nTotalAdded = 0
+		nFilesProcessed = 0
+		aProcessedFiles = []
+
+		for cFile in aAllFiles
+			cExt = lower(JustFileExt(cFile))
+			if cExt != "" and find(aExts, cExt) > 0
+				nChunks = addDocument(cFile, nMinChars)
+				if nChunks > 0
+					nTotalAdded += nChunks
+					nFilesProcessed++
+					aProcessedFiles + [cFile, nChunks]
+					if pCallback != NULL
+						call pCallback(cFile, nChunks)
+					ok
+				ok
+			ok
+		next
+
+		return [nTotalAdded, nFilesProcessed, aProcessedFiles]
+
+	# 5. High-Precision Hybrid Semantic & Lexical Search (Production RAG Engine)
+	func search(cQuery, nTopK = 3, fMinScore = 0.0)
+		return hybridSearch(cQuery, nTopK, 0.50)
+
+	# 6. Hybrid Search: Dense Vector Semantic Similarity + Calibrated Lexical Overlap
+	func hybridSearch(cQuery, nTopK = 3, fAlpha = 0.50)
+		if len(aChunks) = 0
+			return []
+		ok
+
+		# 1. Compute Semantic Vector Query
+		qVec = model.embedding(cQuery)
+
+		# 2. Extract Meaningful Keywords (Exclude Arabic & English Stopwords)
+		aStopwords = [
+			"ما", "هو", "هي", "ماهو", "ماهي", "ماذا", "هل", "من", "في", "على", 
+			"إلى", "الي", "عن", "مع", "هذا", "هذه", "تلك", "ذلك", "كان", "أن", 
+			"ان", "أو", "او", "ثم", "كيف", "اين", "أين", "متى", "كم", "لماذا",
+			"the", "is", "at", "which", "on", "a", "an", "and", "or", "what", "how", "who", "where"
+		]
+
+		cCleanQuery = lower(trim(cQuery))
+		cCleanQuery = substr(cCleanQuery, "؟", "")
+		cCleanQuery = substr(cCleanQuery, "?", "")
+		cCleanQuery = substr(cCleanQuery, ".", "")
+		cCleanQuery = substr(cCleanQuery, ",", "")
+		cCleanQuery = substr(cCleanQuery, "،", "")
+		cCleanQuery = substr(cCleanQuery, ":", "")
+
+		aRawTokens = split(cCleanQuery, " ")
+		aKeywords = []
+		for tok in aRawTokens
+			tok = trim(tok)
+			if len(tok) >= 2 and find(aStopwords, tok) = 0
+				aKeywords + tok
+			ok
+		next
+
+		nKeyCount = len(aKeywords)
+		aScored = []
+
+		for ch in aChunks
+			# Raw cosine similarity from causal LLM hidden states (anisotropic base ~0.70)
+			fRawSim = tensor_cosine_similarity(qVec, ch.tEmbedding)
+
+			# Rescale semantic similarity from [0.70, 1.00] baseline to [0.0, 1.0] dynamic range
+			fNormSem = (fRawSim - 0.70) / 0.30
+			if fNormSem < 0.0 fNormSem = 0.0 ok
+			if fNormSem > 1.0 fNormSem = 1.0 ok
+
+			# Lexical Keyword Matching
+			nMatches = 0.0
+			cChunkLower = lower(ch.cText + " " + ch.cId)
+			if nKeyCount > 0
+				for kw in aKeywords
+					# Direct substring match
+					if substr(cChunkLower, kw) > 0
+						nMatches += 1.0
+					elseif len(kw) >= 4 and substr(cChunkLower, left(kw, len(kw) - 1)) > 0
+						# Stem prefix match (e.g. هاتفي -> هاتف, منصة -> منص)
+						nMatches += 0.85
+					elseif len(kw) >= 5 and substr(cChunkLower, left(kw, len(kw) - 2)) > 0
+						nMatches += 0.60
+					ok
+				next
+				fLexScore = nMatches / nKeyCount
+				if fLexScore > 1.0 fLexScore = 1.0 ok
 			else
 				fLexScore = 0.0
 			ok
 
-			# 3. Combine scores: fAlpha * Semantic + (1 - fAlpha) * Lexical
-			fFinalScore = (fAlpha * fSemSim) + ((1.0 - fAlpha) * fLexScore)
-			aScored + [fFinalScore, ch, fSemSim, fLexScore]
+			# Calibrated Hybrid Score
+			if nKeyCount > 0
+				fFinalScore = (fAlpha * fNormSem) + ((1.0 - fAlpha) * fLexScore)
+			else
+				fFinalScore = fNormSem
+			ok
+
+			aScored + [fFinalScore, ch, fRawSim, fLexScore]
 		next
 
+		# Sort in descending order
 		aScored = sort(aScored, 1)
 		aReversed = aScored[::-1]
 
@@ -244,20 +463,26 @@ class VectorStore
 		if !fp
 			return false
 		ok
-		# Header: Magic "MDVR" + version (1)
-		fwrite(fp, "MDVR" + char(1) + nl)
+		# Header: Magic "MDVR" + version (2)
+		fwrite(fp, "MDVR" + char(2) + nl)
 		fwrite(fp, "" + len(aChunks) + nl)
 
+		nOldDec = 7
+		decimals(nOldDec)
 		for ch in aChunks
-			fwrite(fp, "" + len(ch.cId) + " " + len(ch.cText) + nl)
-			fwrite(fp, ch.cId + ch.cText + nl)
+			cId = ch.cId
+			cText = ch.cText
 			aFloats = tensor_to_list(ch.tEmbedding)
+			fwrite(fp, "" + len(cId) + " " + len(cText) + " " + len(aFloats) + nl)
+			fwrite(fp, cId + nl)
+			fwrite(fp, cText + nl)
 			cLine = ""
 			for val in aFloats
 				cLine += "" + val + " "
 			next
 			fwrite(fp, cLine + nl)
 		next
+		decimals(2)
 		fclose(fp)
 		return true
 
@@ -266,7 +491,7 @@ class VectorStore
 		if !fexists(cFilePath)
 			return 0
 		ok
-		fp = fopen(cFilePath, "r")
+		fp = fopen(cFilePath, "rb")
 		if !fp
 			return 0
 		ok
@@ -275,37 +500,94 @@ class VectorStore
 			fclose(fp)
 			return 0
 		ok
-		cVer = fgetc(fp)
-		fgetc(fp) # Skip newline
+		nVer = ascii(fgetc(fp))
+		# Read past rest of header line
+		while true
+			c = fgetc(fp)
+			if c = char(10) or c = NULL exit ok
+		end
 
-		# Read chunk count
-		cLine = fgets(fp, 64)
+		# Read chunk count line
+		cLine = ""
+		while true
+			c = fgetc(fp)
+			if c = char(10) or c = NULL exit ok
+			if c != char(13) cLine += c ok
+		end
 		nCount = 0 + trim(cLine)
 		aChunks = []
 
-		for i = 1 to nCount
-			cMetaLine = fgets(fp, 64)
-			aLengths = split(trim(cMetaLine), " ")
-			nIdLen = 0 + aLengths[1]
-			nTextLen = 0 + aLengths[2]
+		if nVer = 2
+			for i = 1 to nCount
+				cMetaLine = ""
+				while true
+					c = fgetc(fp)
+					if c = char(10) or c = NULL exit ok
+					if c != char(13) cMetaLine += c ok
+				end
+				aMetaParts = split(trim(cMetaLine), " ")
+				if len(aMetaParts) < 2 loop ok
+				nIdLen = 0 + aMetaParts[1]
+				nTextLen = 0 + aMetaParts[2]
 
-			# Read text content
-			cBoth = fread(fp, nIdLen + nTextLen)
-			fgetc(fp) # newline
-			cId = left(cBoth, nIdLen)
-			cTxt = right(cBoth, nTextLen)
+				cId = fread(fp, nIdLen)
+				cNext = fgetc(fp)
+				if cNext = char(13) cNext = fgetc(fp) ok
 
-			# Read embedding floats line
-			cFloatsLine = fgets(fp, 131072)
-			aFloatStrs = split(trim(cFloatsLine), " ")
-			aFloats = []
-			for s in aFloatStrs
-				if s != "" aFloats + (0.0 + s) ok
+				cTxt = fread(fp, nTextLen)
+				cNext = fgetc(fp)
+				if cNext = char(13) cNext = fgetc(fp) ok
+
+				cFloatsLine = ""
+				while true
+					c = fgetc(fp)
+					if c = char(10) or c = NULL exit ok
+					if c != char(13) cFloatsLine += c ok
+				end
+				aFloatStrs = split(trim(cFloatsLine), " ")
+				aFloats = []
+				for s in aFloatStrs
+					if s != "" aFloats + (0.0 + s) ok
+				next
+
+				tEmb = tensor_from_list(aFloats, "float32")
+				aChunks + new DocumentChunk(cId, cTxt, tEmb, [])
 			next
+		else
+			# Version 1 compatibility fallback
+			for i = 1 to nCount
+				cMetaLine = ""
+				while true
+					c = fgetc(fp)
+					if c = char(10) or c = NULL exit ok
+					if c != char(13) cMetaLine += c ok
+				end
+				aLengths = split(trim(cMetaLine), " ")
+				nIdLen = 0 + aLengths[1]
+				nTextLen = 0 + aLengths[2]
 
-			tEmb = tensor_from_list(aFloats, "float32")
-			aChunks + new DocumentChunk(cId, cTxt, tEmb, [])
-		next
+				cBoth = fread(fp, nIdLen + nTextLen)
+				cNext = fgetc(fp)
+				if cNext = char(13) cNext = fgetc(fp) ok
+				cId = left(cBoth, nIdLen)
+				cTxt = right(cBoth, nTextLen)
+
+				cFloatsLine = ""
+				while true
+					c = fgetc(fp)
+					if c = char(10) or c = NULL exit ok
+					if c != char(13) cFloatsLine += c ok
+				end
+				aFloatStrs = split(trim(cFloatsLine), " ")
+				aFloats = []
+				for s in aFloatStrs
+					if s != "" aFloats + (0.0 + s) ok
+				next
+
+				tEmb = tensor_from_list(aFloats, "float32")
+				aChunks + new DocumentChunk(cId, cTxt, tEmb, [])
+			next
+		ok
 
 		fclose(fp)
 		return len(aChunks)
