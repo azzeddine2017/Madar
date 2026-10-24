@@ -594,7 +594,12 @@ int ring_parser_stmt(Parser *pParser) {
 						? ring_list_getlist(pParser->pTokens, pParser->nActiveToken + 1)
 						: NULL;
 					int nNextType = pListNext ? ring_list_getint(pListNext, RING_SCANNER_TOKENTYPE) : 0;
-					int nNextIndex = pListNext ? ring_list_getint(pListNext, RING_SCANNER_TOKENINDEX) : 0;
+					int nNextIndex = 0;
+					if (nNextType == SCANNER_TOKEN_KEYWORD) {
+						nNextIndex = atoi(ring_list_getstring(pListNext, RING_SCANNER_TOKENVALUE));
+					} else if (nNextType == SCANNER_TOKEN_OPERATOR) {
+						nNextIndex = ring_list_getint(pListNext, RING_SCANNER_TOKENINDEX);
+					}
 					if (nNextType == SCANNER_TOKEN_ENDLINE || 
 					    (nNextType == SCANNER_TOKEN_KEYWORD && (nNextIndex == K_STEP || nNextIndex == K_NEXT || nNextIndex == K_ENDFOR || nNextIndex == K_END || nNextIndex == K_DO)) ||
 					    (nNextType == SCANNER_TOKEN_OPERATOR && nNextIndex == OP_BRACEOPEN)) {
@@ -1490,6 +1495,7 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 		ring_parser_icg_newoperandint(pParser, RING_TRUE);
 
 		/* Hoist Source Expression: Evaluate ONCE into cStrSource before loop start */
+		ring_parser_icg_newoperation(pParser, ICO_COMPSTART);
 		sprintf(aLoops[nLoopsCount].cStrSource, "n_sys_src_%d", ring_parser_icg_instructionscount(pParser));
 		ring_parser_icg_loadaddress(pParser, aLoops[nLoopsCount].cStrSource);
 		ring_parser_nexttoken(pParser);
@@ -1503,6 +1509,7 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 		pParser->lAssignmentFlag = 1;
 		ring_parser_icg_beforeequal(pParser, OP_EQUAL);
 		ring_parser_icg_newoperation(pParser, ICO_ASSIGNMENT);
+		ring_parser_icg_newoperation(pParser, ICO_COMPEND);
 
 		/* Setup Loop Counter: cStrCounter = 1 */
 		sprintf(aLoops[nLoopsCount].cStrCounter, "n_sys_var_%d", ring_parser_icg_instructionscount(pParser));
@@ -1569,11 +1576,13 @@ int ring_parser_list_comprehension(Parser *pParser, unsigned int nExprStartToken
 			if (nExprStartToken == 0) {
 				pParser->lInsideBracket = 1;
 			}
+			ring_parser_icg_newoperation(pParser, ICO_COMPSTART);
 			if (!ring_parser_csexpr(pParser)) {
 				pParser->lInsideBracket = 0;
 				ring_string_delete_gc(pParser->pRingState, aLoops[nLoopsCount].pVarName);
 				return RING_PARSER_FAIL;
 			}
+			ring_parser_icg_newoperation(pParser, ICO_COMPEND);
 			pParser->lInsideBracket = 0;
 			pParser->lAssignmentFlag = 1;
 			ring_parser_icg_newoperation(pParser, ICO_JUMPZERO);
@@ -1702,8 +1711,33 @@ int ring_parser_list(Parser *pParser) {
 			nStartToken = pParser->nActiveToken;
 			nGenCodeStart = ring_list_getsize(pParser->pGenCode);
 			if (ring_parser_expr(pParser)) {
-				RING_PARSER_IGNORENEWLINE;
-				if (lFirstItem && (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_DOUR))) {
+				int lIsComp = 0;
+				if (lFirstItem) {
+					if (ring_parser_iskeyword(pParser, K_FOR) || ring_parser_iskeyword(pParser, K_DOUR)) {
+						lIsComp = 1;
+					} else if (ring_parser_isendline(pParser)) {
+						int nPeek = pParser->nActiveToken;
+						while (nPeek <= pParser->nTokensCount) {
+							List *pT = ring_list_getlist(pParser->pTokens, nPeek);
+							int nType = ring_list_getint(pT, RING_SCANNER_TOKENTYPE);
+							if (nType == SCANNER_TOKEN_ENDLINE || nType == SCANNER_TOKEN_COMMENT) {
+								nPeek++;
+								continue;
+							}
+							if (nType == SCANNER_TOKEN_KEYWORD) {
+								int nIdx = atoi(ring_list_getstring(pT, RING_SCANNER_TOKENVALUE));
+								if (nIdx == K_FOR || nIdx == K_DOUR) {
+									lIsComp = 1;
+								}
+							}
+							break;
+						}
+						if (lIsComp) {
+							RING_PARSER_IGNORENEWLINE;
+						}
+					}
+				}
+				if (lIsComp) {
 					return ring_parser_list_comprehension(pParser, nStartToken, nGenCodeStart);
 				}
 				lFirstItem = RING_FALSE;

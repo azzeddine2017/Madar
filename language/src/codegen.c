@@ -192,6 +192,10 @@ void ring_parser_icg_listitem(Parser *pParser) {
 	int nLastOperation;
 	if (pParser->pActiveGenCodeList != NULL) {
 		nLastOperation = ring_parser_icg_getlastoperation(pParser);
+		if ((nLastOperation == ICO_NEWLINE) &&
+		    (ring_parser_icg_getoperationbeforelastoperation(pParser) == ICO_LISTEND)) {
+			return;
+		}
 		if (nLastOperation == ICO_LISTEND) {
 			return;
 		} else if (nLastOperation == ICO_PUSHN) {

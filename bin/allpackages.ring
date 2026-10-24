@@ -1,0 +1,5 @@
+aAllPackagesInfo = [
+	:stdlib = 	[
+		"ringenv"
+	]
+]

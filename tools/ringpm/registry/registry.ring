@@ -711,10 +711,6 @@ aPackagesRegistry = [
 	  :description = "An easy to use pattern matching",
 	  :ProviderUserName = "ringpackages"
 	],
-	[ :name = "stzlib",
-	  :description = "Softanza Library for the Ring programming language",
-	  :ProviderUserName = "mayouni"
-	],
 	[ :name = "httplib",
 	  :description = "RingHTTPLib package for the Ring programming language",
 	  :ProviderUserName = "ringpackages"
@@ -1014,5 +1010,49 @@ aPackagesRegistry = [
 	[ :name = "docxlib",
 	  :description = "DOCX (Word) library for the Ring Programming Language",
 	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ring2apk",
+	  :description = "Build Android APKs from Ring applications",
+	  :ProviderUserName = "ysdragon"
+	],
+	[ :name = "steamlib",
+	  :description = "Support Steam Achievements (for Windows)",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringenv",
+	  :description = "Download and manage multiple Ring language versions",
+	  :ProviderUserName = "azzeddine2017"
+	],
+	[ :name = "ringqr",
+	  :description = "QR Code generator (ISO/IEC 18004 Model 2, versions 1 to 40, error correction L, M, Q and H)",
+	  :ProviderUserName = "gaiamap"
+	],
+	[ :name = "ringbc",
+	  :description = "Barcode generator (EAN-13 and CODE128 sets A, B and C, with automatic type selection)",
+	  :ProviderUserName = "gaiamap"
+	],
+	[ :name = "ringfm",
+	  :description = "Text measurement (Real font metrics read from a TrueType file, with wrapping and a built-in estimate as a fallback)",
+	  :ProviderUserName = "gaiamap"
+	],
+	[ :name = "ascii2label",
+	  :description = "Label layout tool (An ASCII drawing and a CSV in, labels out as HTML and SVG)",
+	  :ProviderUserName = "gaiamap"
+	],
+	[ :name = "ringtest",
+	  :description = "Modern, ultra-fast, and lightweight unit testing framework and test runner for Ring",
+	  :ProviderUserName = "azzeddine2017"
+	],
+	[ :name = "simpletests",
+	  :description = "Testing Framework Prototype for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "spaceshooter3d",
+	  :description = "Space combat simulator and dogfight interceptor built using RingRayLib",
+	  :ProviderUserName = "azzeddine2017"
+	],
+	[ :name = "mario3d_sample",
+	  :description = "Nostalgic 3D Third-Person Platformer built using RingRayLib",
+	  :ProviderUserName = "azzeddine2017"
 	]
 ]
