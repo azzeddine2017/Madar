@@ -1,7 +1,7 @@
 # Madar (مدار)
 
-[![Release](https://img.shields.io/badge/Release-0.2.0--alpha-blue.svg)](CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20|%20AVX2-green.svg)](docs/INSTALL.md)
+[![Release](https://img.shields.io/badge/Release-0.3.0--alpha-blue.svg)](CHANGELOG.md)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20|%20AVX2%20|%20OpenCL-green.svg)](docs/INSTALL.md)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **An AI-Native, High-Performance Dialect and Runtime for the Ring Ecosystem**
@@ -19,10 +19,18 @@
    - Native operator overloading (`+`, `-`, `*`, `/`, scalar arithmetic) and neural activations (`ReLU`, `GELU`, `Sigmoid`, `Softmax`).
 
 2. **Full GGUF & Quantization Support (V2 / V3) + AVX2 SIMD Core:**
-   - High-throughput binary reader supporting `Q4_0`, `Q8_0`, `F16`, and `F32`.
+   - High-throughput binary reader supporting `Q4_0`, `Q8_0`, `Q6_K`, `F16`, and `F32`.
    - **Hardware-Accelerated AVX2 & FMA Dot Products**: 256-bit SIMD vectorized kernels unpacking 32 x 4-bit nibbles and calculating matrix multiplications with F16C and FMA instructions for unprecedented CPU generation speed.
    - **Full Q6_K Super-Block Dequantization**: Native vector dot product kernel for `Q6_K` tensors (`output.weight` in modern 6-bit quantized models).
    - Zero-copy OS memory mapping (`MapViewOfFile` / `mmap`), enabling multi-gigabyte models to be mounted in fractions of a second with under 20 MB of active runtime RAM.
+
+3. **OpenCL GPU Acceleration Engine (Intel / AMD / NVIDIA):**
+   - **Dynamic OpenCL Loading**: GPU acceleration enabled via `LoadLibrary("OpenCL.dll")` at runtime — **zero linker dependencies**, no external SDK required. Falls back cleanly to CPU-only mode if no GPU driver is present.
+   - **Zero-Copy GPU Weight Binding**: FFN layer weights (`gate`, `up`, `down`) and the LM Head (`output.weight`) are pre-mapped to GPU memory once at model load using `CL_MEM_USE_HOST_PTR`, eliminating all runtime buffer allocations during inference.
+   - **128-bit SIMD OpenCL Kernels**: All GPU kernels (`Q4_0`, `Q8_0`, `Q6_K`) use `vload4` / `convert_float4` 128-bit vector reads and accumulate into `float4` registers, fully utilizing Intel HD Graphics Execution Units.
+   - **Hybrid CPU+GPU Pipeline**: The GPU handles the computationally dense FFN layers (Gate/Up/Down projections) and LM Head; the CPU handles latency-sensitive attention and KV-cache operations with AVX2.
+   - **Runtime Toggle**: `/gpu on|off` interactive command in `chat.ring`, and `model.setGPU(1/0)` in the scripting API.
+   - **Measured Speedup**: +100% (2×) token generation on DeepSeek-R1-1.5B (4.17 vs 2.11 tok/s) with Intel HD Graphics 5500. Larger models benefit proportionally more.
 
 3. **In-Core Transformer & Real-Time Token Streaming Engine:**
    - **Real-Time Token Streaming**: Low-level autoregressive generator API (`prefill`, `step`, `hasMore`, `generateStream`) pushing generated words directly to `stdout` with UTF-8 byte assembly.
@@ -83,7 +91,7 @@ bin\ring.exe examples\ai\stream_demo.ring
 bin\ring.exe examples\ai\chat.ring
 ```
 
-### 3. Declarative Scripting API
+### 5. Declarative Scripting API with GPU
 ```ring
 load "madar_ai.ring"
 
@@ -91,8 +99,9 @@ load "madar_ai.ring"
 model = new DeepSeekModel("models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf")
 model.setThreads(4)
 model.setTemperature(0.6)
+model.setGPU(1)        # Enable OpenCL GPU acceleration (Intel/AMD/NVIDIA)
 
-# Generate response
+# Generate response with GPU-accelerated FFN + LM Head
 response = model.chatStream("ما هي عاصمة الجزائر؟", 128)
 ```
 
@@ -120,7 +129,7 @@ Runs comprehensive test suites covering core backward compatibility, tensor math
 ## 📄 Documentation
 
 - [Installation & Quickstart Guide (دليل التثبيت والتشغيل)](docs/INSTALL.md)
-- [AI Engine & Real-Time Streaming Architecture](docs/AI_ENGINE.md)
+- [AI Engine, GPU Acceleration & Real-Time Streaming](docs/AI_ENGINE.md)
 - [Detailed Technical Architecture](docs/ARCHITECTURE.md)
 - [Madar 'DOUR' (دُر) Loops & Auto-JIT Engine (حلقات دُر ومحرك الجيت)](docs/DOUR_LOOPS.md)
 - [Python-style List Comprehensions Guide](docs/COMPREHENSIONS.md)

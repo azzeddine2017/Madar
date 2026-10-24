@@ -32,12 +32,22 @@ Madar transforms the lightweight Ring Core engine into an AI-first runtime throu
 +-------------------------------------------------------------+
 |            In-Core GGUF & Transformer Engine                |
 |    - Memory-Mapped GGUF (v2/v3) Binary Reader               |
-|    - AVX2 & FMA SIMD MatVec Kernels (Q4_0, Q8_0, F16, F32)  |
+|    - AVX2 & FMA SIMD MatVec Kernels (Q4_0, Q8_0, F16, F32) |
 |    - Quantized MatVec: Q4_0, Q8_0, F16, and Q6_K SuperBlocks|
 |    - Multi-Threaded Event-Driven Worker Pool                |
 |    - Byte-Level GPT-2 / BPE Multilingual Tokenizer          |
 |    - KV-Cache Engine & Prefill Logits Optimization          |
 |    - See docs/AI_ENGINE.md for deep SIMD details            |
++-------------------------------------------------------------+
+                              |
++-------------------------------------------------------------+
+|            OpenCL GPU Acceleration Layer                    |
+|    - Dynamic LoadLibrary("OpenCL.dll") — Zero SDK deps      |
+|    - Zero-Copy CL_MEM_USE_HOST_PTR for all FFN weights      |
+|    - Vectorized float4 kernels: Q4_0, Q8_0, Q6_K           |
+|    - Work-Group 64 tuned for Intel HD Graphics SIMD-16      |
+|    - Hybrid CPU+GPU: GPU = FFN + LM Head, CPU = Attention   |
+|    - Runtime toggle: /gpu on|off  or  model.setGPU(1/0)    |
 +-------------------------------------------------------------+
 ```
 
@@ -108,13 +118,13 @@ Because `6` fits cleanly inside the existing 3 bits, **the memory footprint of `
 
 ### 2. Quantization Kernels Supported
 
-| Format | Block Size | Struct Size | Packing & Dequantization Details |
-| :--- | :--- | :--- | :--- |
-| **F32** | 1 | 4 bytes | Standard IEEE 754 float |
-| **F16** | 1 | 2 bytes | Half-precision float converted via table/bit shifts |
-| **Q4_0** | 32 | 18 bytes | 16-bit scale + 16 bytes (32 x 4-bit nibbles - 8) |
-| **Q8_0** | 32 | 34 bytes | 16-bit scale + 32 x 8-bit signed quants |
-| **Q6_K** | 256 | 210 bytes | 128B lower 4 bits (`ql`) + 64B upper 2 bits (`qh`) + 16B 8-bit sub-block scales + FP16 super-block scale |
+| Format | Block Size | Struct Size | Packing & Dequantization Details | GPU OpenCL Kernel |
+| :--- | :--- | :--- | :--- | :--- |
+| **F32** | 1 | 4 bytes | Standard IEEE 754 float | — |
+| **F16** | 1 | 2 bytes | Half-precision float converted via table/bit shifts | — |
+| **Q4_0** | 32 | 18 bytes | 16-bit scale + 16 bytes (32 x 4-bit nibbles - 8) | `matvec_q4_0_kernel` ✅ |
+| **Q8_0** | 32 | 34 bytes | 16-bit scale + 32 x 8-bit signed quants | `matvec_q8_0_kernel` ✅ |
+| **Q6_K** | 256 | 210 bytes | 128B lower 4 bits (`ql`) + 64B upper 2 bits (`qh`) + 16B 8-bit sub-block scales + FP16 super-block scale | `matvec_q6_k_kernel` ✅ |
 
 ### 3. Dynamic Heap Buffer Architecture
 To support arbitrary LLM architectures (from 0.5B to 14B+) without risk of C runtime stack exhaustion:
@@ -163,6 +173,7 @@ Madar is extending Ring's grammar to incorporate high-productivity constructs wh
 | `gguf_close` | `gguf_close(handle)` | Closes and unmaps the GGUF file. |
 | `madar_model_open` | `madar_model_open(path)` | Initializes transformer inference runtime from GGUF. |
 | `madar_model_set_threads` | `madar_model_set_threads(h, n)` | Sets active CPU worker thread count. |
+| `madar_model_set_gpu` | `madar_model_set_gpu(h, bEnable)` | Enables (1) or disables (0) OpenCL GPU acceleration at runtime. |
 | `madar_model_generate` | `madar_model_generate(h, prompt, maxTokens, temp)` | Executes autoregressive text generation. |
 | `madar_model_generate_stream`| `madar_model_generate_stream(h, prompt, maxTokens, temp, stream)` | Streams generated tokens to terminal in real time. |
 

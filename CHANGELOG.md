@@ -7,7 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0-alpha] - 2026-10-24
+
+### Added
+
+- **OpenCL GPU Acceleration Engine (`language/src/ring_inference.c`, `language/include/opencl_stub.h`):**
+  - **Dynamic OpenCL DLL Loading**: Added complete `opencl_stub.h` header defining all required OpenCL types, constants, and function pointer typedefs. GPU is enabled at runtime via `LoadLibraryA("OpenCL.dll")` and `GetProcAddress` — **zero linker-time dependencies** on any OpenCL SDK or `.lib` files. Graceful CPU-only fallback if no OpenCL driver is present.
+  - **Zero-Copy GPU Weight Pre-Mapping**: All static model weight buffers (FFN Gate, FFN Up, FFN Down for every transformer layer, plus the LM Head `output.weight`) are bound once at model initialization using `CL_MEM_USE_HOST_PTR` zero-copy OpenCL buffers. This eliminates every dynamic `clCreateBuffer`/`clReleaseMemObject` call during token generation — **0 runtime GPU allocations per token**.
+  - **Full-Pipeline Hybrid CPU+GPU Offload**: The GPU now handles all computationally intensive weight projections across the forward pass:
+    - All 24–28 FFN layers: Gate projection (`W_gate * xb`), Up projection (`W_up * xb`), Down projection (`W_down * hb`).
+    - LM Head: Output logit projection (`output.weight * xb`, up to 151,936 rows).
+    - CPU retains: RMSNorm, RoPE, Multi-Head Attention with GQA, KV-Cache, SiLU activation, and sampling — all latency-sensitive operations where DDR3L cache efficiency dominates.
+  - **128-bit SIMD OpenCL Kernels** (rewritten from scalar to vectorized):
+    - `matvec_q4_0_kernel`: Uses `vload4(qs)` to load 4 nibble bytes at once, `convert_int4` bitmask unpacking, and `float4` accumulation — 4× fewer GPU iterations vs. scalar.
+    - `matvec_q8_0_kernel`: Dual `float4` accumulators (`acc0 + acc1`) over 8 signed bytes per cycle — 8× throughput increase over single-element loop.
+    - `matvec_q6_k_kernel`: Full vectorized `vload4` for `ql`, `qh`, and 4 `float4` accumulators per sub-block (`acc0`–`acc3`) — eliminates all scalar element-by-element loop overhead.
+  - **Tuned Work-Group Size**: Replaced `NULL` local work size with `localSize = 64`, padding `globalSize` to the nearest multiple of 64. This aligns kernel dispatch to Intel HD Graphics SIMD-16 Execution Unit width for optimal occupancy.
+  - **Runtime GPU Toggle**: Added `ring_model_set_gpu(pModel, bEnable)` C API, Ring-level `madar_model_set_gpu(h, b)`, `model.setGPU(1/0)` in `madar_ai.ring`, and `/gpu on|off` interactive command in `chat.ring`.
+  - **GPU-Aware `matvec_multiply_gpu` Dispatch Function**: Unified internal dispatch function `matvec_multiply_gpu(pModel, pInfo, pGPUBuf, x, y, pBias)` that accepts a pre-mapped `cl_mem` handle directly; falls through to CPU AVX2 path if GPU buffer is `NULL` or GPU is disabled.
+
+- **Measured Performance Improvements (Intel HD Graphics 5500 / Intel Core i3-5005U, DDR3L):**
+
+  | Model | CPU-only (AVX2) | GPU (this release) | Speedup |
+  | :--- | :--- | :--- | :--- |
+  | Qwen2.5-0.5B (Q4_0 / Q8_0 output) | ~9.0 tok/s | ~8.7 tok/s | ≈ on par (FFN too small for DDR3L bus) |
+  | DeepSeek-R1-1.5B (Q4_0 / Q6_K output) | 2.11 tok/s | **4.17 tok/s** | **+98% (≈ 2× speedup)** |
+
+  *Note: GPU benefit scales with model size. Larger models (3B+) with bigger FFN dimensions will see proportionally greater speedup as the CPU becomes increasingly bottlenecked by DDR3L memory bandwidth.*
+
+### Changed
+
+- **`madar_gpu_init` (`language/src/ring_inference.c`):**
+  - Now pre-maps all layer FFN buffers (Gate, Up, Down) via a post-initialization loop over `pModel->aLayers[l]` immediately after model weights are located and before `bGPUEnabled` is set to `1`.
+  - Startup banner updated from `"(OpenCL Zero-Copy)"` to `"(Zero-Copy LM Head + N FFN Layers)"` showing the actual number of GPU-mapped layers.
+
+- **`madar_gpu_matvec` signature (`language/src/ring_inference.c`):**
+  - Removed `cl_context` parameter (no longer needed since no buffers are created at call time).
+  - Added explicit `cl_mem bufW` parameter — callers now pass the pre-mapped buffer directly.
+  - Eliminated `bOwnsBufW` dynamic buffer lifecycle: no `clCreateBuffer` / `clReleaseMemObject` occurs inside the hot path.
+
+- **`madar_gpu_cleanup` (`language/src/ring_inference.c`):**
+  - Extended cleanup loop to release all per-layer `pGPUBufGate`, `pGPUBufUp`, and `pGPUBufDown` handles before releasing global context and queue.
+
+- **`RingLayerWeights` struct (`language/include/ring_inference.h`):**
+  - Added three new `void *` fields: `pGPUBufGate`, `pGPUBufUp`, `pGPUBufDown` to hold pre-mapped OpenCL buffer handles for each transformer layer.
+
+- **`ring_model_forward_ex` forward pass (`language/src/ring_inference.c`):**
+  - All FFN and output projections now call `matvec_multiply_gpu(...)` directly with the respective pre-mapped buffer pointer, bypassing the generic `matvec_multiply` wrapper entirely for GPU-enabled inference.
+
+- **`opencl_stub.h` (`language/include/opencl_stub.h`):**
+  - Added missing `#define CL_DEVICE_TYPE_ALL 0xFFFFFFFF` and `#define CL_DEVICE_TYPE_DEFAULT (1 << 0)` constants that were causing `C2065: undeclared identifier` compilation errors with MSVC.
+
+### Fixed
+
+- **MSVC Build Error `C2065: 'CL_DEVICE_TYPE_ALL': undeclared identifier`**: Added missing OpenCL platform constants to `opencl_stub.h`, restoring clean zero-warning MSVC x64 build.
+- **Eliminated GPU Hot-Path Dynamic Allocations**: Previous implementation was creating and releasing `clCreateBuffer` handles inside `madar_gpu_matvec` for every non-output layer call, causing hundreds of driver lock/unlock cycles per token. Fully resolved by restricting calls to pre-mapped buffers only.
+
+---
+
 ## [0.2.0-alpha] - 2026-10-21
+
 
 ### Added
 - **Modernized CLI Interface & Inline Evaluation (`language/src/state.c`, `language/include/state.h`):**
