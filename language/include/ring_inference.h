@@ -43,6 +43,11 @@ typedef struct RingLayerWeights {
 	RingGGUFTensorInfo *pFFNGate;
 	RingGGUFTensorInfo *pFFNUp;
 	RingGGUFTensorInfo *pFFNDown;
+
+	/* Pre-mapped GPU Zero-Copy Buffers */
+	void *pGPUBufGate;
+	void *pGPUBufUp;
+	void *pGPUBufDown;
 } RingLayerWeights;
 
 typedef struct RingModel {
@@ -87,6 +92,19 @@ typedef struct RingModel {
 	void *pWorkerTasks[RING_MODEL_MAX_WORKERS];
 	volatile int bWorkerShutdown;
 
+	/* GPU Acceleration (OpenCL Engine) */
+	int bGPUEnabled;
+	void *pGPUContext;
+	void *pGPUQueue;
+	void *pGPUKernelQ4;
+	void *pGPUKernelQ8;
+	void *pGPUKernelQ6;
+	void *pGPUBufX;
+	void *pGPUBufY;
+	void *pGPUBufOutputWeight;
+	size_t nGPUBufXSize;
+	size_t nGPUBufYSize;
+
 	/* Step-by-Step Generator & Streaming State */
 	int aGenTokens[2048];
 	int nPromptTokens;
@@ -103,6 +121,7 @@ RING_API void ring_model_free(RingModel *pModel);
 
 /* Model Configuration & State */
 RING_API void ring_model_set_threads(RingModel *pModel, int nThreads);
+RING_API void ring_model_set_gpu(RingModel *pModel, int bEnable);
 RING_API void ring_model_reset_kv(RingModel *pModel);
 
 /* Forward Evaluation & Sampling */

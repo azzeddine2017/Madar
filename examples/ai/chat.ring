@@ -18,9 +18,9 @@ next
 
 if bPreferQwen
 	aCandidates = [
-		"models/qwen2.5-0.5b-instruct-q4_0.gguf",
-		"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
-		"../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+		"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
 	]
 else
 	aCandidates = [
@@ -63,20 +63,20 @@ if bIsDeepSeek
 else
 	model = new QwenModel(cModelPath)
 ok
-model.setThreads(2)
+model.setThreads(4)
 model.setTemperature(0.6) # Default to 0.6 for natural dialogue
 t1 = clock()
 nLoadSec = (t1 - t0) / clockspersecond()
 
 see "  Hardware: " + model.nThreads + " CPU Threads (Active)" + nl
 see "  Model initialized successfully in " + nLoadSec + " seconds." + nl
-see "  Commands: 'exit' | 'reset' | '/tokens <N>' | '/temp <0.0-1.0>'" + nl
+see "  Commands: 'exit' | 'reset' | '/gpu on|off' | '/tokens <N>' | '/temp <0.0-1.0>'" + nl
 see "====================================================================" + nl
 
 if bIsDeepSeek
-	nChatMaxTokens = 256
+	nChatMaxTokens = 512
 else
-	nChatMaxTokens = 128
+	nChatMaxTokens = 512
 ok
 
 # 3. Interactive REPL Chat Loop
@@ -107,10 +107,27 @@ while true
 		if len(aParts) >= 2
 			nChatMaxTokens = 0 + aParts[2]
 			if nChatMaxTokens < 16 nChatMaxTokens = 16 ok
-			if nChatMaxTokens > 512 nChatMaxTokens = 512 ok
+			if nChatMaxTokens > 1024 nChatMaxTokens = 1024 ok
 			see "  [System] Max tokens set to " + nChatMaxTokens + nl
 		else
 			see "  [System] Current max tokens: " + nChatMaxTokens + nl
+		ok
+		loop
+	ok
+
+	if substr(cLower, "/gpu") = 1
+		aParts = split(cInput, " ")
+		if len(aParts) >= 2
+			cMode = lower(aParts[2])
+			if cMode = "off" or cMode = "0"
+				model.setGPU(0)
+				see "  [System] GPU Acceleration disabled (Running CPU AVX2)." + nl
+			else
+				model.setGPU(1)
+				see "  [System] GPU Acceleration enabled." + nl
+			ok
+		else
+			see "  [System] Usage: /gpu on | /gpu off" + nl
 		ok
 		loop
 	ok

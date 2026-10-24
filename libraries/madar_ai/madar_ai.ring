@@ -47,6 +47,9 @@ class QwenModel
 		nThreads = n
 		madar_model_set_threads(hModel, n)
 
+	func setGPU(bEnable)
+		madar_model_set_gpu(hModel, bEnable)
+
 	func setTemperature(temp)
 		fTemp = temp
 
