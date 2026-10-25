@@ -12,12 +12,17 @@ see "  (الوكيل الذكي: الذاكرة المتجهية الدائمة 
 see "====================================================================" + nl
 
 # 1. Locate GGUF Model
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
+cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+/* if not fexists(cModelPath)
+	cModelPath = "../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
+ok */
 if not fexists(cModelPath)
-	cModelPath = "models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
+	cModelPath = "../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
 ok
+
 if not fexists(cModelPath)
-	cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+	see "Error: Model file not found in models/" + nl
+	bye
 ok
 
 # 1. Load Model

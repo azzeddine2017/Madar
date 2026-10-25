@@ -7,7 +7,7 @@ echo   Madar Release Packaging Tool [Madar 0.2.0-alpha]
 echo   - Packaging Full SDK, AI Libraries, Tools, and Runtime
 echo ====================================================================
 
-set "VERSION=0.2.0-alpha"
+set "VERSION=0.3.0-alpha"
 set "PKG_NAME=madar-%VERSION%-windows-x64"
 set "ROOT=%~dp0..\"
 set "DIST_DIR=%ROOT%dist"

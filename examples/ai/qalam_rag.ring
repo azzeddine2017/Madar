@@ -14,8 +14,14 @@ see "  Madar AI + AlQalam: High-Performance Hybrid Search Engine" + nl
 see "  (محرك مدار والقلم: البحث الهجين، حفظ المتجهات بالقرص، والسرعة الفائقة)" + nl
 see "====================================================================" + nl
 
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-if not fexists(cModelPath) cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf" ok
+cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+
+if not fexists(cModelPath) cModelPath = "../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf" ok
+
+if not fexists(cModelPath)
+	see "Error: Model file not found in models/" + nl
+	bye
+ok
 
 oTimer = new QalamChronos()
 oTimer.reset()

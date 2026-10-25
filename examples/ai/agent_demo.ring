@@ -5,10 +5,10 @@
 load "stdlibCore.ring"
 load "agent.ring"
 
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-if not fexists(cModelPath)
-	cModelPath = "models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
-ok
+cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+/*if not fexists(cModelPath)
+	cModelPath = "../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
+ok*/
 
 if not fexists(cModelPath)
 	see "Error: Model file not found in models/" + nl

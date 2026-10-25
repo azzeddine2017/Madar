@@ -16,6 +16,9 @@ load "alqalam.ring"
 
 cModelPath = ""
 aCandidates = [
+	/*"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",*/
 	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"../models/qwen2.5-0.5b-instruct-q4_0.gguf",
@@ -51,10 +54,12 @@ t0 = clock()
 model = new QwenModel(cModelPath)
 model.setThreads(4)
 model.setTemperature(0.3)
+model.setGPU(1)
 
 agent = new AIAgent(model)
 agent.bStream = 1      # Enable real-time token streaming
 agent.bVerbose = 1     # Print tool invocation and observation steps
+agent.bAutonomousTools = 1 # Official Qwen2.5-Coder Function Calling Schema
 
 # Initialize Persistent Long-Term Vector Memory (RAG Core)
 cMemoryFile = "agent_memory.bin"
@@ -65,33 +70,13 @@ agent.registerTool("currency_rate", "Returns live exchange rate between currenci
 	return "Exchange Rate 1 USD = 134.50 DZD (Algerian Dinar) | 1 EUR = 145.20 DZD"
 })
 
-agent.registerTool("list_files", "Lists files in current or specified directory", ["dir"], func(args) {
-	cDir = "."
-	if islist(args) and len(args) >= 1 and trim(args[1]) != ""
-		cDir = trim(args[1])
-	elseif isstring(args) and trim(args) != ""
-		cDir = trim(args)
-	ok
-	cDir = substr(cDir, '"', "")
-	cDir = substr(cDir, "'", "")
-	cDir = trim(cDir)
-	aFiles = dir(cDir)
-	cList = ""
-	nCount = 0
-	for f in aFiles
-		if f[1] != "." and f[1] != ".."
-			cList += f[1] + "  "
-			nCount++
-			if nCount >= 20 exit ok
-		ok
-	next
-	return "Files in '" + cDir + "': " + cList
-})
+
 
 t1 = clock()
 nLoadSec = (t1 - t0) / clockspersecond()
 
-see "  Engine: Native C AVX2 SIMD | FP16 KV-Cache (2048 Tokens) | 4 Threads" + nl
+see "  Engine: Native C AVX2 SIMD + OpenCL GPU | FP16 KV-Cache (2048 Tokens) | 4 Threads" + nl
+see "  Chat Template: Qwen2.5-Coder Function Calling (<tools>, <tool_call>, <tool_response>)" + nl
 see "  Memory: " + agent.oMemory.count() + " persistent vector chunks loaded (" + cMemoryFile + ")" + nl
 see "  Ready in " + round(nLoadSec, 2) + " seconds." + nl
 see "--------------------------------------------------------------------" + nl

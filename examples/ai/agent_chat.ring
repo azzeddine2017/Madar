@@ -14,13 +14,23 @@ load "stdlibCore.ring"
 load "agent.ring"
 
 # 1. Locate GGUF Model
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-if not fexists(cModelPath)
-	cModelPath = "models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
-ok
-if not fexists(cModelPath)
-	cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
-ok
+cModelPath = ""
+aCandidates = [
+	"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
+	"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+	"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
+]
+
+for cCand in aCandidates
+	if fexists(cCand)
+		cModelPath = cCand
+		exit
+	ok
+next
 
 if not fexists(cModelPath)
 	see nl + "====================================================================" + nl
@@ -41,10 +51,12 @@ t0 = clock()
 model = new QwenModel(cModelPath)
 model.setThreads(4)
 model.setTemperature(0.3)
+model.setGPU(1)
 
 agent = new AIAgent(model)
 agent.bStream = 1      # Enable real-time token streaming
 agent.bVerbose = 1     # Print tool invocation and observation steps
+agent.bAutonomousTools = 1 # Official Qwen2.5-Coder Function Calling Schema
 
 # Initialize Persistent Long-Term Vector Memory (RAG Core)
 cMemoryFile = "agent_memory.bin"
