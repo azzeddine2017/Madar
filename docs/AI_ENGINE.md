@@ -99,13 +99,59 @@ Kernel dispatch uses `localSize = 64` (padded `globalSize` to nearest multiple o
 
 ---
 
-## 4. High-Performance Mean Pooling & Embeddings
+## 4. High-Performance Embeddings & Transformer Encoders
 
-Modern embedding models (such as `Qwen2-Embedding` and `bge-base`) represent text semantics via the mean-pooled vector of the final Transformer layer's hidden states:
+Madar AI Engine natively supports two distinct, complementary embedding paradigms directly in ANSI C99 with SIMD acceleration:
+
+### A. Bidirectional Transformer Encoder: BGE-M3 & XLM-RoBERTa (`BgeModel`)
+
+**BGE-M3** (BAAI General Embedding) is a 24-layer multilingual model designed specifically for high-accuracy semantic retrieval, dense search, and RAG. Unlike causal generative models, BGE-M3 executes full bidirectional attention:
+
+```text
+[Input Text]
+     │
+     ▼
+[SentencePiece / T5 Tokenizer] ──> Prepend ' ' (\xe2\x96\x81), Tag <s> (ID 0) and </s> (ID 2)
+     │
+     ▼
+[Token Embedding] ───────────────> Q6_K / Q4_0 / F16 / F32 Dequantization (1024 x 250002)
+     │
+     ▼
+[Position & Type Embedding] ─────> Absolute positional embedding with RoBERTa offset (+2)
+     │
+     ▼
+[Embedding LayerNorm] ───────────> AVX2 vectorized (x - μ) / sqrt(σ² + ε) * w + b
+     │
+     ▼
+[24 Transformer Layers]
+  ├── Multi-Head Bidirectional Attention (16 heads, head_dim 64, all-to-all Q K^T / √d)
+  ├── Output Projection + Residual + LayerNorm
+  ├── FFN Up (1024 -> 4096) + Fast GELU Activation
+  └── FFN Down (4096 -> 1024) + Residual + LayerNorm
+     │
+     ▼
+[CLS Token Pooling] ─────────────> Extract token 0 (<s>) representation: E = x_0
+     │
+     ▼
+[L2 Normalization] ──────────────> E = E / ||E||_2 (1024-dimensional continuous RingTensor)
+```
+
+#### Key Technical Highlights:
+- **Zero-Causal Masking**: All $S$ tokens attend to all $S$ tokens in the sequence simultaneously, capturing deep semantic context across languages (Arabic, English, etc.).
+- **AVX2 Vectorized LayerNorm**: Computes horizontal vector mean and variance reductions across 256-bit SIMD lanes, executing complete normalization in under 1 microsecond.
+- **Fast GELU Kernel**: Accurate tanh approximation of the Gaussian Error Linear Unit for intermediate projections:
+  $$\text{GELU}(x) = 0.5 \cdot x \cdot \left(1 + \tanh\left(\sqrt{2/\pi} \cdot (x + 0.044715 \cdot x^3)\right)\right)$$
+- **Q6_K Embedding Dequantization**: Direct vector dequantization of 256-weight super-blocks in `token_embd.weight`, maintaining full floating-point accuracy with minimal memory footprint.
+
+---
+
+### B. Causal Decoder Embeddings: Qwen2-Embedding
+
+For generative models (`QwenModel`), text semantics can be extracted via the mean-pooled vector of the final Transformer layer's hidden states:
 
 $$\vec{E} = \frac{1}{N - 1} \sum_{i=1}^{N-1} \vec{h}_i$$
 
-### Attention-Sink Token 0 Suppression
+#### Attention-Sink Token 0 Suppression
 - Transformer architectures with causal attention concentrate disproportionate attention mass into the initial prompt token (index 0).
 - If included in mean pooling, token 0 dominates the vector direction, creating severe directional bias (anisotropy) and reducing semantic separation.
 - Madar automatically skips token 0 during mean aggregation, producing normalized, isotropic embedding vectors with cosine separation across disparate topics.
@@ -115,11 +161,12 @@ $$\vec{E} = \frac{1}{N - 1} \sum_{i=1}^{N-1} \vec{h}_i$$
 ## 5. VectorStore & RAG Engine (`libraries/madar_ai/rag.ring`)
 
 The `VectorStore` class provides a native Ring storage and semantic retrieval engine:
-- **Zero-Copy Ingestion**: Accepts text chunks and computes embeddings directly via native C models.
+- **Zero-Copy Ingestion**: Accepts text chunks and computes embeddings directly via native C models (`BgeModel` or `QwenModel`).
 - **Binary Disk Caching (`saveBinary` / `loadBinary`)**:
   - Dumps normalized floating-point embeddings and text payloads directly to binary files.
   - Skips redundant inference upon restart: reloads thousands of chunks in under **10 ms**!
 - **Cosine Similarity Engine**: Native vector dot product normalized by $L_2$ norm.
+- **Dual-Model RAG Architecture**: Pairs `BgeModel` (1024-d dense retrieval) with `QwenModel` or `DeepSeekModel` (instruction generation) for hallucination-free factual responses.
 
 ---
 

@@ -5,7 +5,12 @@
 
 
 func model_open(cPath)
-	if substr(lower(cPath), "deepseek") > 0
+	cLower = lower(cPath)
+	if substr(cLower, "bge") > 0 or substr(cLower, "bert") > 0
+		oModel = new BgeModel(cPath)
+		return oModel
+	ok
+	if substr(cLower, "deepseek") > 0
 		oModel = new DeepSeekModel(cPath)
 		return oModel
 	ok
@@ -186,5 +191,42 @@ class DeepSeekModel from QwenModel
 			return trim(substr(cResponse, nEnd + 8))
 		ok
 		return trim(cResponse)
+
+class BgeModel
+	hModel
+	cLoadedPath = ""
+	nThreads = 4
+
+	func init(cFilePath)
+		cLoadedPath = cFilePath
+		hModel = madar_model_open(cFilePath)
+		if isnull(hModel)
+			raise("Failed to open BGE model file: " + cFilePath)
+		ok
+		setThreads(nThreads)
+		return self
+
+	func setThreads(n)
+		nThreads = n
+		madar_model_set_threads(hModel, n)
+
+	func tokenize(cText)
+		return madar_model_tokenize(hModel, cText)
+
+	func embedding(cText)
+		return madar_model_embedding(hModel, cText)
+
+	func get_embedding(cText)
+		return embedding(cText)
+
+	func isArabic(cText)
+		return madar_is_arabic(cText)
+
+	func close()
+		if not isnull(hModel)
+			madar_model_close(hModel)
+			hModel = NULL
+		ok
+
 
 

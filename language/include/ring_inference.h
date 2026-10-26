@@ -27,10 +27,13 @@ typedef struct RingModelConfig {
 	uint32_t nFF;
 	float fNormEps;
 	float fRopeFreqBase;
+	int bIsBert;       /* 1 if BERT/XLM-RoBERTa encoder architecture */
+	int nPoolingType;  /* 1=mean, 2=cls */
 } RingModelConfig;
 
 typedef struct RingLayerWeights {
 	RingGGUFTensorInfo *pAttnNorm;
+	RingGGUFTensorInfo *pAttnNorm_Bias;
 	RingGGUFTensorInfo *pAttnQ;
 	RingGGUFTensorInfo *pAttnQ_Bias;
 	RingGGUFTensorInfo *pAttnK;
@@ -38,11 +41,15 @@ typedef struct RingLayerWeights {
 	RingGGUFTensorInfo *pAttnV;
 	RingGGUFTensorInfo *pAttnV_Bias;
 	RingGGUFTensorInfo *pAttnOut;
+	RingGGUFTensorInfo *pAttnOut_Bias;
 
 	RingGGUFTensorInfo *pFFNNorm;
+	RingGGUFTensorInfo *pFFNNorm_Bias;
 	RingGGUFTensorInfo *pFFNGate;
 	RingGGUFTensorInfo *pFFNUp;
+	RingGGUFTensorInfo *pFFNUp_Bias;
 	RingGGUFTensorInfo *pFFNDown;
+	RingGGUFTensorInfo *pFFNDown_Bias;
 
 	/* Pre-mapped GPU Zero-Copy Buffers */
 	void *pGPUBufGate;
@@ -58,6 +65,10 @@ typedef struct RingModel {
 
 	/* Model Weights */
 	RingGGUFTensorInfo *pTokenEmbd;
+	RingGGUFTensorInfo *pPosEmbd;
+	RingGGUFTensorInfo *pTokenTypes;
+	RingGGUFTensorInfo *pTokenEmbdNorm;
+	RingGGUFTensorInfo *pTokenEmbdNorm_Bias;
 	RingLayerWeights *aLayers;
 	RingGGUFTensorInfo *pOutputNorm;
 	RingGGUFTensorInfo *pOutput;

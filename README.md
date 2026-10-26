@@ -32,33 +32,42 @@
    - **Runtime Toggle**: `/gpu on|off` interactive command in `chat.ring`, and `model.setGPU(1/0)` in the scripting API.
    - **Measured Speedup**: +100% (2×) token generation on DeepSeek-R1-1.5B (4.17 vs 2.11 tok/s) with Intel HD Graphics 5500. Larger models benefit proportionally more.
 
-3. **In-Core Transformer & Real-Time Token Streaming Engine:**
+4. **In-Core Transformer & Real-Time Token Streaming Engine:**
    - **Real-Time Token Streaming**: Low-level autoregressive generator API (`prefill`, `step`, `hasMore`, `generateStream`) pushing generated words directly to `stdout` with UTF-8 byte assembly.
    - **FP16 Compressed KV-Cache (2048 Context Window)**: Halves KV cache memory usage and scales context window up to 2048 tokens with Anti-Looping repetition penalty.
    - Built-in GGUF Byte-Pair Encoding (BPE) and GPT-2 Byte-Level Tokenizer with full Arabic and multilingual UTF-8 multi-byte decoding.
-   - Native Mean-Pooling Embedding generation with token-0 attention-sink skipping.
+   - Native Mean-Pooling Embedding generation with token-0 attention-sink skipping for causal decoder models.
 
-4. **Native RAG (Retrieval-Augmented Generation) & AlQalam Integration:**
+5. **BGE-M3 & BERT/XLM-RoBERTa Bidirectional Embedding Engine:**
+   - **Native 24-Layer Bidirectional Encoder**: Direct C99 execution of non-causal Transformer encoder architectures (`general.architecture = "bert"` / `"xlm-roberta"`). All tokens attend across the entire sequence via $Q K^T / \sqrt{d}$ without causal masking.
+   - **AVX2 Vectorized LayerNorm & GELU**: Hardware-accelerated standard LayerNorm with mean subtraction, scaling, and bias parameters alongside fast GELU activation for intermediate FFN projections.
+   - **Learned Absolute Position & Type Embeddings**: Native handling of `position_embd.weight` (with RoBERTa padding offset $+2$) and `token_types.weight`.
+   - **Token Embedding Q6_K Dequantization**: Full vector dequantization of 6-bit super-blocks in `token_embd.weight` (1024 x 250002).
+   - **SentencePiece (SPM / T5) Tokenizer**: Automatically maps word boundaries via ` ` (`\xe2\x96\x81`), inserts `<s>` (ID 0) and `</s>` (ID 2), and tokenizes across 250k multilingual tokens.
+   - **State-of-the-Art Dense Vectors (`BgeModel`)**: Produces 1024-dimensional $L_2$-normalized unit vectors via `[CLS]` token pooling for unparalleled semantic retrieval accuracy.
+
+6. **Native RAG (Retrieval-Augmented Generation) & AlQalam Integration:**
+   - **Dual-Model RAG Architecture**: Seamlessly pairs dedicated dense embedding models (`BgeModel` with `bge-m3-q4_0.gguf`) for retrieval with instruction LLMs (`QwenModel` / `DeepSeekModel`) for factual text generation.
    - **VectorStore & RAG Pipeline (`libraries/madar_ai/rag.ring`)**: In-memory and binary cached vector storage (`saveBinary`/`loadBinary`) with sub-10ms knowledge retrieval.
    - **AlQalam C++17 Hybrid Search**: Blends semantic dense vector embeddings (70%) with O(1) lexical inverted indexing (`QalamIndex`, 30%) and direct PDF ingestion via `QalamReader`.
 
-5. **Autonomous AI Agents & Long-Term Episodic Memory (`libraries/madar_ai/agent.ring`):**
+7. **Autonomous AI Agents & Long-Term Episodic Memory (`libraries/madar_ai/agent.ring`):**
    - **Persistent Vector Memory**: Saves facts, user preferences, and project rules to disk in binary format (`.bin`) with automated cosine similarity retrieval.
    - Declarative tool registration (`agent.registerTool`).
    - Automated ReAct execution loop: intercepts `<tool_call>`, executes native Ring functions, injects `<tool_response>`, and synthesizes final factual answers.
    - Built-in tools: exact mathematics (`calc`), system time/clock (`get_time`), file access (`read_file`), directory listing (`list_files`), OS diagnostics (`sys_info`), currency exchange (`currency_rate`), knowledge search (`rag_search`), memory inscription (`remember_fact`), and CSV DataFrame analytics (`csv_summary`, `csv_query`).
    - **Interactive Agent REPL CLI (`examples/ai/agent_chat.ring`)**: Full live terminal session with streaming output, slash commands (`/remember`, `/recall`, `/learn`, `/memory`, `/undo`, `/history`), and multi-lingual dialogue.
 
-6. **Madar DataFrame for Fast Table Analytics (`libraries/madar_ai/dataframe.ring`):**
+8. **Madar DataFrame for Fast Table Analytics (`libraries/madar_ai/dataframe.ring`):**
    - Pure Ring + C-Tensor table engine parsing CSVs with zero external dependencies.
    - Binds numeric columns to continuous `RingTensor` views for microsecond statistical calculations (`mean`, `sum`, `min`, `max`, `std`, `describe`).
    - High-productivity filtering (`df.filter("salary", ">", 4500)`) and column selection.
 
-7. **Self-Healing AI Agent Feedback Loop (`--json-errors`):**
+9. **Self-Healing AI Agent Feedback Loop (`--json-errors`):**
    - RFC 8259 standardized structured JSON compiler and runtime diagnostics.
    - Provides line context, exact error codes, call stacks, and context-aware intelligent fix suggestions.
 
-8. **Native Python-Like Modern Syntax Enhancements:**
+10. **Native Python-Like Modern Syntax Enhancements:**
    - **Native `f-strings` (`f"Hello {name}, 1+2={1+2}"`):** Direct scanner-level expression interpolation with zero runtime overhead, nested expressions, and brace escaping (`{{...}}`, `\{...\}`).
    - **Default Arguments (`func add(a, b = 10)`):** Native C99 bytecode-level default parameters evaluated dynamically at call time, avoiding Python's shared mutable default bug. Includes `argcount()` / `paramcount()` introspection.
    - **Advanced Slicing (`seq[start:stop:step]`):** 1-based inclusive slicing for strings and lists with stride, negative steps (`seq[::-1]` reversal), negative indexing (`seq[-1]`), and full backward compatibility with Ring hash maps (`dict[:name]`).
@@ -76,33 +85,45 @@ tools\download_deepseek.bat   :: DeepSeek-R1-Distill-Qwen-1.5B (Q4_0, ~1.1 GB)
 tools\download_model.bat      :: Qwen2.5-0.5B / 3B-Instruct (Q4_0, ~350 MB - 1.9 GB)
 ```
 
-### 2. Autonomous Agent Terminal (مع الذاكرة المتجهية الدائمة)
+### 2. Dual-Model RAG with BGE-M3 & Qwen (البحث الدلالي عالي الدقة)
+```cmd
+bin\ring.exe examples\ai\bge_rag_demo.ring
+```
+
+### 3. Autonomous Agent Terminal (مع الذاكرة المتجهية الدائمة)
 ```cmd
 bin\ring.exe examples\ai\agent_chat.ring
 ```
 
-### 3. Real-Time Token Streaming (بث الكلمات فائق السرعة)
+### 4. Real-Time Token Streaming (بث الكلمات فائق السرعة)
 ```cmd
 bin\ring.exe examples\ai\stream_demo.ring
 ```
 
-### 4. Interactive Reasoning Chat (DeepSeek-R1 & Qwen)
+### 5. Interactive Reasoning Chat (DeepSeek-R1 & Qwen)
 ```cmd
 bin\ring.exe examples\ai\chat.ring
 ```
 
-### 5. Declarative Scripting API with GPU
+### 6. Declarative Scripting API with BGE-M3 & GPU
 ```ring
 load "madar_ai.ring"
+load "rag.ring"
 
-# Load Qwen or DeepSeek directly
-model = new DeepSeekModel("models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf")
-model.setThreads(4)
-model.setTemperature(0.6)
-model.setGPU(1)        # Enable OpenCL GPU acceleration (Intel/AMD/NVIDIA)
+# 1. High-accuracy 1024-dim embedding extraction with BGE-M3
+embed_model = model_open("models/bge-m3-q4_0.gguf")
+store = new VectorStore(embed_model)
+store.addText("لحل خطأ نفاد الذاكرة في C، تأكد من استدعاء free() وتجنب تسريب الموارد.")
 
-# Generate response with GPU-accelerated FFN + LM Head
-response = model.chatStream("ما هي عاصمة الجزائر؟", 128)
+# 2. Query retrieval
+query_vec = embed_model.get_embedding("كيف أعالج تسريب الذاكرة البرمجية؟")
+matches = vector_search(query_vec, store, 1)
+see "Top Match: " + matches[1][2] + nl
+
+# 3. Text generation with Qwen (with GPU acceleration)
+llm = model_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
+llm.setGPU(1)
+llm.chatStream("أجب باختصار بالاعتماد على: " + matches[1][2], 64)
 ```
 
 ---

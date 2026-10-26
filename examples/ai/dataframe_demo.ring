@@ -21,7 +21,7 @@ cCSV = "id,name,department,age,salary,performance" + nl +
        "7,Nour,Security,31,4900,93.4" + nl +
        "8,Omar,AI Engineering,27,4700,89.5" + nl
 
-cFilePath = "examples/ai/sample_data.csv"
+cFilePath = "sample_data.csv"
 write(cFilePath, cCSV)
 
 see "Reading CSV into Madar DataFrame: " + cFilePath + nl

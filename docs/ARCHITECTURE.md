@@ -35,8 +35,11 @@ Madar transforms the lightweight Ring Core engine into an AI-first runtime throu
 |    - AVX2 & FMA SIMD MatVec Kernels (Q4_0, Q8_0, F16, F32) |
 |    - Quantized MatVec: Q4_0, Q8_0, F16, and Q6_K SuperBlocks|
 |    - Multi-Threaded Event-Driven Worker Pool                |
-|    - Byte-Level GPT-2 / BPE Multilingual Tokenizer          |
+|    - Dual Architectures: Causal Decoder (Qwen/DeepSeek) &   |
+|      Bidirectional Transformer Encoder (BGE-M3 / BERT)      |
+|    - Dual Tokenizers: GPT-2 / Qwen BPE & SentencePiece (SPM)|
 |    - KV-Cache Engine & Prefill Logits Optimization          |
+|    - CLS & Mean Pooling L2-Normalized Embedding Engine      |
 |    - See docs/AI_ENGINE.md for deep SIMD details            |
 +-------------------------------------------------------------+
                               |
@@ -176,10 +179,13 @@ Madar is extending Ring's grammar to incorporate high-productivity constructs wh
 | `madar_model_set_gpu` | `madar_model_set_gpu(h, bEnable)` | Enables (1) or disables (0) OpenCL GPU acceleration at runtime. |
 | `madar_model_generate` | `madar_model_generate(h, prompt, maxTokens, temp)` | Executes autoregressive text generation. |
 | `madar_model_generate_stream`| `madar_model_generate_stream(h, prompt, maxTokens, temp, stream)` | Streams generated tokens to terminal in real time. |
+| `madar_model_embedding`| `madar_model_embedding(h, text)` | Computes normalized L2 dense vector embedding (`RingTensor`). |
 
 ### Madar AI Suite APIs
 | Class / Function | Module | Description |
 | :--- | :--- | :--- |
+| `BgeModel` | `madar_ai/madar_ai.ring` | High-accuracy BGE-M3 bidirectional embedding model wrapper. |
+| `QwenModel` / `DeepSeekModel` | `madar_ai/madar_ai.ring` | Generative autoregressive instruction LLM wrappers. |
 | `AIAgent` | `madar_ai/agent.ring` | Autonomous agent orchestrating function and tool calling. |
 | `registerTool` | `madar_ai/agent.ring` | Registers local Ring functions for autonomous model execution. |
 | `DataFrame` / `read_csv`| `madar_ai/dataframe.ring` | High-performance C-Tensor continuous table analytics. |

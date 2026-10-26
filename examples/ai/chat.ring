@@ -18,9 +18,9 @@ next
 
 if bPreferQwen
 	aCandidates = [
-		"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-		"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-		"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+		"models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../models/qwen2.5-coder-3b-instruct-q4_0.gguf"
 	]
 else
 	aCandidates = [

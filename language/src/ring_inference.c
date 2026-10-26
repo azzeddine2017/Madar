@@ -1071,9 +1071,78 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo, const 
 
 /*
 ================================================================================
-  Neural Operations: RMSNorm, RoPE, Softmax, SiLU
+  Neural Operations: RMSNorm, LayerNorm, RoPE, Softmax, SiLU, GELU
 ================================================================================
 */
+
+static void layernorm(float *o, const float *x, const float *weight, const float *bias, int size, float eps) {
+	float sum = 0.0f;
+	float ss = 0.0f;
+	float mean, var, inv;
+	int i = 0;
+
+#if defined(MADAR_AVX2)
+	__m256 accSum0 = _mm256_setzero_ps();
+	__m256 accSum1 = _mm256_setzero_ps();
+	for (; i + 15 < size; i += 16) {
+		accSum0 = _mm256_add_ps(accSum0, _mm256_loadu_ps(x + i));
+		accSum1 = _mm256_add_ps(accSum1, _mm256_loadu_ps(x + i + 8));
+	}
+	for (; i + 7 < size; i += 8) {
+		accSum0 = _mm256_add_ps(accSum0, _mm256_loadu_ps(x + i));
+	}
+	sum = hsum_float_8(_mm256_add_ps(accSum0, accSum1));
+#endif
+	for (; i < size; i++) sum += x[i];
+	mean = sum / (float)size;
+
+	i = 0;
+#if defined(MADAR_AVX2)
+	__m256 vMean = _mm256_set1_ps(mean);
+	__m256 accVar0 = _mm256_setzero_ps();
+	__m256 accVar1 = _mm256_setzero_ps();
+	for (; i + 15 < size; i += 16) {
+		__m256 d0 = _mm256_sub_ps(_mm256_loadu_ps(x + i), vMean);
+		__m256 d1 = _mm256_sub_ps(_mm256_loadu_ps(x + i + 8), vMean);
+		accVar0 = _mm256_fmadd_ps(d0, d0, accVar0);
+		accVar1 = _mm256_fmadd_ps(d1, d1, accVar1);
+	}
+	for (; i + 7 < size; i += 8) {
+		__m256 d = _mm256_sub_ps(_mm256_loadu_ps(x + i), vMean);
+		accVar0 = _mm256_fmadd_ps(d, d, accVar0);
+	}
+	ss = hsum_float_8(_mm256_add_ps(accVar0, accVar1));
+#endif
+	for (; i < size; i++) {
+		float d = x[i] - mean;
+		ss += d * d;
+	}
+	var = ss / (float)size;
+	inv = 1.0f / sqrtf(var + eps);
+
+	i = 0;
+#if defined(MADAR_AVX2)
+	__m256 vinv = _mm256_set1_ps(inv);
+	for (; i + 7 < size; i += 8) {
+		__m256 vx = _mm256_sub_ps(_mm256_loadu_ps(x + i), vMean);
+		__m256 val = _mm256_mul_ps(vx, vinv);
+		if (weight) val = _mm256_mul_ps(val, _mm256_loadu_ps(weight + i));
+		if (bias)   val = _mm256_add_ps(val, _mm256_loadu_ps(bias + i));
+		_mm256_storeu_ps(o + i, val);
+	}
+#endif
+	for (; i < size; i++) {
+		float val = (x[i] - mean) * inv;
+		if (weight) val *= weight[i];
+		if (bias)   val += bias[i];
+		o[i] = val;
+	}
+}
+
+static inline float fast_gelu(float x) {
+	float x3 = x * x * x;
+	return 0.5f * x * (1.0f + tanhf(0.79788456f * (x + 0.044715f * x3)));
+}
 
 static void rmsnorm(float *o, const float *x, const float *weight, int size, float eps) {
 	float ss = 0.0f;
@@ -1245,6 +1314,9 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	}
 
 	arch = pModel->config.cArch;
+	pModel->config.bIsBert = (strcmp(arch, "bert") == 0 ||
+	                          strcmp(arch, "xlm-roberta") == 0 ||
+	                          strcmp(arch, "roberta") == 0);
 
 	/* Vocabulary */
 	pModel->config.nVocab = pTok->nVocabSize;
@@ -1291,7 +1363,16 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	/* Epsilon & RoPE */
 	snprintf(key, sizeof(key), "%s.attention.layer_norm_rms_epsilon", arch);
 	kv = ring_gguf_find_kv(pGGUF, key);
-	pModel->config.fNormEps = gguf_get_f32_val(kv, 1e-6f);
+	if (!kv) {
+		snprintf(key, sizeof(key), "%s.attention.layer_norm_epsilon", arch);
+		kv = ring_gguf_find_kv(pGGUF, key);
+	}
+	pModel->config.fNormEps = gguf_get_f32_val(kv, 1e-5f);
+
+	/* Pooling Type (for BERT) */
+	snprintf(key, sizeof(key), "%s.pooling_type", arch);
+	kv = ring_gguf_find_kv(pGGUF, key);
+	pModel->config.nPoolingType = gguf_get_u32_val(kv, 2); /* Default: 2 (CLS) */
 
 	snprintf(key, sizeof(key), "%s.rope.freq_base", arch);
 	kv = ring_gguf_find_kv(pGGUF, key);
@@ -1300,6 +1381,13 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	/* Locate Tensors */
 	pModel->pTokenEmbd = ring_gguf_find_tensor(pGGUF, "token_embd.weight");
 	if (!pModel->pTokenEmbd) pModel->pTokenEmbd = ring_gguf_find_tensor(pGGUF, "model.embed_tokens.weight");
+
+	if (pModel->config.bIsBert) {
+		pModel->pPosEmbd = ring_gguf_find_tensor(pGGUF, "position_embd.weight");
+		pModel->pTokenTypes = ring_gguf_find_tensor(pGGUF, "token_types.weight");
+		pModel->pTokenEmbdNorm = ring_gguf_find_tensor(pGGUF, "token_embd_norm.weight");
+		pModel->pTokenEmbdNorm_Bias = ring_gguf_find_tensor(pGGUF, "token_embd_norm.bias");
+	}
 
 	pModel->pOutputNorm = ring_gguf_find_tensor(pGGUF, "output_norm.weight");
 	if (!pModel->pOutputNorm) pModel->pOutputNorm = ring_gguf_find_tensor(pGGUF, "model.norm.weight");
@@ -1332,7 +1420,7 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		ring_model_free(pModel);
 		return NULL;
 	}
-	if (!pModel->pOutputNorm) {
+	if (!pModel->pOutputNorm && !pModel->config.bIsBert) {
 		printf("\n[MADAR AI] Error: Output norm tensor (output_norm.weight) not found in GGUF!\n");
 		ring_model_free(pModel);
 		return NULL;
@@ -1349,8 +1437,18 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		snprintf(key, sizeof(key), "blk.%u.attn_norm.weight", l);
 		pModel->aLayers[l].pAttnNorm = ring_gguf_find_tensor(pGGUF, key);
 		if (!pModel->aLayers[l].pAttnNorm) {
+			snprintf(key, sizeof(key), "blk.%u.attn_output_norm.weight", l);
+			pModel->aLayers[l].pAttnNorm = ring_gguf_find_tensor(pGGUF, key);
+		}
+		if (!pModel->aLayers[l].pAttnNorm) {
 			snprintf(key, sizeof(key), "model.layers.%u.input_layernorm.weight", l);
 			pModel->aLayers[l].pAttnNorm = ring_gguf_find_tensor(pGGUF, key);
+		}
+		snprintf(key, sizeof(key), "blk.%u.attn_norm.bias", l);
+		pModel->aLayers[l].pAttnNorm_Bias = ring_gguf_find_tensor(pGGUF, key);
+		if (!pModel->aLayers[l].pAttnNorm_Bias) {
+			snprintf(key, sizeof(key), "blk.%u.attn_output_norm.bias", l);
+			pModel->aLayers[l].pAttnNorm_Bias = ring_gguf_find_tensor(pGGUF, key);
 		}
 
 		snprintf(key, sizeof(key), "blk.%u.attn_q.weight", l);
@@ -1386,12 +1484,24 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 			snprintf(key, sizeof(key), "model.layers.%u.self_attn.o_proj.weight", l);
 			pModel->aLayers[l].pAttnOut = ring_gguf_find_tensor(pGGUF, key);
 		}
+		snprintf(key, sizeof(key), "blk.%u.attn_output.bias", l);
+		pModel->aLayers[l].pAttnOut_Bias = ring_gguf_find_tensor(pGGUF, key);
 
 		snprintf(key, sizeof(key), "blk.%u.ffn_norm.weight", l);
 		pModel->aLayers[l].pFFNNorm = ring_gguf_find_tensor(pGGUF, key);
 		if (!pModel->aLayers[l].pFFNNorm) {
+			snprintf(key, sizeof(key), "blk.%u.layer_output_norm.weight", l);
+			pModel->aLayers[l].pFFNNorm = ring_gguf_find_tensor(pGGUF, key);
+		}
+		if (!pModel->aLayers[l].pFFNNorm) {
 			snprintf(key, sizeof(key), "model.layers.%u.post_attention_layernorm.weight", l);
 			pModel->aLayers[l].pFFNNorm = ring_gguf_find_tensor(pGGUF, key);
+		}
+		snprintf(key, sizeof(key), "blk.%u.ffn_norm.bias", l);
+		pModel->aLayers[l].pFFNNorm_Bias = ring_gguf_find_tensor(pGGUF, key);
+		if (!pModel->aLayers[l].pFFNNorm_Bias) {
+			snprintf(key, sizeof(key), "blk.%u.layer_output_norm.bias", l);
+			pModel->aLayers[l].pFFNNorm_Bias = ring_gguf_find_tensor(pGGUF, key);
 		}
 
 		snprintf(key, sizeof(key), "blk.%u.ffn_gate.weight", l);
@@ -1407,6 +1517,8 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 			snprintf(key, sizeof(key), "model.layers.%u.mlp.up_proj.weight", l);
 			pModel->aLayers[l].pFFNUp = ring_gguf_find_tensor(pGGUF, key);
 		}
+		snprintf(key, sizeof(key), "blk.%u.ffn_up.bias", l);
+		pModel->aLayers[l].pFFNUp_Bias = ring_gguf_find_tensor(pGGUF, key);
 
 		snprintf(key, sizeof(key), "blk.%u.ffn_down.weight", l);
 		pModel->aLayers[l].pFFNDown = ring_gguf_find_tensor(pGGUF, key);
@@ -1414,6 +1526,8 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 			snprintf(key, sizeof(key), "model.layers.%u.mlp.down_proj.weight", l);
 			pModel->aLayers[l].pFFNDown = ring_gguf_find_tensor(pGGUF, key);
 		}
+		snprintf(key, sizeof(key), "blk.%u.ffn_down.bias", l);
+		pModel->aLayers[l].pFFNDown_Bias = ring_gguf_find_tensor(pGGUF, key);
 	}
 
 	if (pModel->config.nLayers > 0 && !pModel->aLayers[0].pAttnQ) {
@@ -1658,6 +1772,9 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 	} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
 		const RingGGUFBlockQ8_0 *b8 = (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) * sizeof(RingGGUFBlockQ8_0));
 		ring_gguf_dequantize_q8_0(b8, pModel->pActX, nEmbd);
+	} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K) {
+		const RingGGUFBlockQ6_K *b6 = (const RingGGUFBlockQ6_K *)(pRawEmbd + (size_t)nToken * (nEmbd / 256) * sizeof(RingGGUFBlockQ6_K));
+		ring_gguf_dequantize_q6_k(b6, pModel->pActX, nEmbd);
 	} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
 		f16 = (const ggml_fp16_t *)(pRawEmbd + (size_t)nToken * nEmbd * sizeof(ggml_fp16_t));
 		ring_gguf_dequantize_f16(f16, pModel->pActX, nEmbd);
@@ -2228,6 +2345,201 @@ RING_FUNC(ring_model_api_is_arabic) {
 	RING_API_RETNUMBER(0);
 }
 
+static RingTensor *ring_model_embedding_bert(void *pRingState, RingModel *pModel, const int *aTokens, int nTokens) {
+	int nEmbd = (int)pModel->config.nEmbd;
+	int nLayers = (int)pModel->config.nLayers;
+	int nHeads = (int)pModel->config.nHeads;
+	int nHeadDim = (int)pModel->config.nHeadDim;
+	int nFF = (int)pModel->config.nFF;
+	float eps = pModel->config.fNormEps;
+	float scale = 1.0f / sqrtf((float)nHeadDim);
+	int S = nTokens;
+	int t, l, h, i, j, d;
+
+	if (S <= 0 || nEmbd <= 0) return NULL;
+	if (S > 2048) S = 2048; /* Context cap */
+
+	float *pSeqX = (float *)calloc((size_t)S * nEmbd, sizeof(float));
+	float *pSeqQ = (float *)calloc((size_t)S * nEmbd, sizeof(float));
+	float *pSeqK = (float *)calloc((size_t)S * nEmbd, sizeof(float));
+	float *pSeqV = (float *)calloc((size_t)S * nEmbd, sizeof(float));
+	float *pSeqAttOut = (float *)calloc((size_t)S * nEmbd, sizeof(float));
+	float *pActHB = (float *)calloc(nFF, sizeof(float));
+	float *pScores = (float *)calloc(S, sizeof(float));
+
+	if (!pSeqX || !pSeqQ || !pSeqK || !pSeqV || !pSeqAttOut || !pActHB || !pScores) {
+		if (pSeqX) free(pSeqX);
+		if (pSeqQ) free(pSeqQ);
+		if (pSeqK) free(pSeqK);
+		if (pSeqV) free(pSeqV);
+		if (pSeqAttOut) free(pSeqAttOut);
+		if (pActHB) free(pActHB);
+		if (pScores) free(pScores);
+		return NULL;
+	}
+
+	const uint8_t *pRawEmbd = (const uint8_t *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenEmbd);
+	const void *pPosEmbdData = pModel->pPosEmbd ? ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pPosEmbd) : NULL;
+	const void *pTypeData = pModel->pTokenTypes ? ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenTypes) : NULL;
+	const float *pEmbNormW = pModel->pTokenEmbdNorm ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenEmbdNorm) : NULL;
+	const float *pEmbNormB = pModel->pTokenEmbdNorm_Bias ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenEmbdNorm_Bias) : NULL;
+
+	/* 1. Embedding lookup + Positional + Types + LayerNorm */
+	for (t = 0; t < S; t++) {
+		int tok = aTokens[t];
+		float *xt = pSeqX + (size_t)t * nEmbd;
+
+		if (tok >= 0 && (uint32_t)tok < pModel->config.nVocab) {
+			if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K) {
+				const RingGGUFBlockQ6_K *b6 = (const RingGGUFBlockQ6_K *)(pRawEmbd + (size_t)tok * (nEmbd / 256) * sizeof(RingGGUFBlockQ6_K));
+				ring_gguf_dequantize_q6_k(b6, xt, nEmbd);
+			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
+				const RingGGUFBlockQ4_0 *b4 = (const RingGGUFBlockQ4_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) * sizeof(RingGGUFBlockQ4_0));
+				ring_gguf_dequantize_q4_0(b4, xt, nEmbd);
+			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
+				const RingGGUFBlockQ8_0 *b8 = (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) * sizeof(RingGGUFBlockQ8_0));
+				ring_gguf_dequantize_q8_0(b8, xt, nEmbd);
+			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
+				ring_gguf_dequantize_f16((const ggml_fp16_t *)pRawEmbd + (size_t)tok * nEmbd, xt, nEmbd);
+			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F32) {
+				memcpy(xt, (const float *)pRawEmbd + (size_t)tok * nEmbd, nEmbd * sizeof(float));
+			}
+		}
+
+		/* Learned Absolute Position Embedding (RoBERTa padding offset = 2) */
+		if (pPosEmbdData) {
+			int posIdx = t + 2;
+			if (posIdx >= (int)pModel->config.nCtx) posIdx = (int)pModel->config.nCtx - 1;
+			const float *posVec = (const float *)pPosEmbdData + (size_t)posIdx * nEmbd;
+			for (d = 0; d < nEmbd; d++) xt[d] += posVec[d];
+		}
+
+		/* Token Types */
+		if (pTypeData) {
+			const float *typeVec = (const float *)pTypeData;
+			for (d = 0; d < nEmbd; d++) xt[d] += typeVec[d];
+		}
+
+		/* Embedding LayerNorm */
+		layernorm(xt, xt, pEmbNormW, pEmbNormB, nEmbd, eps);
+	}
+
+	/* 2. Transformer Encoder Layers */
+	for (l = 0; l < nLayers; l++) {
+		RingLayerWeights *layer = &pModel->aLayers[l];
+		const float *attnNormW = layer->pAttnNorm ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, layer->pAttnNorm) : NULL;
+		const float *attnNormB = layer->pAttnNorm_Bias ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, layer->pAttnNorm_Bias) : NULL;
+		const float *ffnNormW = layer->pFFNNorm ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNNorm) : NULL;
+		const float *ffnNormB = layer->pFFNNorm_Bias ? (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNNorm_Bias) : NULL;
+
+		/* A. Compute Q, K, V for all tokens */
+		for (t = 0; t < S; t++) {
+			matvec_multiply(pModel, layer->pAttnQ, pSeqX + (size_t)t * nEmbd, pSeqQ + (size_t)t * nEmbd, layer->pAttnQ_Bias);
+			matvec_multiply(pModel, layer->pAttnK, pSeqX + (size_t)t * nEmbd, pSeqK + (size_t)t * nEmbd, layer->pAttnK_Bias);
+			matvec_multiply(pModel, layer->pAttnV, pSeqX + (size_t)t * nEmbd, pSeqV + (size_t)t * nEmbd, layer->pAttnV_Bias);
+		}
+
+		/* B. Multi-Head Bidirectional Attention */
+		for (h = 0; h < nHeads; h++) {
+			for (i = 0; i < S; i++) {
+				float *qHead = pSeqQ + (size_t)i * nEmbd + h * nHeadDim;
+				for (j = 0; j < S; j++) {
+					float *kHead = pSeqK + (size_t)j * nEmbd + h * nHeadDim;
+					float s = dot_f32(qHead, kHead, nHeadDim);
+					pScores[j] = s * scale;
+				}
+				softmax(pScores, S);
+
+				float *outHead = pSeqAttOut + (size_t)i * nEmbd + h * nHeadDim;
+				memset(outHead, 0, nHeadDim * sizeof(float));
+				for (j = 0; j < S; j++) {
+					float w = pScores[j];
+					float *vHead = pSeqV + (size_t)j * nEmbd + h * nHeadDim;
+					for (d = 0; d < nHeadDim; d++) {
+						outHead[d] += w * vHead[d];
+					}
+				}
+			}
+		}
+
+		/* C. Output Projection + Residual + LayerNorm */
+		for (i = 0; i < S; i++) {
+			float *xi = pSeqX + (size_t)i * nEmbd;
+			float *attOut = pSeqAttOut + (size_t)i * nEmbd;
+			matvec_multiply(pModel, layer->pAttnOut, attOut, pModel->pActAttnProj, layer->pAttnOut_Bias);
+			for (d = 0; d < nEmbd; d++) {
+				xi[d] += pModel->pActAttnProj[d];
+			}
+			layernorm(xi, xi, attnNormW, attnNormB, nEmbd, eps);
+		}
+
+		/* D. FFN (GELU) + Residual + LayerNorm */
+		for (i = 0; i < S; i++) {
+			float *xi = pSeqX + (size_t)i * nEmbd;
+			matvec_multiply(pModel, layer->pFFNUp, xi, pActHB, layer->pFFNUp_Bias);
+			for (d = 0; d < nFF; d++) {
+				pActHB[d] = fast_gelu(pActHB[d]);
+			}
+			matvec_multiply(pModel, layer->pFFNDown, pActHB, pModel->pActFFNOut, layer->pFFNDown_Bias);
+			for (d = 0; d < nEmbd; d++) {
+				xi[d] += pModel->pActFFNOut[d];
+			}
+			layernorm(xi, xi, ffnNormW, ffnNormB, nEmbd, eps);
+		}
+	}
+
+	/* 3. Pooling: CLS token (token 0) or Mean */
+	size_t aShape[1];
+	aShape[0] = (size_t)nEmbd;
+	RingTensor *pTensor = ring_tensor_new(pRingState, RING_TENSOR_TYPE_FLOAT32, 1, aShape);
+	if (!pTensor) {
+		free(pSeqX); free(pSeqQ); free(pSeqK); free(pSeqV);
+		free(pSeqAttOut); free(pActHB); free(pScores);
+		return NULL;
+	}
+	float *pData = (float *)ring_tensor_data(pTensor);
+
+	double sumSq = 0.0;
+	if (pModel->config.nPoolingType == 1) {
+		/* Mean pooling across all tokens */
+		double invS = 1.0 / (double)S;
+		for (d = 0; d < nEmbd; d++) {
+			double meanVal = 0.0;
+			for (t = 0; t < S; t++) {
+				meanVal += (double)pSeqX[(size_t)t * nEmbd + d];
+			}
+			meanVal *= invS;
+			pData[d] = (float)meanVal;
+			sumSq += meanVal * meanVal;
+		}
+	} else {
+		/* CLS token pooling (token 0: <s>) - BGE-M3 standard */
+		for (d = 0; d < nEmbd; d++) {
+			double val = (double)pSeqX[d];
+			pData[d] = (float)val;
+			sumSq += val * val;
+		}
+	}
+
+	/* 4. L2 Normalization */
+	if (sumSq > 1e-12) {
+		double invNorm = 1.0 / sqrt(sumSq);
+		for (d = 0; d < nEmbd; d++) {
+			pData[d] = (float)((double)pData[d] * invNorm);
+		}
+	}
+
+	free(pSeqX);
+	free(pSeqQ);
+	free(pSeqK);
+	free(pSeqV);
+	free(pSeqAttOut);
+	free(pActHB);
+	free(pScores);
+
+	return pTensor;
+}
+
 RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, const char *cText) {
 	int promptTokens[2048];
 	int nPromptTokens, i, d;
@@ -2245,6 +2557,10 @@ RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel, c
 
 	nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cText, promptTokens, 2048);
 	if (nPromptTokens <= 0) return NULL;
+
+	if (pModel->config.bIsBert) {
+		return ring_model_embedding_bert(pRingState, pModel, promptTokens, nPromptTokens);
+	}
 
 	pMean = (float *)calloc(nEmbd, sizeof(float));
 	if (!pMean) return NULL;

@@ -36,7 +36,10 @@ typedef struct RingTokenizer {
 	int nBosToken;
 	int nEosToken;
 	int nPadToken;
+	int nClsToken;
 	bool bIsByteLevelBPE; /* true if uses GPT-2/Qwen style byte tokens or 'Ġ' */
+	bool bIsSPM;          /* true if uses SentencePiece/T5 space prefix ' ' */
+	bool bAddSpacePrefix; /* tokenizer.ggml.add_space_prefix */
 
 	/* Vocabulary string -> ID hash table */
 	RingTokenEntry **aBuckets;

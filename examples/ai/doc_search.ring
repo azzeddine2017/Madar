@@ -86,6 +86,7 @@ func executeSearch(cSearchQuery)
 		see nl + f"--- Match #{nRank} [Cosine Similarity: {fScore}] ---" + nl
 		see chunk.cText + nl
 		nRank++
+	next
 	see "----------------------------------------------------" + nl
 
 	# Real-Time Streaming Answer from top matched context

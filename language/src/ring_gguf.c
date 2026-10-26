@@ -529,6 +529,45 @@ RING_API void ring_gguf_dequantize_q4_0(const void *pSrc, float *pDst, uint64_t 
 	}
 }
 
+RING_API void ring_gguf_dequantize_q6_k(const void *pSrc, float *pDst, uint64_t nElements) {
+	const RingGGUFBlockQ6_K *blocks = (const RingGGUFBlockQ6_K *)pSrc;
+	uint64_t nBlocks = nElements / 256;
+	for (uint64_t b = 0; b < nBlocks; b++) {
+		float d = ggml_fp16_to_fp32(blocks[b].d);
+		const uint8_t *ql = blocks[b].ql;
+		const uint8_t *qh = blocks[b].qh;
+		const int8_t *sc = blocks[b].scales;
+		float *dst = pDst + b * 256;
+
+		for (int n_half = 0; n_half < 256; n_half += 128) {
+			for (int h = 0; h < 2; h++) {
+				float s0 = (float)sc[h + 0] * d;
+				float s2 = (float)sc[h + 2] * d;
+				float s4 = (float)sc[h + 4] * d;
+				float s6 = (float)sc[h + 6] * d;
+				int l_start = h * 16;
+				int l_end = l_start + 16;
+
+				for (int l = l_start; l < l_end; l++) {
+					int8_t q1 = (int8_t)((ql[l +  0] & 0xF) | (((qh[l] >> 0) & 3) << 4)) - 32;
+					int8_t q2 = (int8_t)((ql[l + 32] & 0xF) | (((qh[l] >> 2) & 3) << 4)) - 32;
+					int8_t q3 = (int8_t)((ql[l +  0] >>  4) | (((qh[l] >> 4) & 3) << 4)) - 32;
+					int8_t q4 = (int8_t)((ql[l + 32] >>  4) | (((qh[l] >> 6) & 3) << 4)) - 32;
+
+					dst[l +  0] = s0 * (float)q1;
+					dst[l + 32] = s2 * (float)q2;
+					dst[l + 64] = s4 * (float)q3;
+					dst[l + 96] = s6 * (float)q4;
+				}
+			}
+			dst += 128;
+			ql  += 64;
+			qh  += 32;
+			sc  += 8;
+		}
+	}
+}
+
 /*
 ================================================================================
   Native Madar Tensor Construction
@@ -557,6 +596,8 @@ static RingTensor *gguf_create_tensor_from_info(void *pRingState, RingGGUF *pGGU
 			ring_gguf_dequantize_q8_0(pRawData, pDst, pInfo->nElements);
 		} else if (pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
 			ring_gguf_dequantize_q4_0(pRawData, pDst, pInfo->nElements);
+		} else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
+			ring_gguf_dequantize_q6_k(pRawData, pDst, pInfo->nElements);
 		} else {
 			ring_tensor_delete(pRingState, pTensor);
 			return NULL;

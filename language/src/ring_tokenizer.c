@@ -179,6 +179,29 @@ RING_API RingTokenizer *ring_tokenizer_create(RingGGUF *pGGUF) {
 		else if (pKvEos->value.nType == RING_GGUF_TYPE_INT32) pTok->nEosToken = pKvEos->value.val.i32;
 	}
 
+	pTok->nClsToken = -1;
+	RingGGUFKV *pKvCls = ring_gguf_find_kv(pGGUF, "tokenizer.ggml.cls_token_id");
+	if (pKvCls) {
+		if (pKvCls->value.nType == RING_GGUF_TYPE_UINT32) pTok->nClsToken = (int)pKvCls->value.val.u32;
+		else if (pKvCls->value.nType == RING_GGUF_TYPE_INT32) pTok->nClsToken = pKvCls->value.val.i32;
+	}
+
+	RingGGUFKV *pKvModel = ring_gguf_find_kv(pGGUF, "tokenizer.ggml.model");
+	if (pKvModel && pKvModel->value.nType == RING_GGUF_TYPE_STRING) {
+		if (strcmp(pKvModel->value.val.str.pStr, "t5") == 0 ||
+			strcmp(pKvModel->value.val.str.pStr, "spm") == 0 ||
+			strcmp(pKvModel->value.val.str.pStr, "bert") == 0) {
+			pTok->bIsSPM = true;
+		}
+	}
+
+	RingGGUFKV *pKvPrefix = ring_gguf_find_kv(pGGUF, "tokenizer.ggml.add_space_prefix");
+	if (pKvPrefix) {
+		if (pKvPrefix->value.nType == RING_GGUF_TYPE_UINT32) pTok->bAddSpacePrefix = (pKvPrefix->value.val.u32 != 0);
+		else if (pKvPrefix->value.nType == RING_GGUF_TYPE_INT32) pTok->bAddSpacePrefix = (pKvPrefix->value.val.i32 != 0);
+		else if (pKvPrefix->value.nType == RING_GGUF_TYPE_BOOL) pTok->bAddSpacePrefix = pKvPrefix->value.val.b;
+	}
+
 	/* Build Vocabulary Hash Table */
 	pTok->nBuckets = next_power_of_two(pTok->nVocabSize * 2);
 	pTok->nBucketMask = pTok->nBuckets - 1;
@@ -228,6 +251,11 @@ RING_API RingTokenizer *ring_tokenizer_create(RingGGUF *pGGUF) {
 		/* Detect GPT-2/Qwen style 'Ġ' (0xC4 0xA0) */
 		if (strstr(s, "\xc4\xa0") != NULL) {
 			pTok->bIsByteLevelBPE = true;
+		}
+
+		/* Detect SentencePiece / T5 style ' ' (0xE2 0x96 0x81) */
+		if (strstr(s, "\xe2\x96\x81") != NULL) {
+			pTok->bIsSPM = true;
 		}
 	}
 
@@ -436,8 +464,36 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 
 	gpt2_init_mapping();
 
-	/* If Byte-Level BPE (Qwen, GPT-2), convert raw bytes to GPT-2 Unicode string, keeping special tags untouched */
-	if (pTok->bIsByteLevelBPE) {
+	char *spmStr = NULL;
+	if (pTok->bIsSPM) {
+		size_t spmCap = tLen * 4 + 16;
+		spmStr = (char *)malloc(spmCap);
+		if (spmStr) {
+			size_t spmLen = 0;
+			if (pTok->bAddSpacePrefix || (tLen > 0 && cText[0] != ' ')) {
+				memcpy(spmStr + spmLen, "\xe2\x96\x81", 3);
+				spmLen += 3;
+			}
+			for (i = 0; i < tLen; i++) {
+				if (cText[i] == ' ') {
+					memcpy(spmStr + spmLen, "\xe2\x96\x81", 3);
+					spmLen += 3;
+				} else {
+					spmStr[spmLen++] = cText[i];
+				}
+			}
+			spmStr[spmLen] = '\0';
+			workText = spmStr;
+			workLen = spmLen;
+		} else {
+			workText = cText;
+			workLen = tLen;
+		}
+		int bos = (pTok->nBosToken >= 0) ? pTok->nBosToken : pTok->nClsToken;
+		if (bos >= 0 && nTokens < nMaxTokens) {
+			aOutTokens[nTokens++] = bos;
+		}
+	} else if (pTok->bIsByteLevelBPE) {
 		gpt2Str = (char *)malloc(tLen * 3 + 1);
 		if (gpt2Str) {
 			gpt2Len = 0;
@@ -547,6 +603,11 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 			nTokens--;
 		}
 	}
+
+	if (pTok->bIsSPM && pTok->nEosToken >= 0 && nTokens < nMaxTokens) {
+		aOutTokens[nTokens++] = pTok->nEosToken;
+	}
+	if (spmStr) free(spmStr);
 
 	return nTokens;
 }

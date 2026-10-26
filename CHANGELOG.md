@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1-alpha] - 2026-10-26
+
+### Added
+
+- **BGE-M3 (BAAI General Embedding) & BERT/XLM-RoBERTa Architecture Support (`language/src/ring_inference.c`, `language/include/ring_inference.h`):**
+  - **Native 24-Layer Bidirectional Transformer Encoder**: Implemented dedicated non-causal execution path for BERT and XLM-RoBERTa architectures (`general.architecture = "bert"` / `"xlm-roberta"`). Computes all-to-all token attention matrices across the full sequence without causal triangular masking.
+  - **AVX2 SIMD LayerNorm Kernel (`layernorm`)**: Vectorized standard LayerNorm with mean subtraction, variance normalization, scale weights, and bias terms, replacing RMSNorm for encoder architectures.
+  - **Fast GELU Activation (`fast_gelu`)**: High-precision tanh approximation of Gaussian Error Linear Units for FFN intermediate projection layers.
+  - **Learned Absolute Position & Type Embeddings**: Native loading and addition of `position_embd.weight` (supporting RoBERTa's $+2$ padding index offset) and `token_types.weight` prior to layer normalization.
+  - **Dense Embedding Extraction via CLS Pooling**: Directly extracts token 0 (`<s>` / `[CLS]`) representations and applies $L_2$ unit-vector normalization to produce 1024-dimensional continuous `RingTensor` embeddings for state-of-the-art Cosine Similarity search.
+  - **Flexible Normalization & Biases**: Native parsing and application of per-layer biases (`attn_q.bias`, `attn_k.bias`, `attn_v.bias`, `attn_output.bias`, `ffn_up.bias`, `ffn_down.bias`, `attn_output_norm.bias`, `layer_output_norm.bias`).
+
+- **Q6_K Super-Block Dequantization for Embeddings (`language/src/ring_gguf.c`, `language/include/ring_gguf.h`):**
+  - Implemented `ring_gguf_dequantize_q6_k` to dequantize 256-element super-blocks into float32, allowing models with Q6_K quantized `token_embd.weight` (such as `bge-m3-q4_0.gguf`) to run with zero precision loss and maximum CPU cache efficiency.
+
+- **SentencePiece (SPM / T5) Tokenizer Support (`language/src/ring_tokenizer.c`, `language/include/ring_tokenizer.h`):**
+  - Added native SPM / T5 tokenizer model detection (`tokenizer.ggml.model = "t5"` / `"spm"`).
+  - Handles SentencePiece space marker replacement (` ` / `\xe2\x96\x81`) and space-prefixing (`tokenizer.ggml.add_space_prefix = 1`).
+  - Automatic injection of `<s>` (ID 0) prefix and `</s>` (ID 2) suffix special tokens for encoder models.
+
+- **High-Level Framework & RAG Integration (`libraries/madar_ai/madar_ai.ring`, `examples/ai/bge_rag_demo.ring`):**
+  - Added dedicated `BgeModel` class providing `.embedding(cText)`, `.get_embedding(cText)`, `.tokenize(cText)`, and thread configuration.
+  - Updated `model_open(cPath)` factory to automatically detect BGE and BERT models (`bge-m3-q4_0.gguf`).
+  - Created `examples/ai/bge_rag_demo.ring` demonstrating end-to-end Dual-Model RAG: 1024-dimensional dense semantic retrieval via BGE-M3 combined with grounded answer generation via Qwen2.5.
+
+---
+
 ## [0.3.0-alpha] - 2026-10-24
 
 ### Added
