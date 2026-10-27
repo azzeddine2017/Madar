@@ -42,6 +42,12 @@ cd "%~dp0"
 echo.
 cd "%~dp0ai"
 "%RING_EXE%" test_qwen.ring
+if exist test_tok.gguf del test_tok.gguf
+cd "%~dp0"
+
+echo.
+cd "%~dp0"
+"%RING_EXE%" test_dour.ring
 cd "%~dp0"
 
 echo.
