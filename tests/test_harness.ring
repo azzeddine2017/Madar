@@ -39,4 +39,5 @@ func test_summary()
 		see "  SUCCESS: All tests in this suite passed!" + nl
 	else
 		see "  FAILURE: Some tests failed!" + nl
+		bye 1
 	ok

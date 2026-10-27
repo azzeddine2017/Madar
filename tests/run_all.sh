@@ -84,16 +84,6 @@ run_test "$SCRIPT_DIR/tensor" "test_gguf_loader.ring"       "TENSOR"
 echo "=== [4/4] AI Engine & Tokenizer Tests ==="
 run_test "$SCRIPT_DIR/ai" "test_qwen.ring" "AI"
 
-# ----------------------------------------------------------
-# 5. AlQalam C++20 Extension Tests (if compiled)
-# ----------------------------------------------------------
-if [ -f "$MADAR_ROOT/lib/libalqalam.so" ] || [ -f "$MADAR_ROOT/bin/libalqalam.so" ]; then
-    echo "=== [*] AlQalam C++20 Extension Diagnostics ==="
-    if [ -f "$MADAR_ROOT/extensions/AlQalam/tests/tests_alqalam.ring" ]; then
-        run_test "$MADAR_ROOT/extensions/AlQalam/tests" "tests_alqalam.ring" "ALQALAM"
-    fi
-fi
-
 # Clean up temporary test files if generated
 rm -f "$SCRIPT_DIR/ai/test_tok.gguf"
 

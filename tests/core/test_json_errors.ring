@@ -36,7 +36,11 @@ cCode = "t1 = tensor([1, 2, 3])" + nl +
         "t3 = t1 + t2" + nl
 write(cTempScript, cCode)
 
-cRingExe = "..\..\bin\ring.exe"
+if iswindows()
+	cRingExe = "..\..\bin\ring.exe"
+else
+	cRingExe = "../../bin/ring"
+ok
 cCmd = cRingExe + " --json-errors " + cTempScript + " > " + cTempOut + " 2>&1"
 system(cCmd)
 
