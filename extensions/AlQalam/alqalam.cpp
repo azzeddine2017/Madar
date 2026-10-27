@@ -1015,6 +1015,9 @@ RING_FUNC(qalam_vector_stream) {
     // 6. QalamLibInit (Init)
     // ==========================================
     
+    #ifdef __cplusplus
+    extern "C"
+    #endif
     RING_LIBINIT {
         // Timer
         RING_API_REGISTER("qalam_timer_init", qalam_timer_init);

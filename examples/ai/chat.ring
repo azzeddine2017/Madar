@@ -18,15 +18,23 @@ next
 
 if bPreferQwen
 	aCandidates = [
+		"models/qwen2.5-7b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-7b-instruct-q4_0.gguf",
+		"models/qwen2.5-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-3b-instruct-q4_0.gguf",
 		"models/qwen2.5-coder-3b-instruct-q4_0.gguf",
 		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
-		"../models/qwen2.5-coder-3b-instruct-q4_0.gguf"
+		"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
 	]
 else
 	aCandidates = [
+		"models/deepseek-r1-distill-qwen-7b-q4_0.gguf",
+		"../../models/deepseek-r1-distill-qwen-7b-q4_0.gguf",
 		"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
 		"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
-		"../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
+		"models/qwen2.5-7b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-7b-instruct-q4_0.gguf"
 	]
 ok
 

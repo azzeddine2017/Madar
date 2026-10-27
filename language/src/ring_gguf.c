@@ -8,6 +8,11 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 /*
@@ -243,7 +248,7 @@ RING_API RingGGUF *ring_gguf_open(const char *cFileName) {
 	#endif
 	pGGUF->nAlignment = RING_GGUF_DEFAULT_ALIGNMENT;
 
-	/* Windows High-Performance Memory Mapping */
+	/* High-Performance Memory Mapping (Zero-Copy) */
 	#ifdef _WIN32
 	HANDLE hFile = CreateFileA(cFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile != INVALID_HANDLE_VALUE) {
@@ -266,6 +271,25 @@ RING_API RingGGUF *ring_gguf_open(const char *cFileName) {
 		if (!pGGUF->pMappedData) {
 			CloseHandle(hFile);
 			pGGUF->hFile = NULL;
+		}
+	}
+	#else
+	int fd = open(cFileName, O_RDONLY);
+	if (fd != -1) {
+		struct stat sb;
+		if (fstat(fd, &sb) != -1) {
+			pGGUF->nFileSize = (uint64_t)sb.st_size;
+			void *pMapped = mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
+			if (pMapped != MAP_FAILED) {
+				pGGUF->pMappedData = (const uint8_t *)pMapped;
+				pGGUF->nMappedSize = (size_t)sb.st_size;
+				pGGUF->hMapFile = (void *)(intptr_t)(fd + 1);
+				pGGUF->hFile = (void *)(intptr_t)fd;
+			} else {
+				close(fd);
+			}
+		} else {
+			close(fd);
 		}
 	}
 	#endif
@@ -443,6 +467,9 @@ RING_API void ring_gguf_close(RingGGUF *pGGUF) {
 		UnmapViewOfFile((void *)pGGUF->pMappedData);
 		CloseHandle((HANDLE)pGGUF->hMapFile);
 		if (pGGUF->hFile) CloseHandle((HANDLE)pGGUF->hFile);
+		#else
+		munmap((void *)pGGUF->pMappedData, pGGUF->nMappedSize);
+		close((int)(intptr_t)pGGUF->hFile);
 		#endif
 	} else if (pGGUF->pMappedData) {
 		free((void *)pGGUF->pMappedData);

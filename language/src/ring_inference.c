@@ -13,6 +13,11 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
 #endif
 
 /*
@@ -455,12 +460,12 @@ static void matvec_compute_rows(MatVecTask *task) {
 	}
 }
 
-#ifdef _WIN32
 typedef struct {
 	RingModel *pModel;
 	int nIndex;
 } RingWorkerParam;
 
+#ifdef _WIN32
 static DWORD WINAPI ring_model_worker_proc(LPVOID lpParam) {
 	RingWorkerParam *param = (RingWorkerParam *)lpParam;
 	RingModel *pModel = param->pModel;
@@ -476,6 +481,23 @@ static DWORD WINAPI ring_model_worker_proc(LPVOID lpParam) {
 		SetEvent((HANDLE)pModel->hDoneEvents[idx]);
 	}
 	return 0;
+}
+#else
+static void *ring_model_worker_proc(void *lpParam) {
+	RingWorkerParam *param = (RingWorkerParam *)lpParam;
+	RingModel *pModel = param->pModel;
+	int idx = param->nIndex;
+	free(param);
+
+	while (1) {
+		sem_wait((sem_t *)pModel->hStartEvents[idx]);
+		if (pModel->bWorkerShutdown) break;
+		if (pModel->pWorkerTasks[idx]) {
+			matvec_compute_rows((MatVecTask *)pModel->pWorkerTasks[idx]);
+		}
+		sem_post((sem_t *)pModel->hDoneEvents[idx]);
+	}
+	return NULL;
 }
 #endif
 
@@ -523,6 +545,19 @@ static int madar_opencl_load_dll(void) {
 		p_##name = (pfn_##name)GetProcAddress(hLib, #name); \
 		if (!p_##name) { s_cl_loaded = -1; return 0; } \
 	} while(0)
+#else
+	void *hLib = dlopen("libOpenCL.so.1", RTLD_LAZY);
+	if (!hLib) hLib = dlopen("libOpenCL.so", RTLD_LAZY);
+	if (!hLib) hLib = dlopen("libnvidia-opencl.so.1", RTLD_LAZY);
+	if (!hLib) {
+		s_cl_loaded = -1;
+		return 0;
+	}
+	#define LOAD_CL_SYM(name) do { \
+		p_##name = (pfn_##name)dlsym(hLib, #name); \
+		if (!p_##name) { s_cl_loaded = -1; return 0; } \
+	} while(0)
+#endif
 
 	LOAD_CL_SYM(clGetPlatformIDs);
 	LOAD_CL_SYM(clGetDeviceIDs);
@@ -548,10 +583,6 @@ static int madar_opencl_load_dll(void) {
 	#undef LOAD_CL_SYM
 	s_cl_loaded = 1;
 	return 1;
-#else
-	s_cl_loaded = -1;
-	return 0;
-#endif
 }
 
 static const char *s_madar_cl_source =
@@ -1007,11 +1038,10 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo, vo
 		pBias = (const float *)ring_gguf_get_tensor_data(pModel->pGGUF, pBiasInfo);
 	}
 
-#ifdef _WIN32
 	/* Adaptive multi-threading:
-	   Only distribute across Win32 worker threads if N >= 512 and total ops >= 1,500,000.
+	   Distribute across worker threads if N >= 512 and total ops >= 1,500,000.
 	   For smaller matrices (e.g. Attn K/V projections), executing directly on the calling core
-	   with AVX2 FMA is faster than the round-trip latency of Win32 context switches. */
+	   with AVX2 FMA is faster than the round-trip latency of thread synchronization. */
 	if (pModel->nThreads >= 2 && N >= 512 && ((int64_t)N * K >= 1500000) && pModel->nWorkerCount > 0) {
 		nTotalThreads = pModel->nThreads;
 		if (nTotalThreads > pModel->nWorkerCount + 1) {
@@ -1031,7 +1061,11 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo, vo
 			pTask->nStartRow = i * nChunk;
 			pTask->nEndRow = (i + 1) * nChunk;
 			pTask->K = K;
+#ifdef _WIN32
 			SetEvent((HANDLE)pModel->hStartEvents[i]);
+#else
+			sem_post((sem_t *)pModel->hStartEvents[i]);
+#endif
 		}
 
 		/* Main thread computes the remainder */
@@ -1047,10 +1081,15 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo, vo
 		matvec_compute_rows(&task);
 
 		/* Wait for all active worker threads */
+#ifdef _WIN32
 		WaitForMultipleObjects((DWORD)nWorkers, (const HANDLE *)pModel->hDoneEvents, TRUE, INFINITE);
+#else
+		for (i = 0; i < nWorkers; i++) {
+			sem_wait((sem_t *)pModel->hDoneEvents[i]);
+		}
+#endif
 		return;
 	}
-#endif
 
 	task.pGGUF = pModel->pGGUF;
 	task.pInfo = pInfo;
@@ -1581,6 +1620,37 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 			}
 		}
 	}
+#else
+	/* Initialize Persistent POSIX Thread Pool for Parallel Inference */
+	pModel->nWorkerCount = RING_MODEL_MAX_WORKERS;
+	pModel->bWorkerShutdown = 0;
+	{
+		int i;
+		for (i = 0; i < RING_MODEL_MAX_WORKERS; i++) {
+			pModel->pWorkerTasks[i] = calloc(1, sizeof(MatVecTask));
+			sem_t *semStart = (sem_t *)malloc(sizeof(sem_t));
+			sem_t *semDone  = (sem_t *)malloc(sizeof(sem_t));
+			if (semStart && semDone) {
+				sem_init(semStart, 0, 0);
+				sem_init(semDone, 0, 0);
+				pModel->hStartEvents[i] = (void *)semStart;
+				pModel->hDoneEvents[i]  = (void *)semDone;
+
+				RingWorkerParam *param = (RingWorkerParam *)malloc(sizeof(RingWorkerParam));
+				if (param) {
+					param->pModel = pModel;
+					param->nIndex = i;
+					pthread_t th;
+					if (pthread_create(&th, NULL, ring_model_worker_proc, param) == 0) {
+						pModel->hWorkerThreads[i] = (void *)(intptr_t)th;
+					} else {
+						free(param);
+						pModel->hWorkerThreads[i] = NULL;
+					}
+				}
+			}
+		}
+	}
 #endif
 
 	printf("  [Model Specs] %s | L:%u | Dim:%u | Heads:%u(KV:%u) | FF:%u | Vocab:%u\n",
@@ -1629,6 +1699,36 @@ RING_API void ring_model_free(RingModel *pModel) {
 			}
 			if (pModel->hDoneEvents[i]) {
 				CloseHandle((HANDLE)pModel->hDoneEvents[i]);
+				pModel->hDoneEvents[i] = NULL;
+			}
+			if (pModel->pWorkerTasks[i]) {
+				free(pModel->pWorkerTasks[i]);
+				pModel->pWorkerTasks[i] = NULL;
+			}
+		}
+	}
+#else
+	pModel->bWorkerShutdown = 1;
+	{
+		int i;
+		for (i = 0; i < pModel->nWorkerCount; i++) {
+			if (pModel->hStartEvents[i]) {
+				sem_post((sem_t *)pModel->hStartEvents[i]);
+			}
+		}
+		for (i = 0; i < pModel->nWorkerCount; i++) {
+			if (pModel->hWorkerThreads[i]) {
+				pthread_join((pthread_t)(intptr_t)pModel->hWorkerThreads[i], NULL);
+				pModel->hWorkerThreads[i] = NULL;
+			}
+			if (pModel->hStartEvents[i]) {
+				sem_destroy((sem_t *)pModel->hStartEvents[i]);
+				free(pModel->hStartEvents[i]);
+				pModel->hStartEvents[i] = NULL;
+			}
+			if (pModel->hDoneEvents[i]) {
+				sem_destroy((sem_t *)pModel->hDoneEvents[i]);
+				free(pModel->hDoneEvents[i]);
 				pModel->hDoneEvents[i] = NULL;
 			}
 			if (pModel->pWorkerTasks[i]) {

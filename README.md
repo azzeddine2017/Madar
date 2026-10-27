@@ -1,7 +1,8 @@
 # Madar (مدار)
 
 [![Release](https://img.shields.io/badge/Release-0.3.0--alpha-blue.svg)](CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20|%20AVX2%20|%20OpenCL-green.svg)](docs/INSTALL.md)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Google%20Colab-green.svg)](docs/INSTALL.md)
+[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](Madar_Colab_Quickstart.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **An AI-Native, High-Performance Dialect and Runtime for the Ring Ecosystem**
@@ -77,8 +78,13 @@
 ---
 
 ## 🚀 Quick Start & Interactive Sessions
+ 
+### ⚡ Google Colab Cloud Quickstart (Zero-Setup & GPU Enabled)
+Experience the full power of Madar with 7B reasoning models and NVIDIA GPU acceleration in your browser:
+- 🇸🇦 **[Madar Colab (Arabic)](Madar_Colab_Quickstart.ipynb)** — Includes `%%madar` interactive cell magic, GPU OpenCL, and live AI Agent chat.
+- 🇬🇧 **[Madar Colab (English)](Madar_Colab_Quickstart_EN.ipynb)** — Complete English guide with GPU acceleration, AlQalam Hybrid RAG, and 7B models.
 
-### 1. Download Model
+### 1. Download Model (Windows / Local)
 Download supported quantized models directly into the `models/` directory:
 ```cmd
 tools\download_deepseek.bat   :: DeepSeek-R1-Distill-Qwen-1.5B (Q4_0, ~1.1 GB)

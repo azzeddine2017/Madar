@@ -21,6 +21,12 @@
 
 ---
 
+### ⚡ التجربة الفورية عبر Google Colab (بدون أي تثبيت محلي):
+يمكنك تجربة بيئة مدار ونماذج التفكير المنطقي 7B وتسريع كارت الشاشة GPU مباشرة عبر المتصفح:
+👉 افتح دفتر كولاب العربي: **[`Madar_Colab_Quickstart.ipynb`](../Madar_Colab_Quickstart.ipynb)** أو الإنجليزي: **[`Madar_Colab_Quickstart_EN.ipynb`](../Madar_Colab_Quickstart_EN.ipynb)**
+
+---
+
 ### 2. التثبيت السريع عبر الحزمة الجاهزة (Pre-built Release)
 
 1. **فك الضغط:**
@@ -129,6 +135,12 @@ Welcome to **Madar** (مدار) - An AI-Native, High-Performance Dialect and Run
   - Runtime Core: ~512 MB.
   - LLM Inference (0.5B - 1.5B models): 2 to 4 GB.
   - LLM Inference (3B models): 6 to 8 GB.
+
+---
+
+### ⚡ Instant Cloud Execution via Google Colab (Zero-Setup):
+You can experience Madar, 7B reasoning models, and GPU hardware acceleration directly in your browser:
+👉 Launch the English Notebook: **[`Madar_Colab_Quickstart_EN.ipynb`](../Madar_Colab_Quickstart_EN.ipynb)** or Arabic: **[`Madar_Colab_Quickstart.ipynb`](../Madar_Colab_Quickstart.ipynb)**
 
 ---
 
