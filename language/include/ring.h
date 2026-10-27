@@ -62,6 +62,9 @@
 	/* Linux (so files) */
 	#define RING_USEDLL 0
 	#define RING_BUILDLIB 0
+	#ifndef _strdup
+		#define _strdup strdup
+	#endif
 #endif
 #if RING_MICROCONTROLLER
 	/* Tested using Compiler for 32-bit PIC Microcontrollers & Raspberry Pi Pico Microcontroller */
@@ -227,12 +230,6 @@
 #include "general.h"
 #include "vmgcdata.h"
 #include "rstring.h"
-#include "ggml.h"
-#include "ring_tensor.h"
-#include "ring_gguf.h"
-#include "ring_diagnostics.h"
-#include "ring_tokenizer.h"
-#include "ring_inference.h"
 #include "ritem.h"
 #include "ritems.h"
 #include "rlist.h"
@@ -250,6 +247,13 @@
 #include "objfile.h"
 #include "genlib_e.h"
 #include "ring_jit.h"
+/* Madar AI & Modern Dialect Headers */
+#include "ggml.h"
+#include "ring_tensor.h"
+#include "ring_gguf.h"
+#include "ring_diagnostics.h"
+#include "ring_tokenizer.h"
+#include "ring_inference.h"
 /* Extensions Headers */
 #ifndef RING_EXTENSION
 	#define RING_EXTENSION

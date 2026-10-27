@@ -1011,9 +1011,7 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo, vo
 	int K, N;
 	const float *pBias;
 	MatVecTask task;
-#ifdef _WIN32
 	int nTotalThreads, nWorkers, nChunk, i;
-#endif
 
 	if (!pModel || !pInfo || !x || !y) return;
 
@@ -1660,12 +1658,12 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	printf("  [Tensors] Embd: %s (%s, %llux%llu) | Out: %s (%s, %llux%llu)\n",
 		   pModel->pTokenEmbd ? pModel->pTokenEmbd->pName : "NULL",
 		   pModel->pTokenEmbd ? ring_gguf_tensor_type_name(pModel->pTokenEmbd->nType) : "NULL",
-		   pModel->pTokenEmbd ? pModel->pTokenEmbd->aDims[0] : 0,
-		   pModel->pTokenEmbd ? pModel->pTokenEmbd->aDims[1] : 0,
+		   pModel->pTokenEmbd ? (unsigned long long)pModel->pTokenEmbd->aDims[0] : 0ULL,
+		   pModel->pTokenEmbd ? (unsigned long long)pModel->pTokenEmbd->aDims[1] : 0ULL,
 		   pModel->pOutput ? pModel->pOutput->pName : "NULL",
 		   pModel->pOutput ? ring_gguf_tensor_type_name(pModel->pOutput->nType) : "NULL",
-		   pModel->pOutput ? pModel->pOutput->aDims[0] : 0,
-		   pModel->pOutput ? pModel->pOutput->aDims[1] : 0);
+		   pModel->pOutput ? (unsigned long long)pModel->pOutput->aDims[0] : 0ULL,
+		   pModel->pOutput ? (unsigned long long)pModel->pOutput->aDims[1] : 0ULL);
 
 	/* Initialize GPU Acceleration (OpenCL Engine) */
 	madar_gpu_init(pModel);

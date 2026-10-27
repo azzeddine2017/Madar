@@ -21,7 +21,7 @@ echo "=========================================================="
 echo "  Building Madar Core Runtime (AVX2 + FMA + SIMD + POSIX) "
 echo "=========================================================="
 
-CFLAGS="-c -fPIC -O3 -mavx2 -mfma -mf16c -pthread -I$INC_DIR -I$SRC_DIR"
+CFLAGS="-c -fPIC -O3 -mavx2 -mfma -mf16c -pthread -D_GNU_SOURCE -I$INC_DIR -I$SRC_DIR"
 
 # Core source files
 OBJS="general.o state.o ext.o hashlib.o rhtable.o vmgc.o os_e.o rstring.o \

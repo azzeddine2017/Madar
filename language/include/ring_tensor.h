@@ -92,6 +92,6 @@ RING_API size_t ring_tensor_total_elements(const RingTensor *pTensor);
 RING_API void  *ring_tensor_data(const RingTensor *pTensor);
 
 /* VM Scripting Functions Loader */
-RING_API void ring_tensor_loadfunctions(struct RingState *pRingState);
+RING_API void ring_tensor_loadfunctions(RingState *pRingState);
 
 #endif
