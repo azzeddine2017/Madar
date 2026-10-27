@@ -188,10 +188,14 @@ RING_API RingTokenizer *ring_tokenizer_create(RingGGUF *pGGUF) {
 
 	RingGGUFKV *pKvModel = ring_gguf_find_kv(pGGUF, "tokenizer.ggml.model");
 	if (pKvModel && pKvModel->value.nType == RING_GGUF_TYPE_STRING) {
-		if (strcmp(pKvModel->value.val.str.pStr, "t5") == 0 ||
-			strcmp(pKvModel->value.val.str.pStr, "spm") == 0 ||
-			strcmp(pKvModel->value.val.str.pStr, "bert") == 0) {
+		const char *mName = pKvModel->value.val.str.pStr;
+		if (strcmp(mName, "t5") == 0 ||
+			strcmp(mName, "spm") == 0 ||
+			strcmp(mName, "bert") == 0) {
 			pTok->bIsSPM = true;
+		} else if (strcmp(mName, "gpt2") == 0 || strcmp(mName, "llama") == 0 || strcmp(mName, "qwen2") == 0) {
+			pTok->bIsByteLevelBPE = true;
+			pTok->bIsSPM = false;
 		}
 	}
 
@@ -254,9 +258,14 @@ RING_API RingTokenizer *ring_tokenizer_create(RingGGUF *pGGUF) {
 		}
 
 		/* Detect SentencePiece / T5 style ' ' (0xE2 0x96 0x81) */
-		if (strstr(s, "\xe2\x96\x81") != NULL) {
+		if (!pTok->bIsByteLevelBPE && strstr(s, "\xe2\x96\x81") != NULL) {
 			pTok->bIsSPM = true;
 		}
+	}
+
+	/* ByteLevelBPE takes absolute precedence over SPM */
+	if (pTok->bIsByteLevelBPE) {
+		pTok->bIsSPM = false;
 	}
 
 	/* Initialize GPT-2 byte mapping and map all 256 bytes to tokens */
@@ -465,7 +474,31 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 	gpt2_init_mapping();
 
 	char *spmStr = NULL;
-	if (pTok->bIsSPM) {
+	if (pTok->bIsByteLevelBPE) {
+		gpt2Str = (char *)malloc(tLen * 3 + 1);
+		if (gpt2Str) {
+			gpt2Len = 0;
+			for (i = 0; i < tLen; i++) {
+				tagLen = 0; tagId = 0;
+				if (cText[i] == '<' && is_special_tag(pTok, cText + i, tLen - i, &tagLen, &tagId)) {
+					memcpy(gpt2Str + gpt2Len, cText + i, tagLen);
+					gpt2Len += tagLen;
+					i += tagLen - 1;
+				} else {
+					unsigned char b = (unsigned char)cText[i];
+					const GPT2ByteMap *map = &s_gpt2_byte_to_utf8[b];
+					memcpy(gpt2Str + gpt2Len, map->utf8, map->len);
+					gpt2Len += map->len;
+				}
+			}
+			gpt2Str[gpt2Len] = '\0';
+			workText = gpt2Str;
+			workLen = gpt2Len;
+		} else {
+			workText = cText;
+			workLen = tLen;
+		}
+	} else if (pTok->bIsSPM) {
 		size_t spmCap = tLen * 4 + 16;
 		spmStr = (char *)malloc(spmCap);
 		if (spmStr) {
@@ -492,30 +525,6 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 		int bos = (pTok->nBosToken >= 0) ? pTok->nBosToken : pTok->nClsToken;
 		if (bos >= 0 && nTokens < nMaxTokens) {
 			aOutTokens[nTokens++] = bos;
-		}
-	} else if (pTok->bIsByteLevelBPE) {
-		gpt2Str = (char *)malloc(tLen * 3 + 1);
-		if (gpt2Str) {
-			gpt2Len = 0;
-			for (i = 0; i < tLen; i++) {
-				tagLen = 0; tagId = 0;
-				if (cText[i] == '<' && is_special_tag(pTok, cText + i, tLen - i, &tagLen, &tagId)) {
-					memcpy(gpt2Str + gpt2Len, cText + i, tagLen);
-					gpt2Len += tagLen;
-					i += tagLen - 1;
-				} else {
-					unsigned char b = (unsigned char)cText[i];
-					const GPT2ByteMap *map = &s_gpt2_byte_to_utf8[b];
-					memcpy(gpt2Str + gpt2Len, map->utf8, map->len);
-					gpt2Len += map->len;
-				}
-			}
-			gpt2Str[gpt2Len] = '\0';
-			workText = gpt2Str;
-			workLen = gpt2Len;
-		} else {
-			workText = cText;
-			workLen = tLen;
 		}
 	} else {
 		workText = cText;
@@ -554,7 +563,7 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 			aOutTokens[nTokens++] = matchedId;
 			i += matchedLen;
 		} else {
-			/* Fallback to single GPT-2 character */
+			/* Fallback to single character / byte */
 			unsigned char c1 = (unsigned char)workText[i];
 			size_t cLen = 1;
 			if ((c1 & 0xE0) == 0xC0) cLen = 2;
@@ -566,6 +575,17 @@ RING_API int ring_tokenizer_encode(RingTokenizer *pTok, const char *cText, int *
 				id = ring_tokenizer_find_token(pTok, buf);
 				if (id >= 0) {
 					aOutTokens[nTokens++] = id;
+				} else if (pTok->bIsByteLevelBPE) {
+					int origByte = -1;
+					if (cLen == 1 && c1 < 128) {
+						origByte = s_gpt2_code_to_byte[c1];
+					} else if (cLen == 2) {
+						int code = ((c1 & 0x1F) << 6) | ((unsigned char)workText[i + 1] & 0x3F);
+						if (code < 1024) origByte = s_gpt2_code_to_byte[code];
+					}
+					if (origByte >= 0 && origByte < 256 && pTok->aByteToToken[origByte] >= 0) {
+						aOutTokens[nTokens++] = pTok->aByteToToken[origByte];
+					}
 				}
 				i += cLen;
 			} else {

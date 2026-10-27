@@ -80,9 +80,9 @@ class QwenModel
 		return embedding(cText)
 
 	func formatChatPrompt(cUserMessage, cSystemMessage)
-		# Official Qwen2.5 ChatML format
+		# Official Qwen2.5 / DeepSeek-R1 ChatML format
 		if cSystemMessage = NULL or cSystemMessage = ""
-			cSystemMessage = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
+			cSystemMessage = "You are a helpful assistant."
 		ok
 		cPrompt = "<|im_start|>system" + nl + cSystemMessage + "<|im_end|>" + nl +
 		          "<|im_start|>user" + nl + cUserMessage + "<|im_end|>" + nl +
@@ -92,6 +92,9 @@ class QwenModel
 	func generate(cPrompt, nTokens = 0)
 		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
 			nMaxTokens = nTokens
+		ok
+		if not substr(cPrompt, "<|im_start|>") and not substr(cPrompt, "<think>")
+			cPrompt = formatChatPrompt(cPrompt, "")
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate(hModel, cPrompt, nMaxTokens, fTemp)
@@ -105,6 +108,9 @@ class QwenModel
 
 	func prefill(cPrompt, nTokens = 0)
 		if nTokens = NULL or nTokens <= 0 nTokens = nMaxTokens ok
+		if not substr(cPrompt, "<|im_start|>") and not substr(cPrompt, "<think>")
+			cPrompt = formatChatPrompt(cPrompt, "")
+		ok
 		return madar_model_prefill(hModel, cPrompt, nTokens, fTemp)
 
 	func hasMore()
@@ -116,6 +122,9 @@ class QwenModel
 	func generateStream(cPrompt, nTokens = 0)
 		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
 			nMaxTokens = nTokens
+		ok
+		if not substr(cPrompt, "<|im_start|>") and not substr(cPrompt, "<think>")
+			cPrompt = formatChatPrompt(cPrompt, "")
 		ok
 		t0 = clock()
 		cOutput = madar_model_generate_stream(hModel, cPrompt, nMaxTokens, fTemp)
