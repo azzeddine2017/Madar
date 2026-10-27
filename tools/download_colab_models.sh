@@ -50,8 +50,8 @@ case "$CHOICE" in
     "qwen7b")
         download_file \
             "qwen2.5-7b-instruct-q4_0.gguf" \
-            "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_0.gguf" \
-            "Qwen2.5-7B-Instruct (Q4_0, ~4.35 GB - High Intelligence, Arabic & Coding)"
+            "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_0.gguf" \
+            "Qwen2.5-7B-Instruct (Q4_0, ~4.48 GB - High Intelligence, Arabic & Coding)"
         ;;
     "qwen3b")
         download_file \
