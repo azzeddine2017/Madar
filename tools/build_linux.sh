@@ -36,6 +36,12 @@ if [ -d "$MADAR_ROOT/extensions/ringcurl" ]; then
     (cd "$MADAR_ROOT/extensions/ringcurl" && bash buildgcc.sh || true)
 fi
 
+# Ensure standard library case-compatibility symlinks on Linux
+if [ -d "$MADAR_ROOT/bin/load" ]; then
+    (cd "$MADAR_ROOT/bin/load" && ln -sf stdlibcore.ring stdlibCore.ring 2>/dev/null || true)
+    (cd "$MADAR_ROOT/bin/load" && ln -sf stdlib.ring StdLib.ring 2>/dev/null || true)
+fi
+
 # 3. Verification
 echo "[3/3] Verifying Binaries..."
 if [ -f "$MADAR_ROOT/bin/ring" ]; then

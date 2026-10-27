@@ -9,7 +9,7 @@
 # ====================================================================
 
 
-load "stdlibCore.ring"
+load "stdlibcore.ring"
 
 # Safely load AlQalam if available
 try
