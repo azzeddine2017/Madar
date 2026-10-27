@@ -2253,7 +2253,7 @@ RING_API char *ring_model_generate(RingModel *pModel, const char *cPrompt, int n
 */
 
 static void ring_model_gc_free(void *pRingState, void *pPointer) {
-	RING_UNREFERENCED_PARAMETER(pRingState);
+	(void)pRingState;
 	if (pPointer) {
 		ring_model_free((RingModel *)pPointer);
 	}

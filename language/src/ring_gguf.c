@@ -675,7 +675,7 @@ RING_API RingTensor *ring_gguf_load_tensor_f32(void *pRingState, RingGGUF *pGGUF
 */
 
 static void ring_gguf_gc_close(void *pRingState, void *pPointer) {
-	RING_UNREFERENCED_PARAMETER(pRingState);
+	(void)pRingState;
 	if (pPointer) {
 		ring_gguf_close((RingGGUF *)pPointer);
 	}

@@ -66,6 +66,9 @@
 		#define _strdup strdup
 	#endif
 #endif
+#ifndef RING_UNREFERENCED_PARAMETER
+	#define RING_UNREFERENCED_PARAMETER(p) ((void)(p))
+#endif
 #if RING_MICROCONTROLLER
 	/* Tested using Compiler for 32-bit PIC Microcontrollers & Raspberry Pi Pico Microcontroller */
 	#define RING_LIMITEDENV 1
