@@ -188,8 +188,13 @@ class DeepSeekModel from QwenModel
 	# Adds ChatML prompt formatting and reasoning <think> parser
 
 	func formatChatPrompt(cUserMessage, cSystemMessage)
-		# Official DeepSeek-R1 native format: <｜User｜>{message}<｜Assistant｜><think>\n
-		cPrompt = "<｜User｜>" + cUserMessage + "<｜Assistant｜><think>" + nl
+		# DeepSeek-R1-Distill-Qwen uses official ChatML format with <think> tag
+		if cSystemMessage = NULL or cSystemMessage = ""
+			cSystemMessage = "You are a helpful assistant."
+		ok
+		cPrompt = "<|im_start|>system" + nl + cSystemMessage + "<|im_end|>" + nl +
+		          "<|im_start|>user" + nl + cUserMessage + "<|im_end|>" + nl +
+		          "<|im_start|>assistant" + nl + "<think>" + nl
 		return cPrompt
 
 	func extractThinking(cResponse)
