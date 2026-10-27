@@ -467,7 +467,9 @@ extern "C" {
         size_t size;
         if(fread(&size, sizeof(size_t), 1, fp) == 1) {
             p->data.resize(size);
-            fread(p->data.data(), sizeof(double), size, fp);
+            if (fread(p->data.data(), sizeof(double), size, fp) != size) {
+                /* partial read or EOF */
+            }
         }
         fclose(fp);
     }
@@ -515,7 +517,9 @@ RING_FUNC(qalam_vector_stream) {
     if (strcmp(cMode, "load") == 0) {
         // --- Load mode ---
         p->data.resize(nCount);
-        fread(p->data.data(), sizeof(double), nCount, fp);
+        if (fread(p->data.data(), sizeof(double), nCount, fp) != nCount) {
+            /* partial read or EOF */
+        }
     } 
     else if (strcmp(cMode, "upload") == 0) {
         // --- Upload mode ---
@@ -921,16 +925,16 @@ RING_FUNC(qalam_vector_stream) {
 
         for (size_t i = 0; i < nCount; ++i) {
             // 1. Read the text length
-            size_t nLen;
-            fread(&nLen, sizeof(size_t), 1, fp);
+            size_t nLen = 0;
+            if (fread(&nLen, sizeof(size_t), 1, fp) != 1) break;
 
             // 2. Read the text (using temporary buffer)
             std::string token(nLen, ' ');
-            fread(&token[0], 1, nLen, fp);
+            if (fread(&token[0], 1, nLen, fp) != nLen) break;
 
             // 3. Read the associated number (ID)
-            double id;
-            fread(&id, sizeof(double), 1, fp);
+            double id = 0.0;
+            if (fread(&id, sizeof(double), 1, fp) != 1) break;
 
             // 4. Insert into the map
             p->map[token] = id;
