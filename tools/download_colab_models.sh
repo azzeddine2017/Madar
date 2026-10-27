@@ -65,13 +65,25 @@ case "$CHOICE" in
             "https://huggingface.co/CompendiumLabs/bge-m3-gguf/resolve/main/bge-m3-q4_0.gguf" \
             "BGE-M3 (Q4_0, ~1.19 GB - Multilingual Dense Embeddings for RAG)"
         ;;
+    "qwen14b"|"14b")
+        download_file \
+            "qwen2.5-14b-instruct-q4_0.gguf" \
+            "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_0.gguf" \
+            "Qwen2.5-14B-Instruct (Q4_0, ~8.54 GB - Frontier Intelligence, SOTA Arabic, Math & Code)"
+        ;;
+    "deepseek14b"|"r1-14b")
+        download_file \
+            "deepseek-r1-distill-qwen-14b-q4_0.gguf" \
+            "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_0.gguf" \
+            "DeepSeek-R1-Distill-Qwen-14B (Q4_0, ~8.54 GB - Superhuman Reasoning & Deep CoT)"
+        ;;
     "all")
-        echo "[INFO] Downloading full high-intelligence suite (DeepSeek-R1-7B + BGE-M3)..."
+        echo "[INFO] Downloading full high-intelligence suite (Qwen2.5-7B + DeepSeek-R1-7B)..."
+        "$0" qwen7b
         "$0" deepseek7b
-        "$0" bge
         ;;
     *)
-        echo "Usage: bash download_colab_models.sh [deepseek7b | qwen7b | qwen3b | bge | all]"
+        echo "Usage: bash download_colab_models.sh [qwen14b | deepseek14b | qwen7b | deepseek7b | qwen3b | bge | all]"
         exit 1
         ;;
 esac
