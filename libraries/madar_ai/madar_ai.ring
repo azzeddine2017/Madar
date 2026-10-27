@@ -89,8 +89,8 @@ class QwenModel
 		          "<|im_start|>assistant" + nl
 		return cPrompt
 
-	func generate(cPrompt, nTokens)
-		if nTokens != NULL and nTokens > 0
+	func generate(cPrompt, nTokens = 0)
+		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
 			nMaxTokens = nTokens
 		ok
 		t0 = clock()
@@ -103,7 +103,7 @@ class QwenModel
 		ok
 		return cOutput
 
-	func prefill(cPrompt, nTokens)
+	func prefill(cPrompt, nTokens = 0)
 		if nTokens = NULL or nTokens <= 0 nTokens = nMaxTokens ok
 		return madar_model_prefill(hModel, cPrompt, nTokens, fTemp)
 
@@ -113,7 +113,7 @@ class QwenModel
 	func step()
 		return madar_model_step(hModel)
 
-	func generateStream(cPrompt, nTokens)
+	func generateStream(cPrompt, nTokens = 0)
 		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
 			nMaxTokens = nTokens
 		ok
@@ -154,11 +154,11 @@ class QwenModel
 	func stream(cPrompt, nTokens, pCallback)
 		return generateStreamCallback(cPrompt, nTokens, pCallback)
 
-	func chat(cUserMessage, nTokens)
+	func chat(cUserMessage, nTokens = 0)
 		cPrompt = formatChatPrompt(cUserMessage, "")
 		return generate(cPrompt, nTokens)
 
-	func chatStream(cUserMessage, nTokens)
+	func chatStream(cUserMessage, nTokens = 0)
 		cPrompt = formatChatPrompt(cUserMessage, "")
 		return generateStream(cPrompt, nTokens)
 

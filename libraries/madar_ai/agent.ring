@@ -57,9 +57,17 @@ class AIAgent
 	bAutonomousTools = 1        # Enable Qwen2.5 Function Calling Schema
 
 	func init(model = NULL, embed_model = NULL, cMemPath = "agent_memory.bin")
-		oModel = model
+		if isstring(model) and model != ""
+			oModel = ai_open(model)
+		else
+			oModel = model
+		ok
+		if isstring(embed_model) and embed_model != ""
+			oEmbedModel = ai_open(embed_model)
+		else
+			oEmbedModel = embed_model
+		ok
 		cMemoryPath = cMemPath
-		oEmbedModel = embed_model
 		registerCoreTools()
 		return self
 
@@ -70,7 +78,9 @@ class AIAgent
 		if cPath != NULL and cPath != ""
 			cMemoryPath = cPath
 		ok
-		oMemory = new VectorStore(oEmbedModel)
+		pEmb = oEmbedModel
+		if pEmb = NULL pEmb = oModel ok
+		oMemory = new VectorStore(pEmb)
 		if fexists(cMemoryPath)
 			oMemory.loadBinary(cMemoryPath)
 		ok
