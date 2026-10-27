@@ -16,10 +16,10 @@ load "agent.ring"
 # 1. Locate GGUF Model
 cModelPath = ""
 aCandidates = [
-	"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+	/*models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
 	"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-	"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+	"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",*/
+	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
 	"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
 	"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
@@ -48,12 +48,32 @@ see "====================================================================" + nl
 see "  Model: " + cModelPath + nl
 
 t0 = clock()
-model = new QwenModel(cModelPath)
-model.setThreads(4)
-model.setTemperature(0.3)
-model.setGPU(1)
+oChatModel = new QwenModel(cModelPath)
+oChatModel.setThreads(4)
+oChatModel.setTemperature(0.3)
+oChatModel.setGPU(1)
 
-agent = new AIAgent(model)
+cBgePath = "models/bge-m3-q4_0.gguf"
+if not fexists(cBgePath)
+	cBgePath = "../../models/bge-m3-q4_0.gguf"
+ok
+
+if not fexists(cBgePath)
+	see "[ERROR] BGE-M3 model not found at: " + cBgePath + nl
+	bye
+ok
+
+see "========================================================" + nl
+see "  Madar AI - BGE-M3 Embedding & RAG Pipeline" + nl
+see "========================================================" + nl
+
+# 1. فتح نموذج BGE-M3 لإنتاج التضمينات الشعاعية (1024-dim Normalized Embeddings)
+see "Loading BGE-M3 Embedding Engine..." + nl
+
+embed_model = model_open(cBgePath)
+embed_model.setThreads(4)
+
+agent = new AIAgent(oChatModel,embed_model)
 agent.bStream = 1      # Enable real-time token streaming
 agent.bVerbose = 1     # Print tool invocation and observation steps
 agent.bAutonomousTools = 1 # Official Qwen2.5-Coder Function Calling Schema
@@ -125,7 +145,7 @@ while true
 	if cLower = "exit" or cLower = "quit" or cLower = "bye" or cLower = "وداعا"
 		agent.saveMemory()
 		see nl + "Goodbye from Madar AI Agent! (وداعاً من وكيل مدار الذكي)" + nl
-		model.close()
+		oChatModel.close()
 		exit
 	ok
 
@@ -237,10 +257,10 @@ while true
 		aParts = split(cInput, " ")
 		if len(aParts) >= 2
 			fNewT = 0.0 + aParts[2]
-			model.setTemperature(fNewT)
+			oChatModel.setTemperature(fNewT)
 			see "  [System] Model temperature set to " + fNewT + nl
 		else
-			see "  [System] Current temperature: " + model.fTemp + nl
+			see "  [System] Current temperature: " + oChatModel.fTemp + nl
 		ok
 		loop
 	ok
@@ -252,8 +272,8 @@ while true
 	tQ1 = clock()
 	nDur = (tQ1 - tQ0) / clockspersecond()
 
-	if model.fTokensPerSec > 0
-		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Speed: ~" + round(model.fTokensPerSec, 1) + " tok/s (" + round(nDur, 2) + "s)]" + nl
+	if oChatModel.fTokensPerSec > 0
+		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Speed: ~" + round(oChatModel.fTokensPerSec, 1) + " tok/s (" + round(nDur, 2) + "s)]" + nl
 	else
 		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Elapsed: " + round(nDur, 2) + "s]" + nl
 	ok

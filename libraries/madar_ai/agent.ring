@@ -41,6 +41,7 @@ func extractMathExpr(cText)
 
 class AIAgent
 	oModel           = NULL
+	oEmbedModel      = NULL
 	aTools           = []       # [ [name, desc, params, func], ... ]
 	nMaxSteps        = 3        # Maximum ReAct tool execution steps
 	nMaxOutputTokens = 512    # Maximum number of tokens to generate
@@ -55,9 +56,10 @@ class AIAgent
 	bVectorMemory    = 1        # Enable/disable RAG vector memory
 	bAutonomousTools = 1        # Enable Qwen2.5 Function Calling Schema
 
-	func init(model = NULL, cMemPath = "agent_memory.bin")
+	func init(model = NULL, embed_model = NULL, cMemPath = "agent_memory.bin")
 		oModel = model
 		cMemoryPath = cMemPath
+		oEmbedModel = embed_model
 		registerCoreTools()
 		return self
 
@@ -68,7 +70,7 @@ class AIAgent
 		if cPath != NULL and cPath != ""
 			cMemoryPath = cPath
 		ok
-		oMemory = new VectorStore(oModel)
+		oMemory = new VectorStore(oEmbedModel)
 		if fexists(cMemoryPath)
 			oMemory.loadBinary(cMemoryPath)
 		ok
@@ -235,7 +237,7 @@ class AIAgent
 				cText = left(cText, 80) + "..."
 			ok
 
-			cHist += f"<|im_start|>{cRole}\n{cText}<|im_end|>\n"
+			cHist += f"<|im_start|>{cRole}'\n'{cText}<|im_end|>\n"
 		next
 		return cHist
 
@@ -531,46 +533,23 @@ class AIAgent
 				if len(cChunkText) > 200 cChunkText = left(cChunkText, 200) + "..." ok
 				cMemContext = f"- {cChunkText}"
 				if bVerbose
-					see f"  [RAG Context: 1 relevant chunk injected (Score: {round(aMemMatches[1][1], 2)})]\n"
+					see f"  [RAG Context: 1 relevant chunk injected (Score: {round(aMemMatches[1][1], 2)})]{nl}"
 				ok
 			ok
 		ok
 
-		# 2. Build Unified System Prompt
-		cLower = lower(cUserPrompt)
-		bIsCodeQuery = (substr(cLower, "كلاس") > 0 or substr(cLower, "دالة") > 0 or 
-		                substr(cLower, "كود") > 0 or substr(cLower, "class") > 0 or 
-		                substr(cLower, "func") > 0 or substr(cLower, "function") > 0 or 
-		                substr(cLower, "code") > 0 or substr(cLower, "برنامج") > 0 or 
-		                substr(cLower, "اكتب") > 0 or substr(cLower, "write") > 0)
-
-		if bIsCodeQuery
-			cSys = "You are an expert Ring and Madar programmer.\n" +
-			       "When asked how to write code or define classes in Ring, always provide a clean, complete code block in ```ring ... ``` followed by a brief explanation.\n" +
-			       "Example of Ring class syntax:\n" +
-			       "```ring\n" +
-			       "class Person\n" +
-			       "    name = 'Ring'\n" +
-			       "    func printName()\n" +
-			       "        ? 'Name: ' + name\n" +
-			       "\n" +
-			       "p = new Person\n" +
-			       "p.printName()\n" +
-			       "```"
-		else
-			cSys = buildToolSchema()
-		ok
+		cSys = buildToolSchema()
 
 		if cMemContext != ""
-			cSys += f"\n\n# Relevant Knowledge:\n{cMemContext}"
+			cSys += f"{nl+nl}# Relevant Knowledge:{nl}{cMemContext}"
 		ok
 
 		# 3. Assemble Prompt with Sliced History
-		cPrompt = f"<|im_start|>system\n{cSys}<|im_end|>\n"
+		cPrompt = f"<|im_start|>system{nl}{cSys}<|im_end|>{nl}"
 		if bMemoryEnabled and len(aConversation) > 0
 			cPrompt += formatHistory()
 		ok
-		cPrompt += f"<|im_start|>user\n{cUserPrompt}<|im_end|>\n<|im_start|>assistant\n"
+		cPrompt += f"<|im_start|>user{nl}{cUserPrompt}<|im_end|>{nl}<|im_start|>assistant{nl}"
 
 		oModel.setTemperature(0.3)
 
@@ -622,7 +601,7 @@ class AIAgent
 
 		if cToolName != ""
 			if bVerbose
-				see f"\n  [Agent Action] Invoking Tool: {cToolName} ({cToolArg})...\n"
+				see f"{nl}  [Agent Action] Invoking Tool: {cToolName} ({cToolArg})...{nl}"
 			ok
 
 			cToolResult = executeTool(cToolName, cToolArg)
@@ -634,7 +613,7 @@ class AIAgent
 			# Pure factual tools return directly in 0.01s!
 			if cToolName = "calc"
 				cClean = f"النتيجة: {cToolResult}"
-				see f"Agent Response: {cClean}\n"
+				see f"Agent Response: {cClean}{nl}"
 				if bMemoryEnabled
 					aConversation + ["user", cUserPrompt]
 					aConversation + ["assistant", cClean]
@@ -642,7 +621,7 @@ class AIAgent
 				return cClean
 			elseif cToolName = "get_time" or cToolName = "sys_info"
 				cClean = cToolResult
-				see f"Agent Response: {cClean}\n"
+				see f"Agent Response: {cClean}{nl}"
 				if bMemoryEnabled
 					aConversation + ["user", cUserPrompt]
 					aConversation + ["assistant", cClean]
@@ -651,9 +630,10 @@ class AIAgent
 			
 
 				# File/Directory reading: pass back for synthesis
-				cPrompt += f"<tool_call>\n{cBlock}\n</tool_call><|im_end|>\n" +
-				           f"<|im_start|>user\n<tool_response>\n{cToolResult}\n</tool_response><|im_end|>\n" +
-				           f"<|im_start|>assistant\n"
+				cPrompt += f"<tool_call>{nl}{cBlock}{nl}</tool_call><|im_end|>{nl}" +
+				           f"<|im_start|>user{nl}<tool_response>{nl}{cToolResult}{nl}</tool_response><|im_end|>{nl}" +
+				           f"<|im_start|>assistant{nl}"
+				? "cPrompt:"+ cPrompt +nl
 				cFinalAnswer = oModel.generateStream(cPrompt, nMaxOutputTokens)
 			else
 				cFinalAnswer = cResponse
@@ -663,7 +643,7 @@ class AIAgent
 		ok
 
 		cClean = cleanResponse(cFinalAnswer)
-		see f"Agent Response: {cClean}\n"
+		see f"Agent Response: {cClean}{nl}"
 
 		if bMemoryEnabled
 			aConversation + ["user", cUserPrompt]
@@ -726,6 +706,10 @@ class AIAgent
 		cText = substr(cText, "<|im_end|>", "")
 		cText = substr(cText, "<|endoftext|>", "")
 		cText = substr(cText, "<|im_start|>", "")
+		cText = substr(cText, "<|tool_call|>", "")
+		cText = substr(cText, "<|tool_response|>", "")
+		cText = substr(cText, "<|tools|>", "")
+		cText = substr(cText, "\n", nl)
 		cText = trim(cText)
 		if substr(lower(cText), "assistant" + nl) = 1
 			cText = substr(cText, len("assistant" + nl) + 1)
