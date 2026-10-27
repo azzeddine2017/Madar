@@ -556,6 +556,22 @@ RING_API void ring_gguf_dequantize_q4_0(const void *pSrc, float *pDst, uint64_t 
 	}
 }
 
+RING_API void ring_gguf_dequantize_q4_1(const void *pSrc, float *pDst, uint64_t nElements) {
+	const RingGGUFBlockQ4_1 *blocks = (const RingGGUFBlockQ4_1 *)pSrc;
+	uint64_t nBlocks = nElements / 32;
+	for (uint64_t b = 0; b < nBlocks; b++) {
+		float d = ggml_fp16_to_fp32(blocks[b].d);
+		float m = ggml_fp16_to_fp32(blocks[b].m);
+		for (int i = 0; i < 16; i++) {
+			uint8_t q = blocks[b].qs[i];
+			int x0 = (q & 0x0F);
+			int x1 = (q >> 4);
+			pDst[b * 32 + i]      = (float)x0 * d + m;
+			pDst[b * 32 + i + 16] = (float)x1 * d + m;
+		}
+	}
+}
+
 RING_API void ring_gguf_dequantize_q6_k(const void *pSrc, float *pDst, uint64_t nElements) {
 	const RingGGUFBlockQ6_K *blocks = (const RingGGUFBlockQ6_K *)pSrc;
 	uint64_t nBlocks = nElements / 256;
@@ -623,6 +639,8 @@ static RingTensor *gguf_create_tensor_from_info(void *pRingState, RingGGUF *pGGU
 			ring_gguf_dequantize_q8_0(pRawData, pDst, pInfo->nElements);
 		} else if (pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
 			ring_gguf_dequantize_q4_0(pRawData, pDst, pInfo->nElements);
+		} else if (pInfo->nType == RING_GGUF_TENSOR_Q4_1) {
+			ring_gguf_dequantize_q4_1(pRawData, pDst, pInfo->nElements);
 		} else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
 			ring_gguf_dequantize_q6_k(pRawData, pDst, pInfo->nElements);
 		} else {

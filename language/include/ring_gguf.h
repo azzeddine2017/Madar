@@ -123,6 +123,12 @@ typedef struct RingGGUFBlockQ4_0 {
 	uint8_t qs[16];      /* 16 bytes = 32 nibbles (4-bit values) */
 } RingGGUFBlockQ4_0;
 
+typedef struct RingGGUFBlockQ4_1 {
+	uint16_t d;          /* FP16 scale */
+	uint16_t m;          /* FP16 min */
+	uint8_t qs[16];      /* 16 bytes = 32 nibbles (4-bit values) */
+} RingGGUFBlockQ4_1;
+
 typedef struct RingGGUFBlockQ8_0 {
 	uint16_t d;          /* FP16 scale */
 	int8_t qs[32];       /* 32 bytes = 32 int8 values */
@@ -157,6 +163,7 @@ RING_API RingTensor *ring_gguf_load_tensor_f32(void *pRingState, RingGGUF *pGGUF
 
 /* Dequantization Helpers */
 RING_API void ring_gguf_dequantize_q4_0(const void *pSrc, float *pDst, uint64_t nElements);
+RING_API void ring_gguf_dequantize_q4_1(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_q8_0(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_q6_k(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_f16(const void *pSrc, float *pDst, uint64_t nElements);

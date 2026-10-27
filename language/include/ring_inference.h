@@ -108,6 +108,7 @@ typedef struct RingModel {
 	void *pGPUContext;
 	void *pGPUQueue;
 	void *pGPUKernelQ4;
+	void *pGPUKernelQ4_1;
 	void *pGPUKernelQ8;
 	void *pGPUKernelQ6;
 	void *pGPUBufX;

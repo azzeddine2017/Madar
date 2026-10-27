@@ -135,6 +135,100 @@ static float dot_q4_0(const RingGGUFBlockQ4_0 *b, const float *x, int k) {
 	return hsum_float_8(_mm256_add_ps(acc0, acc1));
 }
 
+static float dot_q4_1(const RingGGUFBlockQ4_1 *b, const float *x, int k) {
+	int nBlocks = k / 32;
+	int i = 0;
+	const __m128i lowMask = _mm_set1_epi8(0x0F);
+	__m256 acc0 = _mm256_setzero_ps();
+	__m256 acc1 = _mm256_setzero_ps();
+
+	for (; i + 1 < nBlocks; i += 2) {
+		/* Block 0 */
+		__m128 h0_d = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i].d));
+		__m128 h0_m = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i].m));
+		__m256 vd0 = _mm256_broadcastss_ps(h0_d);
+		__m256 vm0 = _mm256_broadcastss_ps(h0_m);
+		__m128i raw0 = _mm_loadu_si128((const __m128i *)b[i].qs);
+		const float *xi0 = x + i * 32;
+
+		__m128i low0 = _mm_and_si128(raw0, lowMask);
+		__m128i high0 = _mm_and_si128(_mm_srli_epi16(raw0, 4), lowMask);
+
+		__m256 f0_0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(low0));
+		__m256 f1_0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(low0, 8)));
+		__m256 f2_0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(high0));
+		__m256 f3_0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(high0, 8)));
+
+		__m256 x0_0 = _mm256_loadu_ps(xi0 + 0);
+		__m256 x1_0 = _mm256_loadu_ps(xi0 + 8);
+		__m256 x2_0 = _mm256_loadu_ps(xi0 + 16);
+		__m256 x3_0 = _mm256_loadu_ps(xi0 + 24);
+
+		__m256 p01_0 = _mm256_fmadd_ps(f0_0, x0_0, _mm256_mul_ps(f1_0, x1_0));
+		__m256 p23_0 = _mm256_fmadd_ps(f2_0, x2_0, _mm256_mul_ps(f3_0, x3_0));
+		acc0 = _mm256_fmadd_ps(_mm256_add_ps(p01_0, p23_0), vd0, acc0);
+		__m256 xsum0 = _mm256_add_ps(_mm256_add_ps(x0_0, x1_0), _mm256_add_ps(x2_0, x3_0));
+		acc0 = _mm256_fmadd_ps(xsum0, vm0, acc0);
+
+		/* Block 1 */
+		__m128 h1_d = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i + 1].d));
+		__m128 h1_m = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i + 1].m));
+		__m256 vd1 = _mm256_broadcastss_ps(h1_d);
+		__m256 vm1 = _mm256_broadcastss_ps(h1_m);
+		__m128i raw1 = _mm_loadu_si128((const __m128i *)b[i + 1].qs);
+		const float *xi1 = x + (i + 1) * 32;
+
+		__m128i low1 = _mm_and_si128(raw1, lowMask);
+		__m128i high1 = _mm_and_si128(_mm_srli_epi16(raw1, 4), lowMask);
+
+		__m256 f0_1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(low1));
+		__m256 f1_1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(low1, 8)));
+		__m256 f2_1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(high1));
+		__m256 f3_1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(high1, 8)));
+
+		__m256 x0_1 = _mm256_loadu_ps(xi1 + 0);
+		__m256 x1_1 = _mm256_loadu_ps(xi1 + 8);
+		__m256 x2_1 = _mm256_loadu_ps(xi1 + 16);
+		__m256 x3_1 = _mm256_loadu_ps(xi1 + 24);
+
+		__m256 p01_1 = _mm256_fmadd_ps(f0_1, x0_1, _mm256_mul_ps(f1_1, x1_1));
+		__m256 p23_1 = _mm256_fmadd_ps(f2_1, x2_1, _mm256_mul_ps(f3_1, x3_1));
+		acc1 = _mm256_fmadd_ps(_mm256_add_ps(p01_1, p23_1), vd1, acc1);
+		__m256 xsum1 = _mm256_add_ps(_mm256_add_ps(x0_1, x1_1), _mm256_add_ps(x2_1, x3_1));
+		acc1 = _mm256_fmadd_ps(xsum1, vm1, acc1);
+	}
+
+	for (; i < nBlocks; i++) {
+		__m128 h_d = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i].d));
+		__m128 h_m = _mm_cvtph_ps(_mm_cvtsi32_si128((int)b[i].m));
+		__m256 vd = _mm256_broadcastss_ps(h_d);
+		__m256 vm = _mm256_broadcastss_ps(h_m);
+		__m128i raw = _mm_loadu_si128((const __m128i *)b[i].qs);
+		const float *xi = x + i * 32;
+
+		__m128i low = _mm_and_si128(raw, lowMask);
+		__m128i high = _mm_and_si128(_mm_srli_epi16(raw, 4), lowMask);
+
+		__m256 f0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(low));
+		__m256 f1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(low, 8)));
+		__m256 f2 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(high));
+		__m256 f3 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(high, 8)));
+
+		__m256 x0 = _mm256_loadu_ps(xi + 0);
+		__m256 x1 = _mm256_loadu_ps(xi + 8);
+		__m256 x2 = _mm256_loadu_ps(xi + 16);
+		__m256 x3 = _mm256_loadu_ps(xi + 24);
+
+		__m256 p01 = _mm256_fmadd_ps(f0, x0, _mm256_mul_ps(f1, x1));
+		__m256 p23 = _mm256_fmadd_ps(f2, x2, _mm256_mul_ps(f3, x3));
+		acc0 = _mm256_fmadd_ps(_mm256_add_ps(p01, p23), vd, acc0);
+		__m256 xsum = _mm256_add_ps(_mm256_add_ps(x0, x1), _mm256_add_ps(x2, x3));
+		acc0 = _mm256_fmadd_ps(xsum, vm, acc0);
+	}
+
+	return hsum_float_8(_mm256_add_ps(acc0, acc1));
+}
+
 static float dot_q8_0(const RingGGUFBlockQ8_0 *b, const float *x, int k) {
 	int nBlocks = k / 32;
 	int i = 0;
@@ -267,6 +361,39 @@ static float dot_q4_0(const RingGGUFBlockQ4_0 *b, const float *x, int k) {
 	return sum;
 }
 
+static float dot_q4_1(const RingGGUFBlockQ4_1 *b, const float *x, int k) {
+	int nBlocks = k / 32;
+	float sum = 0.0f;
+	int i, j;
+	float d, m, bsum0, bsum1, xsum;
+	const uint8_t *qs;
+	const float *xi;
+	uint8_t q0, q1;
+
+	for (i = 0; i < nBlocks; i++) {
+		d = fast_fp16_to_fp32(b[i].d);
+		m = fast_fp16_to_fp32(b[i].m);
+		qs = b[i].qs;
+		xi = x + i * 32;
+		bsum0 = 0.0f;
+		bsum1 = 0.0f;
+		xsum = 0.0f;
+		for (j = 0; j < 16; j += 2) {
+			q0 = qs[j];
+			q1 = qs[j + 1];
+			float vx0 = xi[j];
+			float vx1 = xi[j + 1];
+			float vx16 = xi[j + 16];
+			float vx17 = xi[j + 1 + 16];
+			bsum0 += (float)(q0 & 0x0F) * vx0 + (float)(q0 >> 4) * vx16;
+			bsum1 += (float)(q1 & 0x0F) * vx1 + (float)(q1 >> 4) * vx17;
+			xsum += vx0 + vx1 + vx16 + vx17;
+		}
+		sum += (bsum0 + bsum1) * d + xsum * m;
+	}
+	return sum;
+}
+
 static float dot_q8_0(const RingGGUFBlockQ8_0 *b, const float *x, int k) {
 	int nBlocks = k / 32;
 	float sum = 0.0f;
@@ -391,6 +518,19 @@ static void matvec_compute_rows(MatVecTask *task) {
 		const uint8_t *pRow = pRaw + (size_t)task->nStartRow * rowStride;
 		for (r = task->nStartRow; r < task->nEndRow; r++, pRow += rowStride) {
 			val = dot_q4_0((const RingGGUFBlockQ4_0 *)pRow, task->pX, K);
+			if (task->pBias) {
+				val += (task->pBiasInfo && task->pBiasInfo->nType == RING_GGUF_TENSOR_F16) ?
+					   fast_fp16_to_fp32(((const ggml_fp16_t *)task->pBias)[r]) :
+					   ((const float *)task->pBias)[r];
+			}
+			task->pY[r] = val;
+		}
+		return;
+	} else if (nType == RING_GGUF_TENSOR_Q4_1) {
+		size_t rowStride = (size_t)(K / 32) * sizeof(RingGGUFBlockQ4_1);
+		const uint8_t *pRow = pRaw + (size_t)task->nStartRow * rowStride;
+		for (r = task->nStartRow; r < task->nEndRow; r++, pRow += rowStride) {
+			val = dot_q4_1((const RingGGUFBlockQ4_1 *)pRow, task->pX, K);
 			if (task->pBias) {
 				val += (task->pBiasInfo && task->pBiasInfo->nType == RING_GGUF_TENSOR_F16) ?
 					   fast_fp16_to_fp32(((const ggml_fp16_t *)task->pBias)[r]) :
@@ -632,6 +772,45 @@ static const char *s_madar_cl_source =
 "\n"
 "typedef struct {\n"
 "    ushort d;\n"
+"    ushort m;\n"
+"    uchar qs[16];\n"
+"} block_q4_1;\n"
+"\n"
+"__kernel void matvec_q4_1_kernel(\n"
+"    __global const block_q4_1* W,\n"
+"    __global const float* x,\n"
+"    __global float* y,\n"
+"    int K, int N)\n"
+"{\n"
+"    int r = get_global_id(0);\n"
+"    if (r >= N) return;\n"
+"    int num_blocks = K / 32;\n"
+"    __global const block_q4_1* row = W + (size_t)r * num_blocks;\n"
+"    float sum = 0.0f;\n"
+"    for (int b = 0; b < num_blocks; b++) {\n"
+"        float d = fp16_to_fp32(row[b].d);\n"
+"        float m = fp16_to_fp32(row[b].m);\n"
+"        __global const uchar* qs = row[b].qs;\n"
+"        __global const float* bx = x + b * 32;\n"
+"        float4 acc = (float4)(0.0f);\n"
+"        float4 xsum = (float4)(0.0f);\n"
+"        for (int j = 0; j < 16; j += 4) {\n"
+"            uchar4 bytes = vload4(0, qs + j);\n"
+"            int4 low  = convert_int4(bytes & (uchar4)0x0F);\n"
+"            int4 high = convert_int4(bytes >> (uchar4)4);\n"
+"            float4 vx_low  = vload4(0, bx + j);\n"
+"            float4 vx_high = vload4(0, bx + j + 16);\n"
+"            acc += convert_float4(low)  * vx_low;\n"
+"            acc += convert_float4(high) * vx_high;\n"
+"            xsum += vx_low + vx_high;\n"
+"        }\n"
+"        sum += (acc.x + acc.y + acc.z + acc.w) * d + (xsum.x + xsum.y + xsum.z + xsum.w) * m;\n"
+"    }\n"
+"    y[r] = sum;\n"
+"}\n"
+"\n"
+"typedef struct {\n"
+"    ushort d;\n"
 "    char qs[32];\n"
 "} block_q8_0;\n"
 "\n"
@@ -739,7 +918,7 @@ static int madar_gpu_init(RingModel *pModel) {
 	cl_context ctx = NULL;
 	cl_command_queue queue = NULL;
 	cl_program prog = NULL;
-	cl_kernel kQ4 = NULL, kQ8 = NULL, kQ6 = NULL;
+	cl_kernel kQ4 = NULL, kQ4_1 = NULL, kQ8 = NULL, kQ6 = NULL;
 	cl_int ret = 0;
 	char devName[128] = {0};
 
@@ -797,9 +976,10 @@ static int madar_gpu_init(RingModel *pModel) {
 		return 0;
 	}
 
-	kQ4 = p_clCreateKernel(prog, "matvec_q4_0_kernel", &ret);
-	kQ8 = p_clCreateKernel(prog, "matvec_q8_0_kernel", &ret);
-	kQ6 = p_clCreateKernel(prog, "matvec_q6_k_kernel", &ret);
+	kQ4   = p_clCreateKernel(prog, "matvec_q4_0_kernel", &ret);
+	kQ4_1 = p_clCreateKernel(prog, "matvec_q4_1_kernel", &ret);
+	kQ8   = p_clCreateKernel(prog, "matvec_q8_0_kernel", &ret);
+	kQ6   = p_clCreateKernel(prog, "matvec_q6_k_kernel", &ret);
 
 	p_clReleaseProgram(prog);
 
@@ -812,11 +992,12 @@ static int madar_gpu_init(RingModel *pModel) {
 	cl_mem bufY = p_clCreateBuffer(ctx, CL_MEM_READ_WRITE, maxN * sizeof(float), NULL, &ret);
 
 	if (!bufX || !bufY) {
-		if (kQ4) p_clReleaseKernel(kQ4);
-		if (kQ8) p_clReleaseKernel(kQ8);
-		if (kQ6) p_clReleaseKernel(kQ6);
-		if (bufX) p_clReleaseMemObject(bufX);
-		if (bufY) p_clReleaseMemObject(bufY);
+		if (kQ4)   p_clReleaseKernel(kQ4);
+		if (kQ4_1) p_clReleaseKernel(kQ4_1);
+		if (kQ8)   p_clReleaseKernel(kQ8);
+		if (kQ6)   p_clReleaseKernel(kQ6);
+		if (bufX)  p_clReleaseMemObject(bufX);
+		if (bufY)  p_clReleaseMemObject(bufY);
 		p_clReleaseCommandQueue(queue);
 		p_clReleaseContext(ctx);
 		return 0;
@@ -824,9 +1005,10 @@ static int madar_gpu_init(RingModel *pModel) {
 
 	pModel->pGPUContext = ctx;
 	pModel->pGPUQueue = queue;
-	pModel->pGPUKernelQ4 = kQ4;
-	pModel->pGPUKernelQ8 = kQ8;
-	pModel->pGPUKernelQ6 = kQ6;
+	pModel->pGPUKernelQ4   = kQ4;
+	pModel->pGPUKernelQ4_1 = kQ4_1;
+	pModel->pGPUKernelQ8   = kQ8;
+	pModel->pGPUKernelQ6   = kQ6;
 	pModel->pGPUBufX = bufX;
 	pModel->pGPUBufY = bufY;
 	pModel->nGPUBufXSize = maxK;
@@ -887,6 +1069,8 @@ static int madar_gpu_matvec(RingModel *pModel, RingGGUFTensorInfo *pInfo, cl_mem
 
 	if (pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
 		kernel = (cl_kernel)pModel->pGPUKernelQ4;
+	} else if (pInfo->nType == RING_GGUF_TENSOR_Q4_1) {
+		kernel = (cl_kernel)pModel->pGPUKernelQ4_1;
 	} else if (pInfo->nType == RING_GGUF_TENSOR_Q8_0) {
 		kernel = (cl_kernel)pModel->pGPUKernelQ8;
 	} else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
@@ -986,6 +1170,10 @@ static void madar_gpu_cleanup(RingModel *pModel) {
 	if (pModel->pGPUKernelQ4) {
 		p_clReleaseKernel((cl_kernel)pModel->pGPUKernelQ4);
 		pModel->pGPUKernelQ4 = NULL;
+	}
+	if (pModel->pGPUKernelQ4_1) {
+		p_clReleaseKernel((cl_kernel)pModel->pGPUKernelQ4_1);
+		pModel->pGPUKernelQ4_1 = NULL;
 	}
 	if (pModel->pGPUKernelQ8) {
 		p_clReleaseKernel((cl_kernel)pModel->pGPUKernelQ8);
@@ -1437,11 +1625,13 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 
 	/* If output tensor has an unsupported quantized type, fall back to tied token_embd */
 	if (pModel->pOutput && pModel->pOutput->nType != RING_GGUF_TENSOR_Q4_0 &&
+		pModel->pOutput->nType != RING_GGUF_TENSOR_Q4_1 &&
 		pModel->pOutput->nType != RING_GGUF_TENSOR_Q8_0 &&
 		pModel->pOutput->nType != RING_GGUF_TENSOR_Q6_K &&
 		pModel->pOutput->nType != RING_GGUF_TENSOR_F16 &&
 		pModel->pOutput->nType != RING_GGUF_TENSOR_F32) {
 		if (pModel->pTokenEmbd && (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0 ||
+								   pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1 ||
 								   pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0 ||
 								   pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K ||
 								   pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16 ||
@@ -1867,6 +2057,9 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos, int
 	if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
 		b4 = (const RingGGUFBlockQ4_0 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) * sizeof(RingGGUFBlockQ4_0));
 		ring_gguf_dequantize_q4_0(b4, pModel->pActX, nEmbd);
+	} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1) {
+		const RingGGUFBlockQ4_1 *b4_1 = (const RingGGUFBlockQ4_1 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) * sizeof(RingGGUFBlockQ4_1));
+		ring_gguf_dequantize_q4_1(b4_1, pModel->pActX, nEmbd);
 	} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
 		const RingGGUFBlockQ8_0 *b8 = (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) * sizeof(RingGGUFBlockQ8_0));
 		ring_gguf_dequantize_q8_0(b8, pModel->pActX, nEmbd);
@@ -2501,6 +2694,9 @@ static RingTensor *ring_model_embedding_bert(void *pRingState, RingModel *pModel
 			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
 				const RingGGUFBlockQ4_0 *b4 = (const RingGGUFBlockQ4_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) * sizeof(RingGGUFBlockQ4_0));
 				ring_gguf_dequantize_q4_0(b4, xt, nEmbd);
+			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1) {
+				const RingGGUFBlockQ4_1 *b4_1 = (const RingGGUFBlockQ4_1 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) * sizeof(RingGGUFBlockQ4_1));
+				ring_gguf_dequantize_q4_1(b4_1, xt, nEmbd);
 			} else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
 				const RingGGUFBlockQ8_0 *b8 = (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) * sizeof(RingGGUFBlockQ8_0));
 				ring_gguf_dequantize_q8_0(b8, xt, nEmbd);
