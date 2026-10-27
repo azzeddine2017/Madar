@@ -674,6 +674,13 @@ RING_API RingTensor *ring_gguf_load_tensor_f32(void *pRingState, RingGGUF *pGGUF
 ================================================================================
 */
 
+static void ring_gguf_gc_close(void *pRingState, void *pPointer) {
+	RING_UNREFERENCED_PARAMETER(pRingState);
+	if (pPointer) {
+		ring_gguf_close((RingGGUF *)pPointer);
+	}
+}
+
 RING_FUNC(ring_gguf_api_open) {
 	if (RING_API_PARACOUNT != 1 || !RING_API_ISSTRING(1)) {
 		RING_API_ERROR(RING_API_BADPARATYPE);
@@ -685,7 +692,7 @@ RING_FUNC(ring_gguf_api_open) {
 		RING_API_ERROR("Failed to open or parse GGUF file!");
 		return;
 	}
-	RING_API_RETMANAGEDCPOINTER(pGGUF, "GGUF", (void (*)(void *, void *))ring_gguf_close);
+	RING_API_RETMANAGEDCPOINTER(pGGUF, "GGUF", (void (*)(void *, void *))ring_gguf_gc_close);
 }
 
 RING_FUNC(ring_gguf_api_close) {

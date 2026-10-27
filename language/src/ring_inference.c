@@ -2252,6 +2252,13 @@ RING_API char *ring_model_generate(RingModel *pModel, const char *cPrompt, int n
 ================================================================================
 */
 
+static void ring_model_gc_free(void *pRingState, void *pPointer) {
+	RING_UNREFERENCED_PARAMETER(pRingState);
+	if (pPointer) {
+		ring_model_free((RingModel *)pPointer);
+	}
+}
+
 RING_FUNC(ring_model_api_open) {
 	const char *cFile;
 	RingModel *pModel;
@@ -2272,7 +2279,7 @@ RING_FUNC(ring_model_api_open) {
 		return;
 	}
 
-	RING_API_RETMANAGEDCPOINTER(pModel, "MADAR_MODEL", (void (*)(void *, void *))ring_model_free);
+	RING_API_RETMANAGEDCPOINTER(pModel, "MADAR_MODEL", (void (*)(void *, void *))ring_model_gc_free);
 }
 
 RING_FUNC(ring_model_api_close) {

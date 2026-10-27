@@ -58,6 +58,12 @@ class QwenModel
 	func setTemperature(temp)
 		fTemp = temp
 
+	func setMaxTokens(n)
+		nMaxTokens = n
+
+	func tokensPerSecond()
+		return fTokensPerSec
+
 	func tokenize(cText)
 		return madar_model_tokenize(hModel, cText)
 
