@@ -65,31 +65,44 @@ void qtimer_free(void *pState, void *pPointer) { delete (QalamTimer *)pPointer; 
 void qformula_free(void *pState, void *pPointer) { delete (QalamFormulaWrapper *)pPointer; }
 
 // --- PDF Extraction Helper ---
-// Strictly use pdftotext.exe for high-quality extraction for Jibrail project.
+// Uses pdftotext for high-quality extraction for RAG/Jibrail project.
 std::string extract_pdf_basic(const char* filename) {
-    // Get the directory of the current DLL to find pdftotext.exe nearby
+    std::string exePath = "pdftotext";
+#ifdef _WIN32
     char dllPath[MAX_PATH];
-    GetModuleFileNameA(GetModuleHandleA("alqalam.dll"), dllPath, MAX_PATH);
-    std::string exePath = dllPath;
-    size_t lastBackslash = exePath.find_last_of("\\/");
-    if (lastBackslash != std::string::npos) {
-        exePath = exePath.substr(0, lastBackslash + 1) + "pdftotext.exe";
+    if (GetModuleFileNameA(GetModuleHandleA("alqalam.dll"), dllPath, MAX_PATH)) {
+        std::string p = dllPath;
+        size_t lastBackslash = p.find_last_of("\\/");
+        if (lastBackslash != std::string::npos) {
+            exePath = p.substr(0, lastBackslash + 1) + "pdftotext.exe";
+        } else {
+            exePath = "pdftotext.exe";
+        }
     } else {
-        exePath = "pdftotext.exe"; // Fallback to PATH
+        exePath = "pdftotext.exe";
     }
+#endif
 
-    std::string cmd = "\"\"" + exePath + "\" -enc UTF-8 -nopgbrk \"";
-    cmd += filename;
-    cmd += "\" -\"";
+    std::string cmd;
+#ifdef _WIN32
+    cmd = "\"\"" + exePath + "\" -enc UTF-8 -nopgbrk \"" + filename + "\" -\"";
+    FILE* pipe = _popen(cmd.c_str(), "r");
+#else
+    cmd = exePath + " -enc UTF-8 -nopgbrk \"" + filename + "\" - 2>/dev/null";
+    FILE* pipe = popen(cmd.c_str(), "r");
+#endif
 
     std::string result;
-    FILE* pipe = _popen(cmd.c_str(), "r");
     if (pipe) {
         char pipe_buffer[4096];
         while (fgets(pipe_buffer, sizeof(pipe_buffer), pipe) != NULL) {
             result += pipe_buffer;
         }
+#ifdef _WIN32
         _pclose(pipe);
+#else
+        pclose(pipe);
+#endif
     }
 
     // Whitespace normalization for Jibrail Vector DB
@@ -1015,9 +1028,6 @@ RING_FUNC(qalam_vector_stream) {
     // 6. QalamLibInit (Init)
     // ==========================================
     
-    #ifdef __cplusplus
-    extern "C"
-    #endif
     RING_LIBINIT {
         // Timer
         RING_API_REGISTER("qalam_timer_init", qalam_timer_init);

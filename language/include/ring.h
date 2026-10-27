@@ -133,7 +133,11 @@
 		#define RING_API __declspec(dllimport)
 	#endif
 #else
-	#define RING_API extern
+	#ifdef __cplusplus
+		#define RING_API extern "C"
+	#else
+		#define RING_API extern
+	#endif
 #endif
 /* Constants */
 #define RING_LOGFILE 0
