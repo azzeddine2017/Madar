@@ -27,6 +27,16 @@ func join(cText, cDelim)
 		return cReturn
 
 func extractMathExpr(cText)
+	cText = substr(cText, " ضرب ", " * ")
+	cText = substr(cText, " في ", " * ")
+	cText = substr(cText, " زائد ", " + ")
+	cText = substr(cText, " جمع ", " + ")
+	cText = substr(cText, " ناقص ", " - ")
+	cText = substr(cText, " طرح ", " - ")
+	cText = substr(cText, " قسمة ", " / ")
+	cText = substr(cText, " على ", " / ")
+	cText = substr(cText, "×", "*")
+	cText = substr(cText, "÷", "/")
 	cExpr = ""
 	for i = 1 to len(cText)
 		ch = cText[i]
@@ -37,6 +47,9 @@ func extractMathExpr(cText)
 			cExpr += ch
 		ok
 	next
+	while substr(cExpr, "  ") > 0
+		cExpr = substr(cExpr, "  ", " ")
+	end
 	return trim(cExpr)
 
 class AIAgent
@@ -598,15 +611,35 @@ class AIAgent
 			aParsed   = parseToolCall(cBlock)
 			cToolName = aParsed[1]
 			cToolArg  = aParsed[2]
+		else
+			# Fallback: scan for direct function calls like calc(...) or get_time() in output
+			for tool in aTools
+				tName = tool[1]
+				nCallPos = substr(lower(cResponse), lower(tName) + "(")
+				if nCallPos > 0
+					cToolName = tName
+					cSub = substr(cResponse, nCallPos + len(tName) + 1)
+					nCloseParen = substr(cSub, ")")
+					if nCloseParen > 0
+						cToolArg = trim(left(cSub, nCloseParen - 1))
+						if len(cToolArg) >= 2 and (cToolArg[1] = '"' or cToolArg[1] = "'")
+							cToolArg = substr(cToolArg, 2, len(cToolArg) - 2)
+						ok
+						exit
+					ok
+				ok
+			next
 		ok
 
 		# Safety fallback for calc if model omitted argument or format
 		if cToolName = "calc" and cToolArg = ""
 			cToolArg = extractMathExpr(cBlock)
+			if cToolArg = "" cToolArg = extractMathExpr(cResponse) ok
 			if cToolArg = "" cToolArg = extractMathExpr(cUserPrompt) ok
 		elseif cToolName = "" and (substr(cUserPrompt, "احسب") > 0 or substr(cUserPrompt, "calc") > 0)
 			cToolName = "calc"
-			cToolArg = extractMathExpr(cUserPrompt)
+			cToolArg = extractMathExpr(cResponse)
+			if cToolArg = "" cToolArg = extractMathExpr(cUserPrompt) ok
 		ok
 
 		if cToolName != ""
@@ -622,7 +655,24 @@ class AIAgent
 
 			# Pure factual tools return directly in 0.01s!
 			if cToolName = "calc"
-				cClean = f"النتيجة: {cToolResult}"
+				cCleanMath = f"النتيجة: {cToolResult}"
+				cTextPart = cleanResponse(cResponse)
+				# Clean any code blocks invoking calc
+				if substr(cTextPart, "calc(") > 0
+					aLines = split(cTextPart, nl)
+					cFiltered = ""
+					for cL in aLines
+						if not substr(lower(cL), "calc(") and not substr(cL, "```")
+							cFiltered += cL + nl
+						ok
+					next
+					cTextPart = trim(cFiltered)
+				ok
+				if cTextPart != ""
+					cClean = f"{cCleanMath}{nl}{nl}{cTextPart}"
+				else
+					cClean = cCleanMath
+				ok
 				see f"Agent Response: {cClean}{nl}"
 				if bMemoryEnabled
 					aConversation + ["user", cUserPrompt]
