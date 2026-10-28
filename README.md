@@ -81,8 +81,8 @@
  
 ### ⚡ Google Colab Cloud Quickstart (Zero-Setup & GPU Enabled)
 Experience the full power of Madar with 7B reasoning models and NVIDIA GPU acceleration in your browser:
-- 🇸🇦 **[Madar Colab (Arabic)](Madar_Colab_Quickstart.ipynb)** — Includes `%%madar` interactive cell magic, GPU OpenCL, and live AI Agent chat.
-- 🇬🇧 **[Madar Colab (English)](Madar_Colab_Quickstart_EN.ipynb)** — Complete English guide with GPU acceleration, AlQalam Hybrid RAG, and 7B models.
+- 🇸🇦 **[Madar Colab (Arabic)](notebooks/Madar_Colab_Quickstart.ipynb)** — Includes `%%madar` interactive cell magic, GPU OpenCL, and live AI Agent chat.
+- 🇬🇧 **[Madar Colab (English)](notebooks/Madar_Colab_Quickstart_EN.ipynb)** — Complete English guide with GPU acceleration, AlQalam Hybrid RAG, and 7B models.
 
 ### 1. Download Model (Windows / Local)
 Download supported quantized models directly into the `models/` directory:

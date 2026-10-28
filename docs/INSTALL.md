@@ -23,7 +23,7 @@
 
 ### ⚡ التجربة الفورية عبر Google Colab (بدون أي تثبيت محلي):
 يمكنك تجربة بيئة مدار ونماذج التفكير المنطقي 7B وتسريع كارت الشاشة GPU مباشرة عبر المتصفح:
-👉 افتح دفتر كولاب العربي: **[`Madar_Colab_Quickstart.ipynb`](../Madar_Colab_Quickstart.ipynb)** أو الإنجليزي: **[`Madar_Colab_Quickstart_EN.ipynb`](../Madar_Colab_Quickstart_EN.ipynb)**
+👉 افتح دفتر كولاب العربي: **[`Madar_Colab_Quickstart.ipynb`](../notebooks/Madar_Colab_Quickstart.ipynb)** أو الإنجليزي: **[`Madar_Colab_Quickstart_EN.ipynb`](../notebooks/Madar_Colab_Quickstart_EN.ipynb)**
 
 ---
 
@@ -140,7 +140,7 @@ Welcome to **Madar** (مدار) - An AI-Native, High-Performance Dialect and Run
 
 ### ⚡ Instant Cloud Execution via Google Colab (Zero-Setup):
 You can experience Madar, 7B reasoning models, and GPU hardware acceleration directly in your browser:
-👉 Launch the English Notebook: **[`Madar_Colab_Quickstart_EN.ipynb`](../Madar_Colab_Quickstart_EN.ipynb)** or Arabic: **[`Madar_Colab_Quickstart.ipynb`](../Madar_Colab_Quickstart.ipynb)**
+👉 Launch the English Notebook: **[`Madar_Colab_Quickstart_EN.ipynb`](../notebooks/Madar_Colab_Quickstart_EN.ipynb)** or Arabic: **[`Madar_Colab_Quickstart.ipynb`](../notebooks/Madar_Colab_Quickstart.ipynb)**
 
 ---
 
