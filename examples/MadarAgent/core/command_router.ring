@@ -1,0 +1,210 @@
+# ====================================================================
+#   MadarAgent - Slash Command Router
+#   موجه أوامر التحكم المباشرة بالوكيل (الأدوات، المهارات، الذاكرة، الإعدادات)
+# ====================================================================
+
+class CommandRouter
+	oApp = NULL
+
+	func init(oAgentApp)
+		oApp = oAgentApp
+		return self
+
+	func isCommand(cInput)
+		cInput = trim(cInput)
+		return (left(cInput, 1) = "/")
+
+	func route(cInput)
+		cInput = trim(cInput)
+		aParts = split(cInput, " ")
+		cCmd = lower(aParts[1])
+		cArgs = ""
+		if len(aParts) > 1
+			cArgs = trim(substr(cInput, len(cCmd) + 1))
+		ok
+
+		switch cCmd
+			case "/help"
+				showHelp()
+			case "/tools"
+				showTools()
+			case "/skills"
+				showSkills()
+			case "/reload_skills"
+				handleReloadSkills()
+			case "/memory"
+				showMemory()
+			case "/stats"
+				showMemory()
+			case "/remember"
+				handleRemember(cArgs)
+			case "/recall"
+				handleRecall(cArgs)
+			case "/learn"
+				handleLearn(cArgs)
+			case "/clear_memory"
+				handleClearMemory()
+			case "/commit_memory"
+				handleCommitMemory()
+			case "/gpu"
+				handleGpu(cArgs)
+			case "/temp"
+				handleTemp(cArgs)
+			case "/tokens"
+				handleTokens()
+			case "/history"
+				handleHistory()
+			case "/reset"
+				handleReset()
+			case "/clear"
+				handleReset()
+			else
+				see f"  [Unknown Command] '{cCmd}'. Type /help for available commands." + nl
+		end
+
+	func showHelp()
+		uiBanner("MadarAgent Interactive Commands", "Real-time Controls & Slash Directives")
+		? "  " + uiInfo("/tools") + "             - List all registered system, dev & autonomous tools"
+		? "  " + uiInfo("/skills") + "            - List registered cognitive skills"
+		? "  " + uiInfo("/reload_skills") + "     - Reload all skills from agentSkills/ markdown files"
+		? "  " + uiInfo("/memory, /stats") + "    - Show Base KB & Working Memory status"
+		? "  " + uiInfo("/remember <fact>") + "   - Add fact/note to persistent Working Memory"
+		? "  " + uiInfo("/recall <query>") + "    - Test search across Two-Tier Memory"
+		? "  " + uiInfo("/learn <file>") + "      - Ingest & embed a document into Working Memory"
+		? "  " + uiInfo("/clear_memory") + "      - Clear session Working Memory (Base KB safe)"
+		? "  " + uiInfo("/commit_memory") + "     - Permanently merge Working Memory into Base KB"
+		? "  " + uiInfo("/gpu [on|off]") + "      - Check or toggle GPU OpenCL acceleration"
+		? "  " + uiInfo("/temp <float>") + "      - Set sampling temperature (e.g. /temp 0.2)"
+		? "  " + uiInfo("/tokens") + "            - View current conversation token budget"
+		? "  " + uiInfo("/history") + "           - Show summary of current conversation turns"
+		? "  " + uiInfo("/reset, /clear") + "     - Reset conversation history (Base KB preserved)"
+		? "  " + uiWarn("exit, quit, bye") + "    - Terminate agent session"
+		uiDivider()
+
+	func showTools()
+		uiSectionHeader("Registered Tools (" + oApp.oRegistry.count() + ")")
+		for t in oApp.oRegistry.list()
+			? "  " + uiSuccess("⚙ " + t.cName) + C_BBLACK + " - " + C_RESET + t.cDescription
+		next
+		uiDivider()
+
+	func showSkills()
+		uiSectionHeader("Registered Cognitive Skills (" + oApp.oSkillManager.count() + ") [Folder: " + oApp.oConfig.cSkillsDir + "]")
+		for s in oApp.oSkillManager.list()
+			? "  " + uiAccent("⚡ " + s.cName) + C_BBLACK + " - " + C_RESET + s.cDescription
+			if len(s.aTriggerKeywords) > 0
+				cTrigs = ""
+				for i = 1 to len(s.aTriggerKeywords)
+					cTrigs += s.aTriggerKeywords[i]
+					if i < len(s.aTriggerKeywords) cTrigs += ", " ok
+				next
+				? "      " + uiMuted("Triggers: ") + C_BCYAN + cTrigs + C_RESET
+			ok
+			if len(s.aSkillToolNames) > 0
+				cTools = ""
+				for i = 1 to len(s.aSkillToolNames)
+					cTools += s.aSkillToolNames[i]
+					if i < len(s.aSkillToolNames) cTools += ", " ok
+				next
+				? "      " + uiMuted("Bound Tools: ") + C_BYELLOW + cTools + C_RESET
+			ok
+		next
+		uiDivider()
+
+	func handleReloadSkills()
+		oApp.oSkillManager.aSkills = []
+		nCount = oApp.oSkillManager.loadSkillsFromFolder()
+		? uiSuccess(f"  [Skills] Reloaded {nCount} cognitive skills from '{oApp.oConfig.cSkillsDir}'.")
+
+	func showMemory()
+		aStats = oApp.oMemory.getStats()
+		uiSectionHeader("Two-Tier Memory Architecture Status")
+		? "  " + uiInfo("● Tier 1 (Base KB):") + f"    {aStats['base_chunks']} chunks " + uiMuted("[" + aStats['base_path'] + "]")
+		? "  " + uiInfo("● Tier 2 (Working KB):") + f" {aStats['working_chunks']} chunks " + uiMuted("[" + aStats['working_path'] + "]")
+		uiDivider()
+
+	func handleRemember(cFact)
+		if cFact = ""
+			see "  Usage: /remember <fact or rule to store in memory>" + nl
+			return
+		ok
+		if oApp.oMemory.rememberFact(cFact)
+			see "  [Memory] Fact stored successfully in Working Memory." + nl
+		else
+			see "  [Memory Error] Failed to store fact." + nl
+		ok
+
+	func handleRecall(cQuery)
+		if cQuery = ""
+			see "  Usage: /recall <search query>" + nl
+			return
+		ok
+		aRes = oApp.oMemory.search(cQuery, 3)
+		see nl + f"Search Results for '{cQuery}' ({len(aRes)} matches):" + nl
+		if len(aRes) = 0
+			see "  No matching chunks found." + nl
+		else
+			for i = 1 to len(aRes)
+				fScore = aRes[i][1]
+				cTxt = aRes[i][2]
+				see f"  [{i}] (Score: {fScore}):" + nl
+				see "      " + substr(cTxt, nl, nl + "      ") + nl
+			next
+		ok
+		see nl
+
+	func handleLearn(cFilePath)
+		if cFilePath = "" or not fexists(cFilePath)
+			see f"  [Learn Error] File not found: '{cFilePath}'" + nl
+			return
+		ok
+		see f"  [Learning] Ingesting and embedding '{cFilePath}'..." + nl
+		nAdded = oApp.oMemory.learnFile(cFilePath)
+		see f"  [Learned] Added {nAdded} chunks to Working Memory." + nl
+
+	func handleClearMemory()
+		oApp.oMemory.clearWorking()
+		see "  [Memory] Working Memory cleared. (Base KB remains untouched)." + nl
+
+	func handleCommitMemory()
+		nMoved = oApp.oMemory.commitWorkingToBase()
+		see f"  [Memory] Committed {nMoved} working chunks to Base KB." + nl
+
+	func handleGpu(cArg)
+		cArg = lower(trim(cArg))
+		if cArg = "on" or cArg = "1"
+			oApp.bGPU = true
+			if oApp.oModel != NULL oApp.oModel.setGPU(1) ok
+			see "  [GPU] OpenCL Acceleration Enabled." + nl
+		elseif cArg = "off" or cArg = "0"
+			oApp.bGPU = false
+			if oApp.oModel != NULL oApp.oModel.setGPU(0) ok
+			see "  [GPU] GPU Acceleration Disabled (Running on CPU)." + nl
+		else
+			see f"  [GPU Status] Enabled: {oApp.bGPU}" + nl
+		ok
+
+	func handleTemp(cArg)
+		nVal = 0.0 + cArg
+		if nVal > 0.0 and nVal <= 2.0
+			oApp.nTemperature = nVal
+			see f"  [Config] Temperature set to: {oApp.nTemperature}" + nl
+		else
+			see f"  [Config] Current Temperature: {oApp.nTemperature} (Valid: 0.1 - 2.0)" + nl
+		ok
+
+	func handleTokens()
+		nTokens = oApp.estimateTokenCount()
+		see f"  [Context Budget] Estimated prompt tokens: {nTokens} / {oApp.nMaxContext}" + nl
+
+	func handleHistory()
+		see nl + f"Conversation History ({len(oApp.aHistory)} messages):" + nl
+		for i = 1 to len(oApp.aHistory)
+			m = oApp.aHistory[i]
+			see f"  [{m['role']}]: {left(m['content'], 80)}..." + nl
+		next
+		see nl
+
+	func handleReset()
+		oApp.aHistory = []
+		see "  [Reset] Conversation history cleared. Ready for a new topic." + nl

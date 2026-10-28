@@ -1612,6 +1612,9 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		pModel->pTokenTypes = ring_gguf_find_tensor(pGGUF, "token_types.weight");
 		pModel->pTokenEmbdNorm = ring_gguf_find_tensor(pGGUF, "token_embd_norm.weight");
 		pModel->pTokenEmbdNorm_Bias = ring_gguf_find_tensor(pGGUF, "token_embd_norm.bias");
+		if (pModel->pPosEmbd && pModel->pPosEmbd->aDims[1] > 0) {
+			pModel->config.nCtx = (uint32_t)pModel->pPosEmbd->aDims[1];
+		}
 	}
 
 	pModel->pOutputNorm = ring_gguf_find_tensor(pGGUF, "output_norm.weight");
@@ -1775,7 +1778,14 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		if (kvCtx) nGGUFContext = gguf_get_u32_val(kvCtx, 0);
 
 		if (pModel->config.bIsBert) {
-			pModel->nMaxSeq = 512;
+			if (pModel->pPosEmbd && pModel->pPosEmbd->aDims[1] > 2) {
+				pModel->nMaxSeq = (uint32_t)(pModel->pPosEmbd->aDims[1] - 2);
+			} else if (nGGUFContext > 0) {
+				pModel->nMaxSeq = nGGUFContext;
+			} else {
+				pModel->nMaxSeq = 512;
+			}
+			if (pModel->nMaxSeq > 8192) pModel->nMaxSeq = 8192;
 		} else if (nGGUFContext > 0 && nGGUFContext <= 2048) {
 			pModel->nMaxSeq = nGGUFContext;
 		} else if (pModel->config.nEmbd <= 1024) {
@@ -2762,8 +2772,11 @@ static RingTensor *ring_model_embedding_bert(void *pRingState, RingModel *pModel
 	int S = nTokens;
 	int t, l, h, i, j, d;
 
-	if (S <= 0 || nEmbd <= 0) return NULL;
-	if (S > 2048) S = 2048; /* Context cap */
+	if (pModel->nMaxSeq > 0 && S > (int)pModel->nMaxSeq) {
+		S = (int)pModel->nMaxSeq;
+	} else if (S > 8192) {
+		S = 8192;
+	}
 
 	float *pSeqX = (float *)calloc((size_t)S * nEmbd, sizeof(float));
 	float *pSeqQ = (float *)calloc((size_t)S * nEmbd, sizeof(float));
@@ -2885,11 +2898,11 @@ static RingTensor *ring_model_embedding_bert(void *pRingState, RingModel *pModel
 		/* D. FFN (GELU) + Residual + LayerNorm */
 		for (i = 0; i < S; i++) {
 			float *xi = pSeqX + (size_t)i * nEmbd;
-			matvec_multiply(pModel, layer->pFFNUp, xi, pActHB, layer->pFFNUp_Bias);
+			matvec_multiply_gpu(pModel, layer->pFFNUp, layer->pGPUBufUp, xi, pActHB, layer->pFFNUp_Bias);
 			for (d = 0; d < nFF; d++) {
 				pActHB[d] = fast_gelu(pActHB[d]);
 			}
-			matvec_multiply(pModel, layer->pFFNDown, pActHB, pModel->pActFFNOut, layer->pFFNDown_Bias);
+			matvec_multiply_gpu(pModel, layer->pFFNDown, layer->pGPUBufDown, pActHB, pModel->pActFFNOut, layer->pFFNDown_Bias);
 			for (d = 0; d < nEmbd; d++) {
 				xi[d] += pModel->pActFFNOut[d];
 			}

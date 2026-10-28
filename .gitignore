@@ -36,7 +36,7 @@ dist/
 !/bin/*.bat
 !/bin/*.sh
 !/bin/load/
-
+!/examples/MadarAgent/memory/ring_kb.bin
 
 # Editor & IDE Artifacts
 .vs/

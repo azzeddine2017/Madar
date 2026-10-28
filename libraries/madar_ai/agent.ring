@@ -550,13 +550,19 @@ class AIAgent
 		cMemContext = ""
 		bIsMathOrTime = (substr(cUserPrompt, "*") > 0 or substr(cUserPrompt, "+") > 0 or substr(cUserPrompt, "/") > 0 or substr(cUserPrompt, "ساعة") > 0 or substr(cUserPrompt, "وقت") > 0 or substr(cUserPrompt, "time") > 0)
 		if not bIsMathOrTime and bVectorMemory and oMemory != NULL and oMemory.count() > 0
-			aMemMatches = oMemory.search(cUserPrompt, 1)
-			if len(aMemMatches) > 0 and aMemMatches[1][1] >= 0.45
-				cChunkText = aMemMatches[1][2].cText
-				if len(cChunkText) > 200 cChunkText = left(cChunkText, 200) + "..." ok
-				cMemContext = f"- {cChunkText}"
+			aMemMatches = oMemory.search(cUserPrompt, 2)
+			aInjected = []
+			for m in aMemMatches
+				if m[1] >= 0.38
+					cChunkText = trim(m[2].cText)
+					if len(cChunkText) > 1600 cChunkText = left(cChunkText, 1600) ok
+					aInjected + cChunkText
+				ok
+			next
+			if len(aInjected) > 0
+				cMemContext = join(aInjected, nl + "---" + nl)
 				if bVerbose
-					see f"  [RAG Context: 1 relevant chunk injected (Score: {round(aMemMatches[1][1], 2)})]{nl}"
+					see f"  [RAG Context: {len(aInjected)} knowledge chunks injected (Best Score: {round(aMemMatches[1][1], 2)})]{nl}"
 				ok
 			ok
 		ok

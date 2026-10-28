@@ -7,26 +7,77 @@
 #   1. Autonomous multi-lingual tool execution (Files, Math, System, CSV/DataFrame)
 #   2. Multi-turn conversational memory with /undo and /reset
 #   3. Real-time token streaming directly to terminal
-#   4. Dynamic tool inspection and runtime parameter adjustment
+#   4. High-Precision BGE-M3 Dual-Engine RAG Pipeline (1024-dim Normalized Embeddings)
+#   5. Dynamic tool inspection and runtime parameter adjustment
 # ====================================================================
 
 load "stdlibCore.ring"
 load "agent.ring"
-load "alqalam.ring"
 
+# 1. Locate GGUF Models & CLI Options
 cModelPath = ""
-aCandidates = [
-	/*"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-	"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
-	"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",*/
-	"models/qwen2.5-0.5b-instruct-q4_0.gguf",
-	"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
-	"../models/qwen2.5-0.5b-instruct-q4_0.gguf",
-	"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
-	"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
-	"models/qwen2.5-1.5b-instruct-q4_0.gguf",
-	"../../models/qwen2.5-1.5b-instruct-q4_0.gguf"
-]
+bPreferCoder = false
+bPreferDeepSeek = false
+bPrefer05B = false
+bPrefer3B = false
+
+for arg in sysargv
+	cArg = lower(arg)
+	if substr(cArg, "coder") > 0 or substr(cArg, "qwen") > 0
+		bPreferCoder = true
+	ok
+	if substr(cArg, "deepseek") > 0 or substr(cArg, "r1") > 0
+		bPreferDeepSeek = true
+	ok
+	if substr(cArg, "0.5") > 0
+		bPrefer05B = true
+	ok
+	if substr(cArg, "3b") > 0
+		bPrefer3B = true
+	ok
+next
+
+if bPreferDeepSeek
+	aCandidates = [
+		"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"models/deepseek-r1-distill-qwen-7b-q4_0.gguf",
+		"../../models/deepseek-r1-distill-qwen-7b-q4_0.gguf"
+	]
+elseif bPrefer05B
+	aCandidates = [
+		"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
+		"../models/qwen2.5-0.5b-instruct-q4_0.gguf"
+	]
+elseif bPrefer3B
+	aCandidates = [
+		"models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"models/qwen2.5-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-3b-instruct-q4_0.gguf"
+	]
+else
+	# Default preference order: Coder 1.5B -> DeepSeek 1.5B -> 0.5B -> 3B -> 7B
+	aCandidates = [
+		"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"models/qwen2.5-1.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-1.5b-instruct-q4_0.gguf",
+		"models/qwen2.5-0.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-0.5b-instruct-q4_0.gguf",
+		"models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"models/qwen2.5-7b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-7b-instruct-q4_0.gguf"
+	]
+ok
 
 for cCand in aCandidates
 	if fexists(cCand)
@@ -37,47 +88,109 @@ next
 
 if not fexists(cModelPath)
 	see nl + "====================================================================" + nl
-	see "  [ERROR] No AI model found in models/ directory!" + nl
+	see "  [ERROR] No AI chat model found in models/ directory!" + nl
 	see "  Please download a model first using tools\download_model.bat" + nl
 	see "====================================================================" + nl
 	bye
 ok
 
-# 2. Initialize Model & Agent
+# 2. Locate Dedicated BGE-M3 Embedding Model
+cBgePath = ""
+aBgeCandidates = [
+	"models/bge-m3-q4_0.gguf",
+	"../../models/bge-m3-q4_0.gguf",
+	"../models/bge-m3-q4_0.gguf"
+]
+for cCand in aBgeCandidates
+	if fexists(cCand)
+		cBgePath = cCand
+		exit
+	ok
+next
+
+# 3. Locate Knowledge Base Memory File (agent_memory.bin)
+cMemoryFile = "agent_memory.bin"
+aMemCandidates = [
+	"agent_memory.bin",
+	"examples/ai/agent_memory.bin",
+	"../../examples/ai/agent_memory.bin",
+	"../agent_memory.bin",
+	"../../agent_memory.bin"
+]
+for cCand in aMemCandidates
+	if fexists(cCand)
+		cMemoryFile = cCand
+		exit
+	ok
+next
+
+# 4. Initialize Models & Agent (Dual-Engine Architecture)
 see nl + "====================================================================" + nl
 see "  Madar AI Agent - Autonomous Interactive CLI Terminal" + nl
 see "  (الطرفية التفاعلية للوكيل الذكي: استدعاء الأدوات والذاكرة المتصلة)" + nl
 see "====================================================================" + nl
-see "  Model: " + cModelPath + nl
+see "  Chat Model: " + cModelPath + nl
 
 t0 = clock()
-model = new QwenModel(cModelPath)
-model.setThreads(4)
-model.setTemperature(0.3)
-model.setGPU(1)
+if substr(lower(cModelPath), "deepseek") > 0
+	oChatModel = new DeepSeekModel(cModelPath)
+else
+	oChatModel = new QwenModel(cModelPath)
+ok
+oChatModel.setThreads(4)
+oChatModel.setTemperature(0.3)
+oChatModel.setGPU(1)
 
-agent = new AIAgent(model)
-agent.bStream = 1      # Enable real-time token streaming
-agent.bVerbose = 1     # Print tool invocation and observation steps
+embed_model = NULL
+if cBgePath != ""
+	see "  Embedding Engine: BGE-M3 (1024-dim, OpenCL GPU Accelerated) -> " + cBgePath + nl
+	embed_model = model_open(cBgePath)
+	embed_model.setThreads(4)
+	embed_model.setGPU(1)
+else
+	see "  Embedding Engine: Shared Chat Model Embeddings (BGE-M3 not found)" + nl
+ok
+
+agent = new AIAgent(oChatModel, embed_model)
+agent.bStream = 1          # Enable real-time token streaming
+agent.bVerbose = 1         # Print tool invocation and observation steps
 agent.bAutonomousTools = 1 # Official Qwen2.5-Coder Function Calling Schema
 
 # Initialize Persistent Long-Term Vector Memory (RAG Core)
-cMemoryFile = "agent_memory.bin"
 agent.initMemory(cMemoryFile)
 
-# Register Extra Application Tools
+# Register Core Tools
 agent.registerTool("currency_rate", "Returns live exchange rate between currencies (e.g. USD to DZD)", ["query"], func(args) {
 	return "Exchange Rate 1 USD = 134.50 DZD (Algerian Dinar) | 1 EUR = 145.20 DZD"
 })
 
-
+agent.registerTool("list_files", "Lists files in current or specified directory", ["dir"], func(args) {
+	cDir = "."
+	if islist(args) and len(args) >= 1 and trim(args[1]) != ""
+		cDir = trim(args[1])
+	elseif isstring(args) and trim(args) != ""
+		cDir = trim(args)
+	ok
+	cDir = substr(cDir, '"', "")
+	cDir = substr(cDir, "'", "")
+	cDir = trim(cDir)
+	aFiles = dir(cDir)
+	cList = ""
+	nCount = 0
+	for f in aFiles
+		if f[1] != "." and f[1] != ".."
+			cList += f[1] + "  "
+			nCount++
+			if nCount >= 20 exit ok
+		ok
+	next
+	return "Files in '" + cDir + "': " + cList
+})
 
 t1 = clock()
 nLoadSec = (t1 - t0) / clockspersecond()
 
-see "  Engine: Native C AVX2 SIMD + OpenCL GPU | FP16 KV-Cache (2048 Tokens) | 4 Threads" + nl
-see "  Chat Template: Qwen2.5-Coder Function Calling (<tools>, <tool_call>, <tool_response>)" + nl
-see "  Memory: " + agent.oMemory.count() + " persistent vector chunks loaded (" + cMemoryFile + ")" + nl
+see "  Memory: " + agent.oMemory.count() + " knowledge chunks loaded (" + cMemoryFile + ")" + nl
 see "  Ready in " + round(nLoadSec, 2) + " seconds." + nl
 see "--------------------------------------------------------------------" + nl
 see "  Available Commands:" + nl
@@ -90,11 +203,13 @@ see "    /reset | /clear  : Reset conversation memory and context" + nl
 see "    /clear_memory    : Clear all persistent RAG vector memory" + nl
 see "    /history         : View current conversation turn history" + nl
 see "    /tools           : List all registered agent tools" + nl
+see "    /tokens <N>      : Set maximum generation tokens (64 - 4096)" + nl
 see "    /temp <val>      : Adjust temperature (0.1 to 1.0)" + nl
+see "    /gpu on | off    : Toggle GPU OpenCL acceleration" + nl
 see "    exit | quit      : Close terminal session (auto-saves memory)" + nl
 see "====================================================================" + nl
 
-# 3. Interactive REPL Loop
+# 5. Interactive REPL Loop
 nTurn = 0
 while true
 	see nl + "You > "
@@ -109,7 +224,8 @@ while true
 	if cLower = "exit" or cLower = "quit" or cLower = "bye" or cLower = "وداعا"
 		agent.saveMemory()
 		see nl + "Goodbye from Madar AI Agent! (وداعاً من وكيل مدار الذكي)" + nl
-		model.close()
+		oChatModel.close()
+		if embed_model != NULL embed_model.close() ok
 		exit
 	ok
 
@@ -195,12 +311,12 @@ while true
 		see nl + "--- Long-Term Episodic Vector Memory ---" + nl
 		see "  Persistent File : " + agent.cMemoryPath + nl
 		see "  Vector Chunks   : " + nCount + " items" + nl
-		see "  Status          : Active (Persistent RAG enabled)" + nl
+		see "  Status          : Active (Persistent BGE-M3 RAG enabled)" + nl
 		see "--------------------------------------------------------" + nl
 		loop
 	ok
 
-	# Reset conversation history
+	# Reset memory
 	if cLower = "/reset" or cLower = "/clear" or cLower = "clear" or cLower = "reset"
 		agent.resetHistory()
 		see "  [System] Conversation memory has been completely reset." + nl
@@ -257,10 +373,45 @@ while true
 		aParts = split(cInput, " ")
 		if len(aParts) >= 2
 			fNewT = 0.0 + aParts[2]
-			model.setTemperature(fNewT)
+			oChatModel.setTemperature(fNewT)
 			see "  [System] Model temperature set to " + fNewT + nl
 		else
-			see "  [System] Current temperature: " + model.fTemp + nl
+			see "  [System] Current temperature: " + oChatModel.fTemp + nl
+		ok
+		loop
+	ok
+
+	# Adjust Max Tokens
+	if substr(cLower, "/tokens") = 1
+		aParts = split(cInput, " ")
+		if len(aParts) >= 2
+			nNewTok = 0 + aParts[2]
+			if nNewTok < 16 nNewTok = 16 ok
+			if nNewTok > 4096 nNewTok = 4096 ok
+			agent.nMaxOutputTokens = nNewTok
+			see "  [System] Max output tokens set to " + nNewTok + nl
+		else
+			see "  [System] Current max tokens: " + agent.nMaxOutputTokens + nl
+		ok
+		loop
+	ok
+
+	# Adjust GPU Acceleration
+	if substr(cLower, "/gpu") = 1
+		aParts = split(cInput, " ")
+		if len(aParts) >= 2
+			cMode = lower(aParts[2])
+			if cMode = "off" or cMode = "0"
+				oChatModel.setGPU(0)
+				if embed_model != NULL embed_model.setGPU(0) ok
+				see "  [System] GPU acceleration disabled (Running on CPU AVX2)." + nl
+			else
+				oChatModel.setGPU(1)
+				if embed_model != NULL embed_model.setGPU(1) ok
+				see "  [System] GPU acceleration enabled." + nl
+			ok
+		else
+			see "  [System] Usage: /gpu on | /gpu off" + nl
 		ok
 		loop
 	ok
@@ -272,8 +423,8 @@ while true
 	tQ1 = clock()
 	nDur = (tQ1 - tQ0) / clockspersecond()
 
-	if model.fTokensPerSec > 0
-		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Speed: ~" + round(model.fTokensPerSec, 1) + " tok/s (" + round(nDur, 2) + "s)]" + nl
+	if oChatModel.fTokensPerSec > 0
+		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Speed: ~" + round(oChatModel.fTokensPerSec, 1) + " tok/s (" + round(nDur, 2) + "s)]" + nl
 	else
 		see "  [Turn #" + nTurn + " | Memory: " + (len(agent.aConversation)/2) + " turns | Elapsed: " + round(nDur, 2) + "s]" + nl
 	ok

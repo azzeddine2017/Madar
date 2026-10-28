@@ -230,6 +230,9 @@ class BgeModel
 		nThreads = n
 		madar_model_set_threads(hModel, n)
 
+	func setGPU(bEnable)
+		madar_model_set_gpu(hModel, bEnable)
+
 	func tokenize(cText)
 		return madar_model_tokenize(hModel, cText)
 

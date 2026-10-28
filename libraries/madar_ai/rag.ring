@@ -412,8 +412,8 @@ class VectorStore
 			# Raw cosine similarity from causal LLM hidden states (anisotropic base ~0.70)
 			fRawSim = tensor_cosine_similarity(qVec, ch.tEmbedding)
 
-			# Rescale semantic similarity from [0.70, 1.00] baseline to [0.0, 1.0] dynamic range
-			fNormSem = (fRawSim - 0.70) / 0.30
+			# Support dedicated embedding models (BGE-M3, BERT) and normalized embeddings
+			fNormSem = fRawSim
 			if fNormSem < 0.0 fNormSem = 0.0 ok
 			if fNormSem > 1.0 fNormSem = 1.0 ok
 
