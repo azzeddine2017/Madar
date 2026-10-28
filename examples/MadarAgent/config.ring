@@ -18,6 +18,13 @@ class AgentConfig
 	bDebug           = true
 	nRagTopK         = 1
 	nRagMaxChars     = 800
+	# History & Sliding Window Controls
+	bUseSlidingWindow = true
+	nHistoryWindow    = 2
+	# Semantic Intent Router Controls
+	cIntentCachePath  = "memory/intent_cache.bin"
+	nIntentThreshold  = 0.52
+	bAutoSaveIntents  = true
 
 	func init(aArgs = [])
 		discoverModels(aArgs)

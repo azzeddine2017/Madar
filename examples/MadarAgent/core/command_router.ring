@@ -58,6 +58,12 @@ class CommandRouter
 				handleDebug(cArgs)
 			case "/rag_topk"
 				handleRagTopK(cArgs)
+			case "/intents"
+				handleIntents()
+			case "/reindex_intents"
+				handleReindexIntents()
+			case "/history_window"
+				handleHistoryWindow(cArgs)
 			case "/reset"
 				handleReset()
 			case "/clear"
@@ -239,3 +245,46 @@ class CommandRouter
 		else
 			? uiInfo(f"  [Config] Current RAG Top-K: {oApp.nRagTopK} (Usage: /rag_topk 1)")
 		ok
+
+	func handleIntents()
+		if oApp.oIntentRegistry = NULL
+			? uiWarn("  [Intents] Intent Registry is not initialized.")
+			return
+		ok
+		uiBanner("Registered Intent Matrix (Rasa/Semantic Router)", "Hybrid Zero-LLM & Scoped Execution")
+		for item in oApp.oIntentRegistry.aIntents
+			? "  " + uiHighlight(f"[{item.cName}]") + " (" + uiInfo(item.cType) + ")"
+			? "    ├─ Triggers: " + uiMuted("" + len(item.aTriggers) + " examples")
+			if item.cType = "direct_response"
+				? "    └─ Action:   " + uiSuccess("Direct Instant Answer (Zero-LLM)")
+			elseif item.cType = "direct_tool"
+				? "    └─ Action:   " + uiSuccess(f"Direct Tool Execution: {item.cToolName} (Zero-LLM)")
+			else
+				cToolsStr = ""
+				for t in item.aScopedTools cToolsStr += t + " " next
+				? "    └─ Action:   " + uiInfo(f"Scoped LLM | Skill: '{item.cSkillName}' | Tools: [{trim(cToolsStr)}] | RAG: {item.bNeedsRag}")
+			ok
+		next
+		uiDivider()
+
+	func handleReindexIntents()
+		if oApp.oSemanticRouter = NULL
+			? uiWarn("  [Intents] Semantic Router is not active.")
+			return
+		ok
+		? uiInfo("  [Re-indexing] Computing trigger embeddings with BGE-M3 and updating cache...")
+		t0 = clock()
+		nCount = oApp.oSemanticRouter.reindex()
+		nSec = round((clock() - t0) / clockspersecond(), 2)
+		? uiSuccess(f"  [Intents Cached] Successfully indexed {nCount} triggers into '{oApp.oSemanticRouter.cCachePath}' in {nSec}s.")
+
+	func handleHistoryWindow(cArg)
+		nVal = 0 + cArg
+		if nVal >= 1 and nVal <= 10
+			oApp.nHistoryWindow = nVal
+			oApp.bUseSlidingWindow = true
+			? uiSuccess(f"  [History Window] Sliding window set to last {oApp.nHistoryWindow} conversational turns.")
+		else
+			? uiInfo(f"  [History Window] Current window: {oApp.nHistoryWindow} turns (Active: {oApp.bUseSlidingWindow}). Usage: /history_window 2")
+		ok
+

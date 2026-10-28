@@ -92,14 +92,30 @@ class ToolRegistry
 			return f"Error executing tool '{cName}': {cCatchError}"
 		done
 
-	func buildSchemaPrompt(cFormat = "xml")
+	func buildSchemaPrompt(cFormat = "xml", aFilterNames = [])
 		if len(aTools) = 0 return "" ok
 		cSchema = "# Available Tools (Call ONLY when needed):" + nl
+		nCount = 0
 		for t in aTools
+			# If filter list provided, only include matching tools
+			if len(aFilterNames) > 0
+				bMatch = false
+				for fName in aFilterNames
+					if lower(trim(fName)) = lower(trim(t.cName))
+						bMatch = true
+						exit
+					ok
+				next
+				if !bMatch loop ok
+			ok
+
+			nCount++
 			if cFormat = "xml"
 				cSchema += t.toXmlSchema() + nl
 			else
 				cSchema += t.toJsonSchema() + nl
 			ok
 		next
+		if nCount = 0 return "" ok
 		return cSchema
+

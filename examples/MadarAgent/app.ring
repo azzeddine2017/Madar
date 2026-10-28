@@ -1,9 +1,11 @@
 # ====================================================================
 #   MadarAgent - Production-Grade Autonomous AI Agent Application
 #   تطبيق الوكيل الذكي المتكامل: هيكلية شيئية نقية (OOP Architecture)
+#   توجيه دلالي هجين (Semantic Routing) + استجابات Zero-LLM فورية
 # ====================================================================
 
 load "stdlibcore.ring"
+load "ringregex.ring"
 load "madar_ai.ring"
 load "rag.ring"
 load "config.ring"
@@ -14,6 +16,9 @@ load "skills/base_skill.ring"
 load "core/memory_tier.ring"
 load "core/tool_caller.ring"
 load "core/command_router.ring"
+load "core/intent_registry.ring"
+load "core/semantic_router.ring"
+load "core/entity_extractor.ring"
 load "ui_style.ring"
 
 class AgentApp
@@ -25,12 +30,17 @@ class AgentApp
 	oSkillManager    = NULL
 	oToolCaller      = NULL
 	oRouter          = NULL
+	oIntentRegistry  = NULL
+	oSemanticRouter  = NULL
+	oEntityExtractor = NULL
 
 	aHistory         = []
 	bGPU             = true
 	bDebug           = true
 	nRagTopK         = 1
 	nRagMaxChars     = 800
+	bUseSlidingWindow = true
+	nHistoryWindow    = 2
 	nTemperature     = 0.30
 	nMaxContext      = 8192
 	nMaxGenTokens    = 1500
@@ -45,6 +55,8 @@ class AgentApp
 		bDebug = oConfig.bDebug
 		nRagTopK = oConfig.nRagTopK
 		nRagMaxChars = oConfig.nRagMaxChars
+		bUseSlidingWindow = oConfig.bUseSlidingWindow
+		nHistoryWindow = oConfig.nHistoryWindow
 		nTemperature = oConfig.nTemperature
 		nMaxContext = oConfig.nMaxContext
 		nMaxGenTokens = oConfig.nMaxGenTokens
@@ -69,12 +81,15 @@ class AgentApp
 		# 4. Initialize Two-Tier Memory
 		setupMemory()
 
-		# 5. Setup Tool Registry (with Memory & SkillManager wired in)
+		# 5. Setup Tool Registry
 		setupTools()
 
-		# 6. Initialize Tool Caller & Router
+		# 6. Initialize Tool Caller & Command Router
 		oToolCaller = new ToolCallingEngine(oRegistry)
 		oRouter = new CommandRouter(self)
+
+		# 7. Initialize Semantic Router & Entity Extractor (Rasa / PCRE2 Pattern)
+		setupIntents()
 
 		? uiSuccess("  [Agent State]     Ready for interaction.")
 		uiDivider()
@@ -124,73 +139,99 @@ class AgentApp
 	func setupMemory()
 		oMemory = new TwoTierMemory(oEmbeddingModel, oConfig.cBaseKbPath, oConfig.cWorkingKbPath)
 
+	func setupIntents()
+		oIntentRegistry = new IntentRegistry()
+		oEntityExtractor = new EntityExtractor
+		oSemanticRouter = new SemanticRouter(oEmbeddingModel, oIntentRegistry, oConfig.cIntentCachePath, oConfig.nIntentThreshold)
+		? uiInfo(f"  [Intents Router]  Active with {len(oIntentRegistry.aIntents)} intent archetypes (BGE-M3 + PCRE2).")
+
 	func estimateTokenCount()
-		# Approximate token counting (1 token ~= 3.5 chars)
 		nChars = 0
 		for m in aHistory
 			nChars += len(m["content"])
 		next
 		return ceil(nChars / 3.5)
 
-	func buildPrompt(cUserInput)
-		# 1. Base System Persona
+	# Build Scoped & Ephemeral Prompt based on Detected Intent
+	func buildScopedPrompt(cUserInput, oIntent = NULL)
+		# 1. Compact Base System Persona
 		cSystemPrompt = "You are MadarAgent, a precise, intelligent, and autonomous AI assistant." + nl +
-			"You are an expert software engineer and specialist in the Ring programming language." + nl +
-			"Always be helpful, concise, technically rigorous, and speak fluent Arabic and English as requested." + nl +
-			"When you need to execute code, inspect files, remember facts, or create skills, use the available tools." + nl +
-			"- Autonomous Memory: When the user shares personal preferences, project conventions, or asks you to remember something, call 'remember_fact'." + nl +
-			"- Autonomous Skills: When you formulate a reusable procedure, or when the user teaches you a new pattern and asks to save it as a skill, call 'create_skill'." + nl
+			"Always be helpful, concise, technically rigorous, and speak fluent Arabic and English as requested." + nl
 
-		# 2. Append Tool Schemas
-		cSystemPrompt += nl + oRegistry.buildSchemaPrompt("xml") + nl
+		# 2. Target Specific Skill if intent activates one
+		cTargetSkill = ""
+		aAllowedTools = []
+		bNeedsRag = false
 
-		# 3. Dynamic Skill Overlay
-		aActiveSkills = oSkillManager.detectActiveSkills(cUserInput)
-		for s in aActiveSkills
-			? uiSkillBadge(s.cName)
-		next
-		cSkillOverlay = oSkillManager.buildCombinedOverlay(cUserInput)
-		if cSkillOverlay != ""
-			cSystemPrompt += nl + cSkillOverlay + nl
+		if oIntent != NULL
+			cTargetSkill = oIntent.cSkillName
+			aAllowedTools = oIntent.aScopedTools
+			bNeedsRag = oIntent.bNeedsRag
 		ok
 
-		# 4. RAG Retrieval from Two-Tier Memory
-		t_rag0 = clock()
-		aRetrieved = oMemory.search(cUserInput, nRagTopK)
-		nRagDuration = (clock() - t_rag0) / clockspersecond()
-		if len(aRetrieved) > 0
-			? uiRagBadge(len(aRetrieved))
-			if bDebug
-				? uiMuted(f"    (RAG Search took {round(nRagDuration, 3)}s)")
-			ok
-			cSystemPrompt += nl + "# Ground Truth Knowledge & Retrieved Context:" + nl
-			for item in aRetrieved
-				# item format: [fScore, cText, chunk]
-				cChunkData = item[2]
-				if len(cChunkData) > nRagMaxChars
-					cChunkData = left(cChunkData, nRagMaxChars) + nl + "... [Truncated for brevity]"
+		# Apply skill instructions
+		if cTargetSkill != ""
+			oSkill = oSkillManager.getSkill(cTargetSkill)
+			if oSkill != NULL
+				? uiSkillBadge(oSkill.cName)
+				cSystemPrompt += nl + "# Active Skill: " + oSkill.cName + nl + oSkill.getPromptOverlay() + nl
+				# If intent did not specify tools, inherit from skill
+				if len(aAllowedTools) = 0 and len(oSkill.getTools()) > 0
+					aAllowedTools = oSkill.getTools()
 				ok
-				cSystemPrompt += "--- [Knowledge Chunk] ---" + nl
-				cSystemPrompt += cChunkData + nl
-			next
-			cSystemPrompt += "--- [End of Context] ---" + nl
+			ok
+		ok
+
+		# 3. Inject only the scoped tools for this intent
+		if len(aAllowedTools) > 0
+			cToolSchema = oRegistry.buildSchemaPrompt("xml", aAllowedTools)
+			if cToolSchema != ""
+				cSystemPrompt += nl + cToolSchema + nl
+			ok
+		ok
+
+		# 4. Ephemeral RAG Retrieval (Targeted knowledge chunk)
+		cRagContext = ""
+		if bNeedsRag and nRagTopK > 0
+			t_rag0 = clock()
+			aRetrieved = oMemory.search(cUserInput, nRagTopK)
+			nRagDuration = (clock() - t_rag0) / clockspersecond()
+			if len(aRetrieved) > 0
+				? uiRagBadge(len(aRetrieved))
+				if bDebug
+					? uiMuted(f"    (RAG Search took {round(nRagDuration, 3)}s)")
+				ok
+				for item in aRetrieved
+					cChunkData = item[2]
+					if len(cChunkData) > nRagMaxChars
+						cChunkData = left(cChunkData, nRagMaxChars) + nl + "... [Truncated for brevity]"
+					ok
+					cRagContext += "--- [Knowledge Chunk] ---" + nl + cChunkData + nl
+				next
+			ok
 		ok
 
 		# 5. Build ChatML formatted prompt
 		cPrompt = "<|im_start|>system" + nl + cSystemPrompt + "<|im_end|>" + nl
 
-		# Append conversation history (limited to last 6 turns to conserve context)
+		# Sliding Window Conversation History
 		nStartHist = 1
-		if len(aHistory) > 6
-			nStartHist = len(aHistory) - 5
+		if bUseSlidingWindow and len(aHistory) > (nHistoryWindow * 2)
+			nStartHist = len(aHistory) - (nHistoryWindow * 2) + 1
 		ok
 		for i = nStartHist to len(aHistory)
 			m = aHistory[i]
 			cPrompt += f"<|im_start|>{m['role']}" + nl + m["content"] + "<|im_end|>" + nl
 		next
 
-		# Append current user message
-		cPrompt += "<|im_start|>user" + nl + cUserInput + "<|im_end|>" + nl
+		# Append Ephemeral RAG strictly into Current User Turn (Never saved in history)
+		cUserContent = cUserInput
+		if cRagContext != ""
+			cUserContent = "# Reference Guidance (Ground Truth):" + nl + cRagContext + nl +
+				"User Question: " + cUserInput
+		ok
+
+		cPrompt += "<|im_start|>user" + nl + cUserContent + "<|im_end|>" + nl
 		cPrompt += "<|im_start|>assistant" + nl
 
 		return cPrompt
@@ -199,19 +240,67 @@ class AgentApp
 		cUserInput = trim(cUserInput)
 		if cUserInput = "" return ok
 
-		# Check for Slash Commands
+		# 1. Fast Slash Commands
 		if oRouter.isCommand(cUserInput)
 			oRouter.route(cUserInput)
 			return
 		ok
 
-		# Build Prompt with Skills + Tools + RAG
-		cPrompt = buildPrompt(cUserInput)
+		# 2. Semantic Intent Classification via BGE-M3 (< 40ms)
+		t_intent0 = clock()
+		aRoute = oSemanticRouter.route(cUserInput)
+		nIntentSec = (clock() - t_intent0) / clockspersecond()
+
+		oIntent = NULL
+		if aRoute != NULL
+			oIntent = aRoute[1]
+			fScore  = aRoute[2]
+			cTrig   = aRoute[3]
+			if bDebug
+				? uiInfo(f"  🎯 [Intent: {oIntent.cName} ({oIntent.cType}) | Match: '{cTrig}' | Score: {round(fScore, 2)} | {round(nIntentSec * 1000, 1)}ms]")
+			ok
+
+			# -------------------------------------------------------------
+			# Path 1: Instant Zero-LLM Direct Response
+			# -------------------------------------------------------------
+			if oIntent.cType = "direct_response"
+				see uiAgentPrompt("MadarAgent")
+				? oIntent.cResponse
+				aHistory + ["role" = "user", "content" = cUserInput]
+				aHistory + ["role" = "assistant", "content" = oIntent.cResponse]
+				return
+			ok
+
+			# -------------------------------------------------------------
+			# Path 2: Instant Zero-LLM Direct Tool Execution
+			# -------------------------------------------------------------
+			if oIntent.cType = "direct_tool"
+				if oIntent.cToolName = "calc"
+					cExpr = oEntityExtractor.extractMathExpression(cUserInput)
+					if cExpr != ""
+						? uiToolCallBadge("calc", cExpr)
+						cRes = oRegistry.execute("calc", [cExpr])
+						? uiToolResultBlock("calc", cRes)
+						cDirectResp = f"الناتج الحسابي لـ ({cExpr}) هو: {cRes}"
+						see uiAgentPrompt("MadarAgent")
+						? cDirectResp
+						aHistory + ["role" = "user", "content" = cUserInput]
+						aHistory + ["role" = "assistant", "content" = cDirectResp]
+						return
+					ok
+				ok
+			ok
+		ok
+
+		# -----------------------------------------------------------------
+		# Path 3: Scoped LLM Execution (Lightweight Focused Prompt)
+		# -----------------------------------------------------------------
+		cPrompt = buildScopedPrompt(cUserInput, oIntent)
 		nPromptChars = len(cPrompt)
 		nEstPromptTokens = ceil(nPromptChars / 3.5)
 
 		if bDebug
-			? uiMuted(f"  [Evaluating Prompt: ~{nEstPromptTokens} tokens ({nPromptChars} chars)...]")
+			? uiMuted(f"  [Evaluating Scoped Prompt: ~{nEstPromptTokens} tokens ({nPromptChars} chars)...]")
 		ok
 
 		t_prefill0 = clock()
@@ -281,7 +370,7 @@ class AgentApp
 			ok
 		ok
 
-		# Update Conversation History
+		# Update Clean Conversation History (Without ephemeral RAG bloat)
 		aHistory + ["role" = "user", "content" = cUserInput]
 		aHistory + ["role" = "assistant", "content" = cResponse]
 
