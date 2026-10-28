@@ -18,12 +18,14 @@ next
 
 if bPreferQwen
 	aCandidates = [
-		"models/qwen2.5-7b-instruct-q4_0.gguf",
+		/*"models/qwen2.5-7b-instruct-q4_0.gguf",
 		"../../models/qwen2.5-7b-instruct-q4_0.gguf",
+		"models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf",
 		"models/qwen2.5-3b-instruct-q4_0.gguf",
 		"../../models/qwen2.5-3b-instruct-q4_0.gguf",
 		"models/qwen2.5-coder-3b-instruct-q4_0.gguf",
-		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",
+		"../../models/qwen2.5-coder-3b-instruct-q4_0.gguf",*/
 		"models/qwen2.5-0.5b-instruct-q4_0.gguf",
 		"../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
 	]
@@ -72,7 +74,7 @@ else
 	model = new QwenModel(cModelPath)
 ok
 model.setThreads(4)
-model.setTemperature(0.6) # Default to 0.6 for natural dialogue
+model.setTemperature(0.3) # Default to 0.6 for natural dialogue
 t1 = clock()
 nLoadSec = (t1 - t0) / clockspersecond()
 
@@ -82,7 +84,7 @@ see "  Commands: 'exit' | 'reset' | '/gpu on|off' | '/tokens <N>' | '/temp <0.0-
 see "====================================================================" + nl
 
 if bIsDeepSeek
-	nChatMaxTokens = 512
+	nChatMaxTokens = 1024
 else
 	nChatMaxTokens = 512
 ok

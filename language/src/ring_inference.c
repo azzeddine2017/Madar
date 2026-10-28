@@ -2193,7 +2193,7 @@ RING_API void ring_model_forward(RingModel *pModel, int nToken, int nPos) {
 */
 
 RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
-	uint32_t nVocab, i, j;
+	uint32_t nVocab, i, j, m;
 	float *logits;
 	int bestToken;
 	float maxLogit, invTemp, sumExp, r, accum;
@@ -2202,6 +2202,9 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
 	float topLogits[40];
 	float minTopLogit;
 	int minTopIdx;
+	float topP, cumProb, activeSum;
+	uint32_t activeK;
+	uint32_t r32;
 
 	if (!pModel) return 0;
 
@@ -2265,14 +2268,36 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
 		sumExp += topLogits[j];
 	}
 
-	/* 30-bit high resolution pseudo-random value */
-	{
-		uint32_t r32 = (((uint32_t)rand() & 0x7FFF) << 15) | ((uint32_t)rand() & 0x7FFF);
-		r = ((float)r32 / (float)0x3FFFFFFF) * sumExp;
+	/* Sort topK candidates descending by probability */
+	for (j = 0; j < (uint32_t)topK - 1; j++) {
+		for (m = j + 1; m < (uint32_t)topK; m++) {
+			if (topLogits[m] > topLogits[j]) {
+				float tmpL = topLogits[j]; topLogits[j] = topLogits[m]; topLogits[m] = tmpL;
+				int tmpI = topIndices[j]; topIndices[j] = topIndices[m]; topIndices[m] = tmpI;
+			}
+		}
 	}
 
-	accum = 0.0f;
+	/* Nucleus Filtering (Top-P = 0.90) to cut off long degenerative tails */
+	topP = 0.90f;
+	cumProb = 0.0f;
+	activeSum = 0.0f;
+	activeK = (uint32_t)topK;
 	for (j = 0; j < (uint32_t)topK; j++) {
+		cumProb += topLogits[j];
+		activeSum += topLogits[j];
+		if (cumProb >= topP * sumExp && j >= 1) {
+			activeK = j + 1;
+			break;
+		}
+	}
+
+	/* 30-bit high resolution pseudo-random value */
+	r32 = (((uint32_t)rand() & 0x7FFF) << 15) | ((uint32_t)rand() & 0x7FFF);
+	r = ((float)r32 / (float)0x3FFFFFFF) * activeSum;
+
+	accum = 0.0f;
+	for (j = 0; j < activeK; j++) {
 		accum += topLogits[j];
 		if (accum >= r) return topIndices[j];
 	}
@@ -2326,6 +2351,8 @@ RING_API char *ring_model_step(RingModel *pModel) {
 	int i, nextToken;
 	int penaltyStart;
 	char *tokenStr;
+	int k, count;
+	int t1, t2, t3;
 
 	if (!pModel || pModel->bGenFinished || pModel->nGenCount >= pModel->nMaxGenTokens) {
 		if (pModel && pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
@@ -2340,28 +2367,78 @@ RING_API char *ring_model_step(RingModel *pModel) {
 		return _strdup("");
 	}
 
-	/* Repetition penalty (1.25x) over the last 64 generated tokens */
-	penaltyStart = (pModel->nGenCount > 64) ? (pModel->nGenCount - 64) : 0;
+	/* Repetition penalty with 256-token lookback window & frequency scaling */
+	penaltyStart = (pModel->nGenCount > 256) ? (pModel->nGenCount - 256) : 0;
 	for (i = penaltyStart; i < pModel->nGenCount; i++) {
 		int prevTok = pModel->aGenTokens[i];
 		int alreadyPenalized = 0;
-		int k;
 		for (k = penaltyStart; k < i; k++) {
 			if (pModel->aGenTokens[k] == prevTok) {
 				alreadyPenalized = 1;
 				break;
 			}
 		}
-		if (!alreadyPenalized && prevTok >= 0 && (uint32_t)prevTok < pModel->config.nVocab) {
-			float fPenalty = 1.25f;
-			/* Extra consecutive penalty if token equals immediately preceding token to prevent loops */
+		if (alreadyPenalized) continue;
+
+		count = 0;
+		for (k = i; k < pModel->nGenCount; k++) {
+			if (pModel->aGenTokens[k] == prevTok) count++;
+		}
+
+		if (prevTok >= 0 && (uint32_t)prevTok < pModel->config.nVocab) {
+			/* Multiplicative penalty scaled by occurrence count */
+			float fPenalty = 1.15f + 0.12f * (float)count;
+			if (fPenalty > 2.5f) fPenalty = 2.5f;
+
+			/* Extra penalty for immediate consecutive token repeat */
 			if (pModel->nGenCount > 0 && prevTok == pModel->aGenTokens[pModel->nGenCount - 1]) {
-				fPenalty = 1.55f;
+				fPenalty *= 1.4f;
+				pModel->pLogits[prevTok] -= 3.0f;
 			}
+
 			if (pModel->pLogits[prevTok] > 0.0f) {
 				pModel->pLogits[prevTok] /= fPenalty;
 			} else {
 				pModel->pLogits[prevTok] *= fPenalty;
+			}
+			/* Additive frequency/presence penalty */
+			pModel->pLogits[prevTok] -= 0.35f * (float)count;
+		}
+	}
+
+	/* N-Gram Repetition Loop Blockers */
+	/* 1. 4-gram Repeat Blocker: If (t_{-3}, t_{-2}, t_{-1}) == (t_k, t_{k+1}, t_{k+2}), permanently ban t_{k+3} */
+	if (pModel->nGenCount >= 3) {
+		t1 = pModel->aGenTokens[pModel->nGenCount - 3];
+		t2 = pModel->aGenTokens[pModel->nGenCount - 2];
+		t3 = pModel->aGenTokens[pModel->nGenCount - 1];
+		for (k = 0; k <= pModel->nGenCount - 4; k++) {
+			if (pModel->aGenTokens[k] == t1 &&
+			    pModel->aGenTokens[k+1] == t2 &&
+			    pModel->aGenTokens[k+2] == t3) {
+				int banTok = pModel->aGenTokens[k+3];
+				if (banTok >= 0 && (uint32_t)banTok < pModel->config.nVocab) {
+					pModel->pLogits[banTok] = -1e9f; /* Ban 4-gram repeat loop completely */
+				}
+			}
+		}
+	}
+
+	/* 2. 3-gram Soft Penalty: If (t_{-2}, t_{-1}) == (t_k, t_{k+1}), penalize t_{k+2} heavily */
+	if (pModel->nGenCount >= 2) {
+		t2 = pModel->aGenTokens[pModel->nGenCount - 2];
+		t3 = pModel->aGenTokens[pModel->nGenCount - 1];
+		for (k = 0; k <= pModel->nGenCount - 3; k++) {
+			if (pModel->aGenTokens[k] == t2 && pModel->aGenTokens[k+1] == t3) {
+				int warnTok = pModel->aGenTokens[k+2];
+				if (warnTok >= 0 && (uint32_t)warnTok < pModel->config.nVocab) {
+					if (pModel->pLogits[warnTok] > 0.0f) {
+						pModel->pLogits[warnTok] /= 2.2f;
+					} else {
+						pModel->pLogits[warnTok] *= 2.2f;
+					}
+					pModel->pLogits[warnTok] -= 4.0f;
+				}
 			}
 		}
 	}
