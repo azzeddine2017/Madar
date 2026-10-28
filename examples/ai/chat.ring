@@ -84,9 +84,9 @@ see "  Commands: 'exit' | 'reset' | '/gpu on|off' | '/tokens <N>' | '/temp <0.0-
 see "====================================================================" + nl
 
 if bIsDeepSeek
-	nChatMaxTokens = 1024
+	nChatMaxTokens = 2048
 else
-	nChatMaxTokens = 512
+	nChatMaxTokens = 1024
 ok
 
 # 3. Interactive REPL Chat Loop
@@ -117,7 +117,7 @@ while true
 		if len(aParts) >= 2
 			nChatMaxTokens = 0 + aParts[2]
 			if nChatMaxTokens < 16 nChatMaxTokens = 16 ok
-			if nChatMaxTokens > 1024 nChatMaxTokens = 1024 ok
+			if nChatMaxTokens > 4096 nChatMaxTokens = 4096 ok
 			see "  [System] Max tokens set to " + nChatMaxTokens + nl
 		else
 			see "  [System] Current max tokens: " + nChatMaxTokens + nl

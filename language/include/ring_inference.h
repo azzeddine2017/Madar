@@ -118,7 +118,7 @@ typedef struct RingModel {
 	size_t nGPUBufYSize;
 
 	/* Step-by-Step Generator & Streaming State */
-	int aGenTokens[2048];
+	int aGenTokens[8192];
 	int nPromptTokens;
 	int nGenCount;
 	int nMaxGenTokens;

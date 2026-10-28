@@ -1763,8 +1763,29 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 		return NULL;
 	}
 
-	/* Allocate KV Cache (FP16 Compressed - 50% Memory Savings) */
-	pModel->nMaxSeq = 2048;
+	/* Determine Optimal Context Length by Model Architecture & Size */
+	{
+		char ctxKey[128];
+		RingGGUFKV *kvCtx = NULL;
+		uint32_t nGGUFContext = 0;
+
+		snprintf(ctxKey, sizeof(ctxKey), "%s.context_length", arch);
+		kvCtx = ring_gguf_find_kv(pGGUF, ctxKey);
+		if (!kvCtx) kvCtx = ring_gguf_find_kv(pGGUF, "context_length");
+		if (kvCtx) nGGUFContext = gguf_get_u32_val(kvCtx, 0);
+
+		if (pModel->config.bIsBert) {
+			pModel->nMaxSeq = 512;
+		} else if (nGGUFContext > 0 && nGGUFContext <= 2048) {
+			pModel->nMaxSeq = nGGUFContext;
+		} else if (pModel->config.nEmbd <= 1024) {
+			/* Ultra-compact models (0.5B): 4,096 tokens (4K) */
+			pModel->nMaxSeq = 4096;
+		} else {
+			/* 1.5B, 3B, 7B, 14B & DeepSeek-R1 (Distill): 8,192 tokens (8K) */
+			pModel->nMaxSeq = 8192;
+		}
+	}
 	pModel->nKVDim = pModel->config.nHeadsKV * pModel->config.nHeadDim;
 	kvSize = (size_t)pModel->config.nLayers * pModel->nMaxSeq * pModel->nKVDim;
 
@@ -1841,9 +1862,10 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
 	}
 #endif
 
-	printf("  [Model Specs] %s | L:%u | Dim:%u | Heads:%u(KV:%u) | FF:%u | Vocab:%u\n",
+	printf("  [Model Specs] %s | L:%u | Dim:%u | Heads:%u(KV:%u) | FF:%u | Vocab:%u | Context:%u\n",
 		   pModel->config.cArch, pModel->config.nLayers, pModel->config.nEmbd,
-		   pModel->config.nHeads, pModel->config.nHeadsKV, pModel->config.nFF, pModel->config.nVocab);
+		   pModel->config.nHeads, pModel->config.nHeadsKV, pModel->config.nFF, pModel->config.nVocab,
+		   pModel->nMaxSeq);
 
 	printf("  [Tensors] Embd: %s (%s, %llux%llu) | Out: %s (%s, %llux%llu)\n",
 		   pModel->pTokenEmbd ? pModel->pTokenEmbd->pName : "NULL",
@@ -2312,15 +2334,21 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
 */
 
 RING_API int ring_model_prefill(RingModel *pModel, const char *cPrompt, int nMaxTokens, float fTemp) {
-	int promptTokens[2048];
+	int *promptTokens;
 	int i;
+	uint32_t maxSeq;
 
 	if (!pModel || !cPrompt) return 0;
+	maxSeq = pModel->nMaxSeq > 0 ? pModel->nMaxSeq : 8192;
 	if (nMaxTokens <= 0) nMaxTokens = 64;
-	if (nMaxTokens > 2048) nMaxTokens = 2048;
+	if ((uint32_t)nMaxTokens > maxSeq) nMaxTokens = (int)maxSeq;
 
-	pModel->nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, 2048);
+	promptTokens = (int *)malloc(maxSeq * sizeof(int));
+	if (!promptTokens) return 0;
+
+	pModel->nPromptTokens = ring_tokenizer_encode(pModel->pTokenizer, cPrompt, promptTokens, (int)maxSeq);
 	if (pModel->nPromptTokens <= 0) {
+		free(promptTokens);
 		pModel->bGenFinished = 1;
 		return 0;
 	}
@@ -2332,6 +2360,8 @@ RING_API int ring_model_prefill(RingModel *pModel, const char *cPrompt, int nMax
 		int bComputeLogits = (i == pModel->nPromptTokens - 1) ? 1 : 0;
 		ring_model_forward_ex(pModel, promptTokens[i], i, bComputeLogits);
 	}
+
+	free(promptTokens);
 
 	pModel->nCurPos = pModel->nPromptTokens;
 	pModel->nGenCount = 0;
@@ -2354,7 +2384,8 @@ RING_API char *ring_model_step(RingModel *pModel) {
 	int k, count;
 	int t1, t2, t3;
 
-	if (!pModel || pModel->bGenFinished || pModel->nGenCount >= pModel->nMaxGenTokens) {
+	if (!pModel || pModel->bGenFinished || pModel->nGenCount >= pModel->nMaxGenTokens ||
+		(size_t)pModel->nGenCount >= (sizeof(pModel->aGenTokens) / sizeof(pModel->aGenTokens[0]))) {
 		if (pModel && pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
 			char flushBuf[16];
 			int flushW = 0;
