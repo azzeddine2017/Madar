@@ -54,6 +54,10 @@ class CommandRouter
 				handleTokens()
 			case "/history"
 				handleHistory()
+			case "/debug"
+				handleDebug(cArgs)
+			case "/rag_topk"
+				handleRagTopK(cArgs)
 			case "/reset"
 				handleReset()
 			case "/clear"
@@ -75,7 +79,8 @@ class CommandRouter
 		? "  " + uiInfo("/commit_memory") + "     - Permanently merge Working Memory into Base KB"
 		? "  " + uiInfo("/gpu [on|off]") + "      - Check or toggle GPU OpenCL acceleration"
 		? "  " + uiInfo("/temp <float>") + "      - Set sampling temperature (e.g. /temp 0.2)"
-		? "  " + uiInfo("/tokens") + "            - View current conversation token budget"
+		? "  " + uiInfo("/debug [on|off]")  + "    - Toggle real-time millisecond latency profiler"
+		? "  " + uiInfo("/rag_topk <num>")  + "    - Set number of RAG chunks to retrieve (e.g. 1 or 2)"
 		? "  " + uiInfo("/history") + "           - Show summary of current conversation turns"
 		? "  " + uiInfo("/reset, /clear") + "     - Reset conversation history (Base KB preserved)"
 		? "  " + uiWarn("exit, quit, bye") + "    - Terminate agent session"
@@ -208,3 +213,29 @@ class CommandRouter
 	func handleReset()
 		oApp.aHistory = []
 		see "  [Reset] Conversation history cleared. Ready for a new topic." + nl
+
+	func handleDebug(cArg)
+		cArg = lower(trim(cArg))
+		if cArg = "on" or cArg = "1"
+			oApp.bDebug = true
+			? uiSuccess("  [Profiler] Debug Latency Profiler Enabled.")
+		elseif cArg = "off" or cArg = "0"
+			oApp.bDebug = false
+			? uiWarn("  [Profiler] Debug Latency Profiler Disabled.")
+		else
+			oApp.bDebug = !oApp.bDebug
+			if oApp.bDebug
+				? uiSuccess("  [Profiler] Debug Latency Profiler Toggled ON.")
+			else
+				? uiWarn("  [Profiler] Debug Latency Profiler Toggled OFF.")
+			ok
+		ok
+
+	func handleRagTopK(cArg)
+		nVal = 0 + cArg
+		if nVal >= 0 and nVal <= 5
+			oApp.nRagTopK = nVal
+			? uiSuccess(f"  [Config] RAG Top-K set to: {oApp.nRagTopK} chunks.")
+		else
+			? uiInfo(f"  [Config] Current RAG Top-K: {oApp.nRagTopK} (Usage: /rag_topk 1)")
+		ok

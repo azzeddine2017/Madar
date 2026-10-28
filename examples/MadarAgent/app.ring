@@ -28,6 +28,9 @@ class AgentApp
 
 	aHistory         = []
 	bGPU             = true
+	bDebug           = true
+	nRagTopK         = 1
+	nRagMaxChars     = 800
 	nTemperature     = 0.30
 	nMaxContext      = 8192
 	nMaxGenTokens    = 1500
@@ -39,6 +42,9 @@ class AgentApp
 		# 1. Configuration & Discovery
 		oConfig = new AgentConfig(aArgs)
 		bGPU = oConfig.bGPU
+		bDebug = oConfig.bDebug
+		nRagTopK = oConfig.nRagTopK
+		nRagMaxChars = oConfig.nRagMaxChars
 		nTemperature = oConfig.nTemperature
 		nMaxContext = oConfig.nMaxContext
 		nMaxGenTokens = oConfig.nMaxGenTokens
@@ -149,14 +155,23 @@ class AgentApp
 		ok
 
 		# 4. RAG Retrieval from Two-Tier Memory
-		aRetrieved = oMemory.search(cUserInput, 2)
+		t_rag0 = clock()
+		aRetrieved = oMemory.search(cUserInput, nRagTopK)
+		nRagDuration = (clock() - t_rag0) / clockspersecond()
 		if len(aRetrieved) > 0
 			? uiRagBadge(len(aRetrieved))
+			if bDebug
+				? uiMuted(f"    (RAG Search took {round(nRagDuration, 3)}s)")
+			ok
 			cSystemPrompt += nl + "# Ground Truth Knowledge & Retrieved Context:" + nl
 			for item in aRetrieved
 				# item format: [fScore, cText, chunk]
+				cChunkData = item[2]
+				if len(cChunkData) > nRagMaxChars
+					cChunkData = left(cChunkData, nRagMaxChars) + nl + "... [Truncated for brevity]"
+				ok
 				cSystemPrompt += "--- [Knowledge Chunk] ---" + nl
-				cSystemPrompt += item[2] + nl
+				cSystemPrompt += cChunkData + nl
 			next
 			cSystemPrompt += "--- [End of Context] ---" + nl
 		ok
@@ -192,10 +207,45 @@ class AgentApp
 
 		# Build Prompt with Skills + Tools + RAG
 		cPrompt = buildPrompt(cUserInput)
+		nPromptChars = len(cPrompt)
+		nEstPromptTokens = ceil(nPromptChars / 3.5)
+
+		if bDebug
+			? uiMuted(f"  [Evaluating Prompt: ~{nEstPromptTokens} tokens ({nPromptChars} chars)...]")
+		ok
+
+		t_prefill0 = clock()
+		nPromptTokens = oModel.prefill(cPrompt, nMaxGenTokens)
+		nPrefillSec = (clock() - t_prefill0) / clockspersecond()
+
+		if bDebug
+			? uiMuted(f"  [Prefill Finished in {round(nPrefillSec, 2)}s ({nPromptTokens} tokens | {round(nPromptTokens / (nPrefillSec + 0.001), 1)} tok/s)]")
+		ok
 
 		see uiAgentPrompt("MadarAgent")
-		cResponse = oModel.generateStream(cPrompt, nMaxGenTokens)
+		t_gen0 = clock()
+		cResponse = ""
+		nGenTokens = 0
+		while oModel.hasMore()
+			cChunk = oModel.step()
+			if cChunk != ""
+				see cChunk
+				cResponse += cChunk
+				nGenTokens++
+			ok
+		end
 		see nl
+		nGenSec = (clock() - t_gen0) / clockspersecond()
+		fTokPerSec = 0.0
+		if nGenSec > 0 fTokPerSec = nGenTokens / nGenSec ok
+
+		if bDebug
+			uiDivider()
+			? uiInfo("  ⏱ [Performance Profiler]")
+			? "    ├─ " + uiMuted("Prompt Processing (Prefill): ") + f"{round(nPrefillSec, 2)}s ({nPromptTokens} tokens, {round(nPromptTokens / (nPrefillSec + 0.001), 1)} tok/s)"
+			? "    └─ " + uiMuted("Generation Stream:           ") + f"{round(nGenSec, 2)}s ({nGenTokens} tokens, {round(fTokPerSec, 1)} tok/s)"
+			uiDivider()
+		ok
 
 		# Check for Tool Calls
 		if oToolCaller.hasToolCall(cResponse)
