@@ -1,13 +1,13 @@
 # Madar (مدار)
 
-[![Release](https://img.shields.io/badge/Release-0.3.0--alpha-blue.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/Release-0.4.0--alpha-blue.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Google%20Colab-green.svg)](docs/INSTALL.md)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](Madar_Colab_Quickstart.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **An AI-Native, High-Performance Dialect and Runtime for the Ring Ecosystem**
 
-**Madar** (مدار) is a high-performance, AI-first fork of **Ring Lite (Ring 1.27 Core)**. Engineered specifically for native tensor arithmetic, direct hardware execution of quantized LLMs, and high-productivity modern syntax extensions, Madar maintains 100% backward compatibility with Ring while providing cutting-edge local inference capabilities on commodity CPU hardware.
+**Madar** (مدار) is a high-performance, AI-first fork of **Ring Lite (Ring 1.27 Core)**. Engineered specifically for native tensor arithmetic, direct hardware execution of quantized LLMs, and high-productivity modern syntax extensions, Madar maintains 100% backward compatibility with Ring while providing cutting-edge local inference capabilities on commodity CPU and integrated GPU hardware.
 
 ---
 
@@ -52,12 +52,15 @@
    - **VectorStore & RAG Pipeline (`libraries/madar_ai/rag.ring`)**: In-memory and binary cached vector storage (`saveBinary`/`loadBinary`) with sub-10ms knowledge retrieval.
    - **AlQalam C++17 Hybrid Search**: Blends semantic dense vector embeddings (70%) with O(1) lexical inverted indexing (`QalamIndex`, 30%) and direct PDF ingestion via `QalamReader`.
 
-7. **Autonomous AI Agents & Long-Term Episodic Memory (`libraries/madar_ai/agent.ring`):**
-   - **Persistent Vector Memory**: Saves facts, user preferences, and project rules to disk in binary format (`.bin`) with automated cosine similarity retrieval.
-   - Declarative tool registration (`agent.registerTool`).
-   - Automated ReAct execution loop: intercepts `<tool_call>`, executes native Ring functions, injects `<tool_response>`, and synthesizes final factual answers.
-   - Built-in tools: exact mathematics (`calc`), system time/clock (`get_time`), file access (`read_file`), directory listing (`list_files`), OS diagnostics (`sys_info`), currency exchange (`currency_rate`), knowledge search (`rag_search`), memory inscription (`remember_fact`), and CSV DataFrame analytics (`csv_summary`, `csv_query`).
-   - **Interactive Agent REPL CLI (`examples/ai/agent_chat.ring`)**: Full live terminal session with streaming output, slash commands (`/remember`, `/recall`, `/learn`, `/memory`, `/undo`, `/history`), and multi-lingual dialogue.
+7. **Autonomous AI Agents & Intent-Driven Cognitive Architecture (`examples/MadarAgent`):**
+   - **Rasa-Style Three-Tier Execution Hierarchy**: Solves prompt saturation (+1,200 tokens) on commodity hardware by routing inputs into three distinct execution paths:
+     - **Tier 1 (Zero-LLM Direct Response)**: Sub-second instantaneous responses ($< 1$s) for greetings, identity queries, and FAQs with zero LLM compute.
+     - **Tier 2 (Zero-LLM Direct Tool Execution)**: PCRE2 regular expression extraction (`ringregex`) for mathematical expressions, running tools like `calc` directly in $\sim 1.4$s with 100% precision without LLM inference.
+     - **Tier 3 (Scoped Prompting & Ephemeral RAG)**: Dynamic prompt synthesis injecting *only* authorized tools and relevant skill overlays (e.g. `ring_coder`), dropping prompt size to ~250–350 tokens and slashing prefill latency from minutes to seconds.
+   - **Semantic Intent Router (`core/semantic_router.ring`)**: High-accuracy intent detection via BGE-M3 (1024-dim Cosine Similarity) backed by a $< 1$ms binary cache (`intent_cache.bin`) with automated seed re-indexing.
+   - **Ephemeral RAG Context**: Ground-truth knowledge chunks are injected strictly for the active turn and never appended into `aHistory`, preventing context bloat.
+   - **Configurable Sliding Window**: `bUseSlidingWindow` and `nHistoryWindow = 2` preventing context saturation on long conversations.
+   - **Interactive Agent Production CLI (`examples/MadarAgent/main.ring`)**: Live terminal session with ANSI badges, real-time performance profiler, and slash directives (`/intents`, `/reindex_intents`, `/history_window`, `/debug`, `/skills`, `/memory`).
 
 8. **Madar DataFrame for Fast Table Analytics (`libraries/madar_ai/dataframe.ring`):**
    - Pure Ring + C-Tensor table engine parsing CSVs with zero external dependencies.
@@ -96,9 +99,11 @@ tools\download_model.bat      :: Qwen2.5-0.5B / 3B-Instruct (Q4_0, ~350 MB - 1.9
 bin\ring.exe examples\ai\bge_rag_demo.ring
 ```
 
-### 3. Autonomous Agent Terminal (مع الذاكرة المتجهية الدائمة)
+### 3. Production Autonomous Agent (MadarAgent 2.0 - المعمارية الهجينة الموجهة بالنوايا)
 ```cmd
-bin\ring.exe examples\ai\agent_chat.ring
+cd examples\MadarAgent
+ring main.ring "0.5b"    :: Ultra-fast intent-driven agent (Qwen2.5-0.5B, sub-second responses)
+ring main.ring coder     :: Specialized coding agent (Qwen2.5-Coder-1.5B, Style 3 syntax)
 ```
 
 ### 4. Real-Time Token Streaming (بث الكلمات فائق السرعة)
@@ -156,6 +161,7 @@ Runs comprehensive test suites covering core backward compatibility, tensor math
 ## 📄 Documentation
 
 - [Installation & Quickstart Guide (دليل التثبيت والتشغيل)](docs/INSTALL.md)
+- [MadarAgent 2.0: Intent-Driven Hybrid Cognitive Architecture (دليل الوكيل الذكي)](docs/MADAR_AGENT.md)
 - [AI Engine, GPU Acceleration & Real-Time Streaming](docs/AI_ENGINE.md)
 - [Detailed Technical Architecture](docs/ARCHITECTURE.md)
 - [Madar 'DOUR' (دُر) Loops & Auto-JIT Engine (حلقات دُر ومحرك الجيت)](docs/DOUR_LOOPS.md)

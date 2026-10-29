@@ -1,5 +1,5 @@
 # Madar Installation & Quickstart Guide 📦
-# دليل تثبيت وتشغيل بيئة مدار (Madar 0.2.0-alpha)
+# دليل تثبيت وتشغيل بيئة مدار (Madar 0.4.0-alpha)
 
 [English Version Below](#english-guide)
 
@@ -30,7 +30,7 @@
 ### 2. التثبيت السريع عبر الحزمة الجاهزة (Pre-built Release)
 
 1. **فك الضغط:**
-   قم بفك ضغط ملف `madar-0.2.0-alpha-windows-x64.zip` في أي مجلد تريده (مثلاً: `C:\Madar` أو `D:\Madar`).
+   قم بفك ضغط ملف `madar-0.4.0-alpha-windows-x64.zip` في أي مجلد تريده (مثلاً: `C:\Madar` أو `D:\Madar`).
 2. **التشغيل الفوري (One-Click):**
    اضغط مرتين على ملف **`RingCMD.bat`** في المجلد الرئيسي لفتح موجه أوامر مجهز ببيئة مدار تلقائياً.
 3. **(اختياري) إضافة مدار إلى مسار النظام (System PATH):**
@@ -147,7 +147,7 @@ You can experience Madar, 7B reasoning models, and GPU hardware acceleration dir
 ### 2. Fast Installation (Pre-built Release)
 
 1. **Extract Archive:**
-   Extract `madar-0.2.0-alpha-windows-x64.zip` to your preferred directory (e.g., `C:\Madar`).
+   Extract `madar-0.4.0-alpha-windows-x64.zip` to your preferred directory (e.g., `C:\Madar`).
 2. **Instant Shell:**
    Double-click **`RingCMD.bat`** in the root folder to launch an environment pre-configured with `bin\` in PATH.
 3. **(Optional) Add to System PATH:**

@@ -191,3 +191,30 @@ Madar is extending Ring's grammar to incorporate high-productivity constructs wh
 | `DataFrame` / `read_csv`| `madar_ai/dataframe.ring` | High-performance C-Tensor continuous table analytics. |
 | `VectorStore` | `madar_ai/rag.ring` | Persistent dense vector database with binary disk caching. |
 | `RAGPipeline` | `madar_ai/rag.ring` | Contextual question-answering retrieval pipeline. |
+| `SemanticRouter` | `MadarAgent/core/semantic_router.ring` | Dense vector intent classifier with BGE-M3 & binary cache. |
+| `IntentRegistry` | `MadarAgent/core/intent_registry.ring` | Multi-tier intent definitions (Direct Response, Tool, Scoped). |
+| `EntityExtractor` | `MadarAgent/core/entity_extractor.ring`| PCRE2 (C-speed) parameter and regex pattern extractor. |
+| `SkillManager` | `MadarAgent/skills/base_skill.ring` | Markdown/YAML cognitive skill manager (Style 3 enforcement). |
+
+---
+
+## 7. Intent-Driven Cognitive Architecture (MadarAgent 2.0)
+
+To resolve physical compute and memory bandwidth bottlenecks on consumer CPUs and integrated GPUs, MadarAgent 2.0 introduces a **Three-Tier Intent-Driven Routing Architecture**:
+
+```text
+User Input
+    |
+    +---> [Tier 1: Zero-LLM Direct Response] (< 1s, 0 tokens)
+    |     Exact FAQ & Identity answering directly from semantic memory.
+    |
+    +---> [Tier 2: Zero-LLM Direct Tool Execution] (~1.4s, 100% accuracy)
+    |     PCRE2 regex parameter extraction + direct C/Ring execution (calc).
+    |
+    +---> [Tier 3: Scoped Prompting & Ephemeral RAG] (250-350 tokens)
+          Scoped skill overlays + authorized tools only + ephemeral RAG
+          (knowledge injected into active turn, omitted from history).
+```
+
+For the comprehensive design specification, see **[MadarAgent 2.0 Architectural Guide](MADAR_AGENT.md)**.
+

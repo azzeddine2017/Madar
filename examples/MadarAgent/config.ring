@@ -24,7 +24,6 @@ class AgentConfig
 	# Semantic Intent Router Controls
 	cIntentCachePath  = "memory/intent_cache.bin"
 	nIntentThreshold  = 0.52
-	bAutoSaveIntents  = true
 
 	func init(aArgs = [])
 		discoverModels(aArgs)
