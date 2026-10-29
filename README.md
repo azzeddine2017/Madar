@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/badge/Release-0.4.0--alpha-blue.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Google%20Colab-green.svg)](docs/INSTALL.md)
-[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](notebooks/Madar_Colab_Quickstart.ipynb)
+[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](notebooks/Madar_Colab_Quickstart_EN.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > **An AI-Native, High-Performance Dialect and Runtime for the Ring Ecosystem**
