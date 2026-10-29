@@ -52,6 +52,12 @@ class AgentConfig
 		cUserChoice = ""
 		if len(aArgs) > 2
 			cUserChoice = lower(trim(aArgs[3]))
+		else
+			raise("User specified a filter " +nl+
+				"'ring main.ring coder' or " +nl+
+				"'ring main.ring qwen' or " +nl+
+				"'ring main.ring 0.5b' or " +nl+
+				"'ring main.ring deepseek'")
 		ok
 
 		aPreferredModels = [
