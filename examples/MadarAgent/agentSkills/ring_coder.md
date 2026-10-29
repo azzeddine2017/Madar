@@ -23,7 +23,7 @@ When writing or modifying Ring code, you MUST adhere to the following strict con
    - Never write `ok` or `end` when using `{ }`.
 
 3. **Critical 'else' Rule:**
-   - In Style 3, write `if (condition) { ... } else { ... }`.
+   - In Style 3, write `if (condition) { ...  else  ... }`.
    - **NEVER** place `else` inside the closing brace `}`.
 
 4. **1-Based Indexing:**

@@ -55,8 +55,8 @@ class AgentConfig
 		ok
 
 		aPreferredModels = [
-			"qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-			"qwen2.5-3b-instruct-q4_k_m.gguf",
+			"qwen2.5-coder-3b-instruct-q4_k_m.gguf",
+			"qwen2.5-1.5b-instruct-q4_k_m.gguf",
 			"DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
 			"qwen2.5-0.5b-instruct-q4_k_m.gguf"
 		]
