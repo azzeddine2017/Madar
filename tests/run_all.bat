@@ -12,10 +12,10 @@ echo   Running Madar Test Suite
 echo   Binary: %RING_EXE%
 echo ========================================================
 
+echo.
+echo === [1/3] Core Dialect and Runtime Tests ===
 cd "%~dp0core"
 "%RING_EXE%" test_backward_compat.ring
-echo.
-"%RING_EXE%" test_json_errors.ring
 echo.
 "%RING_EXE%" test_fstrings.ring
 echo.
@@ -24,9 +24,18 @@ echo.
 "%RING_EXE%" test_slicing.ring
 echo.
 "%RING_EXE%" test_comprehensions.ring
+echo.
+"%RING_EXE%" test_dour.ring
+echo.
+"%RING_EXE%" test_arabic_utf8.ring
+echo.
+"%RING_EXE%" test_try_catch_context.ring
+echo.
+"%RING_EXE%" test_json_errors.ring
 cd "%~dp0"
 
 echo.
+echo === [2/3] Native Tensor Engine and GGML Tests ===
 cd "%~dp0tensor"
 "%RING_EXE%" test_tensor_operations.ring
 echo.
@@ -40,14 +49,10 @@ echo.
 cd "%~dp0"
 
 echo.
+echo === [3/3] AI Engine and Tokenizer Tests ===
 cd "%~dp0ai"
 "%RING_EXE%" test_qwen.ring
 if exist test_tok.gguf del test_tok.gguf
-cd "%~dp0"
-
-echo.
-cd "%~dp0"
-"%RING_EXE%" test_dour.ring
 cd "%~dp0"
 
 echo.

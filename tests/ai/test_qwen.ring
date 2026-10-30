@@ -13,8 +13,8 @@ suite("Madar AI - GGUF BPE Tokenizer & Qwen Pipeline")
 cTokGGUF = "test_tok.gguf"
 
 # Vocab array: ["<|endoftext|>", "Hello", "Ġworld", "!", "ما", "Ġهي", "Ġعاصمة", "Ġالجزائر", "?"]
-aVocab = ["<|endoftext|>", "Hello", char(196) + char(160) + "world", "!", 
-          "ما", char(196) + char(160) + "هي", char(196) + char(160) + "عاصمة", char(196) + char(160) + "الجزائر", "?"]
+aVocab = ["<|endoftext|>", "Hello", char(288) + "world", "!", 
+          "ما", char(288) + "هي", char(288) + "عاصمة", char(288) + "الجزائر", "?"]
 nVocabCount = len(aVocab)
 
 cVocabArray = u32Bytes(8) + u64Bytes(nVocabCount) # String array (type 8)

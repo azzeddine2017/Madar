@@ -158,7 +158,11 @@ Produces `bin\ring.exe`, `bin\ring.dll`, and static libraries in `lib\`.
 ```cmd
 tests\run_all.bat
 ```
-Runs comprehensive test suites covering core backward compatibility, tensor math, GGUF loader, Q6_K kernel, tokenizer, and JSON diagnostics.
+Runs 15 modular test suites (over 315 assertions) across:
+- **tests/core/**: Dialect compatibility, f-strings, default arguments, advanced slicing, comprehensions, JIT dour loops, UTF-8 Arabic ascii()/char(), contextual cCatchError, and --json-errors.
+- **tests/tensor/**: Native multi-rank tensors, element-wise math, tensor operators, GGML bridge, and GGUF loader.
+- **tests/ai/**: GGUF BPE tokenizer, Qwen transformer pipeline, and real model generation.
+- **tests/benchmarks/**: High-performance nanosecond benchmarks (bench_loops.ring).
 
 ---
 

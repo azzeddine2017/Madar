@@ -54,24 +54,21 @@ run_test() {
 # ----------------------------------------------------------
 # 1. Core Dialect & Syntactic Enhancements
 # ----------------------------------------------------------
-echo "=== [1/4] Core Dialect Tests ==="
-run_test "$SCRIPT_DIR/core" "test_backward_compat.ring" "CORE"
-run_test "$SCRIPT_DIR/core" "test_json_errors.ring"     "CORE"
-run_test "$SCRIPT_DIR/core" "test_fstrings.ring"        "CORE"
-run_test "$SCRIPT_DIR/core" "test_default_args.ring"    "CORE"
-run_test "$SCRIPT_DIR/core" "test_slicing.ring"         "CORE"
-run_test "$SCRIPT_DIR/core" "test_comprehensions.ring"  "CORE"
+echo "=== [1/3] Core Dialect & Runtime Tests ==="
+run_test "$SCRIPT_DIR/core" "test_backward_compat.ring"   "CORE"
+run_test "$SCRIPT_DIR/core" "test_fstrings.ring"          "CORE"
+run_test "$SCRIPT_DIR/core" "test_default_args.ring"      "CORE"
+run_test "$SCRIPT_DIR/core" "test_slicing.ring"           "CORE"
+run_test "$SCRIPT_DIR/core" "test_comprehensions.ring"    "CORE"
+run_test "$SCRIPT_DIR/core" "test_dour.ring"              "CORE"
+run_test "$SCRIPT_DIR/core" "test_arabic_utf8.ring"       "CORE"
+run_test "$SCRIPT_DIR/core" "test_try_catch_context.ring" "CORE"
+run_test "$SCRIPT_DIR/core" "test_json_errors.ring"       "CORE"
 
 # ----------------------------------------------------------
-# 2. DOUR Loops & JIT Syntactic Constructs
+# 2. Native Tensor Engine & GGUF Loader Tests
 # ----------------------------------------------------------
-echo "=== [2/4] DOUR & Loop Syntax Tests ==="
-run_test "$SCRIPT_DIR" "test_dour.ring" "DOUR"
-
-# ----------------------------------------------------------
-# 3. Native Tensor Engine & GGUF Loader Tests
-# ----------------------------------------------------------
-echo "=== [3/4] Tensor & GGUF Loader Tests ==="
+echo "=== [2/3] Tensor & GGUF Loader Tests ==="
 run_test "$SCRIPT_DIR/tensor" "test_tensor_operations.ring" "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_tensor_math.ring"       "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_tensor_operators.ring"  "TENSOR"
@@ -79,9 +76,9 @@ run_test "$SCRIPT_DIR/tensor" "test_ggml.ring"              "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_gguf_loader.ring"       "TENSOR"
 
 # ----------------------------------------------------------
-# 4. AI Engine & BPE Tokenizer Synthetic Tests
+# 3. AI Engine & BPE Tokenizer Synthetic Tests
 # ----------------------------------------------------------
-echo "=== [4/4] AI Engine & Tokenizer Tests ==="
+echo "=== [3/3] AI Engine & Tokenizer Tests ==="
 run_test "$SCRIPT_DIR/ai" "test_qwen.ring" "AI"
 
 # Clean up temporary test files if generated
