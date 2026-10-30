@@ -8,7 +8,7 @@
 # 1. TimeTool: Get Current Time and Date
 # --------------------------------------------------------------------
 class TimeTool from AgentTool
-	func init
+	func init()
 		cName = "get_time"
 		cDescription = "Returns the current local date, time, and timezone information"
 		aParameters = []
@@ -21,7 +21,7 @@ class TimeTool from AgentTool
 # 2. ListFilesTool: Browse Files and Directories
 # --------------------------------------------------------------------
 class ListFilesTool from AgentTool
-	func init
+	func init()
 		cName = "list_files"
 		cDescription = "Lists directory contents (files and subdirectories) for a given path"
 		aParameters = [
@@ -73,7 +73,7 @@ class ListFilesTool from AgentTool
 # 3. ReadFileTool: Safely Read Text Content
 # --------------------------------------------------------------------
 class ReadFileTool from AgentTool
-	func init
+	func init()
 		cName = "read_file"
 		cDescription = "Reads and returns the text content of a specified file path"
 		aParameters = [
@@ -109,7 +109,7 @@ class ReadFileTool from AgentTool
 # 4. WriteFileTool: Safely Write File
 # --------------------------------------------------------------------
 class WriteFileTool from AgentTool
-	func init
+	func init()
 		cName = "write_file"
 		cDescription = "Writes or overwrites text content to a specified file path"
 		aParameters = [
@@ -138,7 +138,7 @@ class WriteFileTool from AgentTool
 # 5. RememberTool: Autonomous Working Memory Storage
 # --------------------------------------------------------------------
 class RememberTool from AgentTool
-	oMemory = NULL
+	oMemory
 
 	func init(oMem = NULL)
 		cName = "remember_fact"
@@ -187,7 +187,7 @@ class RememberTool from AgentTool
 # 6. CreateSkillTool: Autonomous Cognitive Skill Generation
 # --------------------------------------------------------------------
 class CreateSkillTool from AgentTool
-	oSkillManager = NULL
+	oSkillManager
 
 	func init(oMgr = NULL)
 		cName = "create_skill"

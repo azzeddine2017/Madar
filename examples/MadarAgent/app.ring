@@ -266,8 +266,8 @@ class AgentApp
 			if oIntent.cType = "direct_response"
 				see uiAgentPrompt("MadarAgent")
 				? oIntent.cResponse
-				aHistory + ["role" = "user", "content" = cUserInput]
-				aHistory + ["role" = "assistant", "content" = oIntent.cResponse]
+				aHistory + [:role = "user", :content = cUserInput]
+				aHistory + [:role = "assistant", :content = oIntent.cResponse]
 				return
 			ok
 
@@ -284,8 +284,8 @@ class AgentApp
 						cDirectResp = f"الناتج الحسابي لـ ({cExpr}) هو: {cRes}"
 						see uiAgentPrompt("MadarAgent")
 						? cDirectResp
-						aHistory + ["role" = "user", "content" = cUserInput]
-						aHistory + ["role" = "assistant", "content" = cDirectResp]
+						aHistory + [:role = "user", :content = cUserInput]
+						aHistory + [:role = "assistant", :content = cDirectResp]
 						return
 					ok
 				ok
@@ -371,8 +371,8 @@ class AgentApp
 		ok
 
 		# Update Clean Conversation History (Without ephemeral RAG bloat)
-		aHistory + ["role" = "user", "content" = cUserInput]
-		aHistory + ["role" = "assistant", "content" = cResponse]
+		aHistory + [:role = "user", :content = cUserInput]
+		aHistory + [:role = "assistant", :content = cResponse]
 
 	func run()
 		if !bRunning return ok

@@ -4,14 +4,14 @@
 # ====================================================================
 
 class TwoTierMemory
-	oModel           = NULL
-	oBaseKB          = NULL      # Tier 1: Fixed Long-Term Knowledge (e.g. Ring Language Manual)
-	oWorkingKB       = NULL      # Tier 2: Dynamic Working Memory (User facts, learned files)
+	oModel
+	oBaseKB                 # Tier 1: Fixed Long-Term Knowledge (e.g. Ring Language Manual)
+	oWorkingKB              # Tier 2: Dynamic Working Memory (User facts, learned files)
 	cBaseKbPath      = ""
 	cWorkingKbPath   = ""
 
 	func init(oEmbeddingModel, cBasePath = "memory/ring_kb.bin", cWorkingPath = "memory/user_memory.bin")
-		oModel = oEmbeddingModel
+		oModel = ref(oEmbeddingModel)
 		cBaseKbPath = cBasePath
 		cWorkingKbPath = cWorkingPath
 

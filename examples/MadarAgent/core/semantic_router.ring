@@ -15,8 +15,8 @@ class SemanticRouter
 	bVerbose    = false
 
 	func init(oEmbeddingModel, oIntentRegistry, cCacheFile = "memory/intent_cache.bin", nMinScore = 0.52)
-		oModel     = oEmbeddingModel
-		oRegistry  = oIntentRegistry
+		oModel     = ref(oEmbeddingModel)
+		oRegistry  = ref(oIntentRegistry)
 		cCachePath = cCacheFile
 		nThreshold = nMinScore
 		oStore     = new VectorStore(oModel)

@@ -7,7 +7,7 @@ class ToolCallingEngine
 	oRegistry = NULL
 
 	func init(oToolRegistry)
-		oRegistry = oToolRegistry
+		oRegistry = ref(oToolRegistry)
 		return self
 
 	# ----------------------------------------------------------------

@@ -8,7 +8,7 @@
 # 1. CalcTool: Accurate Mathematical Computation
 # --------------------------------------------------------------------
 class CalcTool from AgentTool
-	func init
+	func init()
 		cName = "calc"
 		cDescription = "Evaluates an arithmetic or mathematical expression accurately (e.g. '300 / 120 * 60')"
 		aParameters = [
@@ -68,7 +68,7 @@ class CalcTool from AgentTool
 # 2. RingRunTool: Execute Ring Code Live and Return Real Output
 # --------------------------------------------------------------------
 class RingRunTool from AgentTool
-	func init
+	func init()
 		cName = "run_ring_code"
 		cDescription = "Executes a snippet of Ring programming code in an isolated sub-process and returns stdout/stderr"
 		aParameters = [

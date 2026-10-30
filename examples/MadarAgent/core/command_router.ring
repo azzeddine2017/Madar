@@ -4,10 +4,10 @@
 # ====================================================================
 
 class CommandRouter
-	oApp = NULL
+	oApp
 
 	func init(oAgentApp)
-		oApp = oAgentApp
+		oApp = ref(oAgentApp)
 		return self
 
 	func isCommand(cInput)
