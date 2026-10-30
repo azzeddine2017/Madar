@@ -125,6 +125,10 @@ RING_API void ring_vm_generallib_loadfunctions(RingState *pRingState) {
 	/* Date and Time */
 	RING_API_REGISTER("clock", ring_vm_generallib_clock);
 	RING_API_REGISTER("clockspersecond", ring_vm_generallib_clockspersecond);
+	RING_API_REGISTER("nanotime", ring_vm_generallib_nanotime);
+	RING_API_REGISTER("hrtime", ring_vm_generallib_nanotime);
+	RING_API_REGISTER("microtime", ring_vm_generallib_microtime);
+	RING_API_REGISTER("perf_counter", ring_vm_generallib_perf_counter);
 	RING_API_REGISTER("time", ring_vm_generallib_time);
 	RING_API_REGISTER("timelist", ring_vm_generallib_timelist);
 	RING_API_REGISTER("date", ring_vm_generallib_date);
@@ -2466,6 +2470,63 @@ void ring_vm_generallib_clockspersecond(void *pPointer) {
 		return;
 	}
 	RING_API_RETNUMBER(CLOCKS_PER_SEC);
+}
+
+/* High-Resolution Monotonic Timers (Nanoseconds, Microseconds, Seconds) */
+#if defined(_WIN32)
+static LARGE_INTEGER s_qpc_freq = {0};
+static int s_qpc_initialized = 0;
+
+static double madar_hr_nanoseconds(void) {
+	LARGE_INTEGER counter;
+	if (!s_qpc_initialized) {
+		QueryPerformanceFrequency(&s_qpc_freq);
+		s_qpc_initialized = 1;
+	}
+	QueryPerformanceCounter(&counter);
+	if (s_qpc_freq.QuadPart != 0) {
+		return ((double)counter.QuadPart * 1000000000.0) / (double)s_qpc_freq.QuadPart;
+	}
+	return 0.0;
+}
+#else
+#include <time.h>
+static double madar_hr_nanoseconds(void) {
+	struct timespec ts;
+#if defined(CLOCK_MONOTONIC_RAW)
+	clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#elif defined(CLOCK_MONOTONIC)
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
+	ts.tv_sec = 0;
+	ts.tv_nsec = 0;
+#endif
+	return ((double)ts.tv_sec * 1000000000.0) + (double)ts.tv_nsec;
+}
+#endif
+
+void ring_vm_generallib_nanotime(void *pPointer) {
+	if (RING_API_PARACOUNT != 0) {
+		RING_API_ERROR(RING_API_BADPARACOUNT);
+		return;
+	}
+	RING_API_RETNUMBER(madar_hr_nanoseconds());
+}
+
+void ring_vm_generallib_microtime(void *pPointer) {
+	if (RING_API_PARACOUNT != 0) {
+		RING_API_ERROR(RING_API_BADPARACOUNT);
+		return;
+	}
+	RING_API_RETNUMBER(madar_hr_nanoseconds() / 1000.0);
+}
+
+void ring_vm_generallib_perf_counter(void *pPointer) {
+	if (RING_API_PARACOUNT != 0) {
+		RING_API_ERROR(RING_API_BADPARACOUNT);
+		return;
+	}
+	RING_API_RETNUMBER(madar_hr_nanoseconds() / 1000000000.0);
 }
 
 void ring_vm_generallib_time(void *pPointer) {

@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Dynamic Multi-Byte UTF-8 Encoding in `char(nCode)`**: Automatically emits valid 1 to 4-byte UTF-8 string sequences for Unicode code points up to `0x10FFFF`. `char(1605) + char(1583) + char(1575) + char(1585)` directly outputs `"مدار"`.
   - **Bijective Symmetry**: Guarantees `char(ascii("م")) == "م"` and `ascii(char(1605)) == 1605`.
 
+- **High-Resolution Hardware Monotonic Timers (`language/src/genlib_e.c` & `libraries/chronos.ring`):**
+  - **Native Core Timers**: Added `nanotime()` (sub-nanosecond resolution monotonic counter), `microtime()` (microsecond precision), `perf_counter()` (high-resolution fractional seconds), and `hrtime()` (alias) backed directly by CPU hardware performance counters (`QueryPerformanceCounter` on Windows and `clock_gettime(CLOCK_MONOTONIC)` on POSIX/Linux).
+  - **Solving `clock()` Limitations**: Eliminates the 15.6ms Windows granularity and multi-threading/GPU offload inaccuracies of C standard `clock()`, providing true wall-clock nanosecond benchmarking.
+  - **Chronos Stopwatch & Benchmark Library**: Integrated `Chronos` class (`libraries/chronos.ring`) with `.start()`, `.stop()`, `.elapsed_ns()`, `.elapsed_ms()`, and `.elapsed()` human-readable formatting, alongside automated `benchmark(cLabel, nRuns, fBlock)` helper.
+
 - **Contextual `cCatchError` Enhancement (`language/src/vmtry.c`):**
   - Upgraded the native `cCatchError` variable populated inside `try ... catch` blocks to include the active line number, error code/description, and source file name (`Line %d %s in %s`), providing immediate debugging clarity without losing backward compatibility.
 

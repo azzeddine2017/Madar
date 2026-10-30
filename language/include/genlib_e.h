@@ -199,6 +199,12 @@ void ring_vm_generallib_clock(void *pPointer);
 
 void ring_vm_generallib_clockspersecond(void *pPointer);
 
+void ring_vm_generallib_nanotime(void *pPointer);
+
+void ring_vm_generallib_microtime(void *pPointer);
+
+void ring_vm_generallib_perf_counter(void *pPointer);
+
 void ring_vm_generallib_time(void *pPointer);
 
 void ring_vm_generallib_timelist(void *pPointer);

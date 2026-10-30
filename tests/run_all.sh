@@ -63,6 +63,7 @@ run_test "$SCRIPT_DIR/core" "test_comprehensions.ring"    "CORE"
 run_test "$SCRIPT_DIR/core" "test_dour.ring"              "CORE"
 run_test "$SCRIPT_DIR/core" "test_arabic_utf8.ring"       "CORE"
 run_test "$SCRIPT_DIR/core" "test_try_catch_context.ring" "CORE"
+run_test "$SCRIPT_DIR/core" "test_nanotime.ring"          "CORE"
 run_test "$SCRIPT_DIR/core" "test_json_errors.ring"       "CORE"
 
 # ----------------------------------------------------------
