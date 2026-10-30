@@ -5,70 +5,92 @@
 
 load "stdlibCore.ring"
 load "agent.ring"
+load "chronos.ring"
 
-see "====================================================================" + nl
-see "  Madar AI: Agent Long-Term Vector Memory & RAG Demonstration" + nl
-see "  (الوكيل الذكي: الذاكرة المتجهية الدائمة واسترجاع المعرفة في مدار)" + nl
-see "====================================================================" + nl
+func main {
+	cModelPath = findModel([
+		"qwen2.5-0.5b-instruct-q4_0.gguf",
+		"deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+	])
 
-# 1. Locate GGUF Model
-cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
-/* if not fexists(cModelPath)
-	cModelPath = "../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
-ok */
-if not fexists(cModelPath)
-	cModelPath = "../../models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
-ok
+	if cModelPath = "" {
+		? "[ERROR] Model file not found in models/ directory!"
+		? "Please download a supported model using 'tools\download_model.bat'."
+		bye
+	}
 
-if not fexists(cModelPath)
-	see "Error: Model file not found in models/" + nl
-	bye
-ok
+	? "===================================================================="
+	? "  Madar AI: Agent Long-Term Vector Memory & RAG Demonstration"
+	? "  (الوكيل الذكي: الذاكرة المتجهية الدائمة واسترجاع المعرفة في مدار)"
+	? "===================================================================="
+	? f"  [Model] {cModelPath}"
 
-# 1. Load Model
-model = ai_open(cModelPath)
-model.setTemperature(0.2)
+	oTimer = new Chronos()
 
-# 2. Initialize Agent
-agent = new AIAgent(model)
-agent.bStream = 1
+	# 1. Load Model
+	oModel = ai_open(cModelPath)
+	oModel.setTemperature(0.2)
 
-# 3. Setup Dedicated Test Memory File
-cTestMemory = "agent_test_memory.bin"
-agent.initMemory(cTestMemory)
+	# 2. Initialize Agent
+	oAgent = new AIAgent(oModel)
+	oAgent.bStream = 1
 
-see nl + "1. Inscribing Long-Term Facts into Episodic Vector Memory:" + nl
-agent.remember("المستخدم يفضل البرمجة بلغة مدار والتركيز على الأداء العالي وAVX2")
-agent.remember("مشروع مدار يدعم أنظمة التشغيل ويندوز ولينكس وماك")
-agent.remember("المطور الرئيسي لمدار يحب القهوة العربية بدون سكر")
-see "  Memory chunks stored: " + agent.oMemory.count() + nl
+	# 3. Setup Dedicated Test Memory File
+	cTestMemory = "agent_test_memory.bin"
+	oAgent.initMemory(cTestMemory)
 
-see nl + "--------------------------------------------------------------------" + nl
-see "2. Testing Semantic Recall (Cosine Similarity):" + nl
-see "  Query: 'ما هي تفضيلات المستخدم البرمجية؟'" + nl
-aMatches = agent.recall("ما هي تفضيلات المستخدم البرمجية؟", 2)
-for m in aMatches
-	see "  -> [Similarity: " + round(m[1], 3) + "] " + m[2].cText + nl
-next
+	? nl + "1. Inscribing Long-Term Facts into Episodic Vector Memory:"
+	oAgent.remember("المستخدم يفضل البرمجة بلغة مدار والتركيز على الأداء العالي وAVX2")
+	oAgent.remember("مشروع مدار يدعم أنظمة التشغيل ويندوز ولينكس وماك")
+	oAgent.remember("المطور الرئيسي لمدار يحب القهوة العربية بدون سكر")
+	? f"  Memory chunks stored: {oAgent.oMemory.count()}"
 
-see nl + "--------------------------------------------------------------------" + nl
-see "3. Autonomous Agent Query with Automatic Memory Injection:" + nl
-see "  User Prompt: 'ما هي لغة البرمجة التي أفضلها وما هي تفضيلاتي في الأداء؟'" + nl
-see "  Agent Response > "
-agent.query("ما هي لغة البرمجة التي أفضلها وما هي تفضيلاتي في الأداء؟")
-see nl
+	? nl + "--------------------------------------------------------------------"
+	? "2. Testing Semantic Recall (Cosine Similarity):"
+	? "  Query: 'ما هي تفضيلات المستخدم البرمجية؟'"
+	oTimer.reset()
+	aMatches = oAgent.recall("ما هي تفضيلات المستخدم البرمجية؟", 2)
+	oTimer.stop()
 
-see nl + "--------------------------------------------------------------------" + nl
-see "4. Autonomous Tool Calling for Saving New Memory:" + nl
-see "  User Prompt: 'تذكر أن رقم هاتفي للطوارئ هو 0555123456'" + nl
-see "  Agent Response > "
-agent.query("تذكر أن رقم هاتفي للطوارئ هو 0555123456")
-see nl
+	for m in aMatches {
+		? f"  -> [Similarity: {round(m[1], 3)}] {m[2].cText}"
+	}
+	? f"  [Recall completed in {oTimer.elapsed()}]"
 
-see nl + "  Updated Memory chunks stored: " + agent.oMemory.count() + nl
+	? nl + "--------------------------------------------------------------------"
+	? "3. Autonomous Agent Query with Automatic Memory Injection:"
+	? "  User Prompt: 'ما هي لغة البرمجة التي أفضلها وما هي تفضيلاتي في الأداء؟'"
+	see "  Agent Response > "
+	oAgent.query("ما هي لغة البرمجة التي أفضلها وما هي تفضيلاتي في الأداء؟")
+	? ""
 
-# Clean up model
-model.close()
-see nl + "====================================================================" + nl
-see "  Demo Completed Successfully!" + nl
-see "====================================================================" + nl
+	? nl + "--------------------------------------------------------------------"
+	? "4. Autonomous Tool Calling for Saving New Memory:"
+	? "  User Prompt: 'تذكر أن رقم هاتفي للطوارئ هو 0555123456'"
+	see "  Agent Response > "
+	oAgent.query("تذكر أن رقم هاتفي للطوارئ هو 0555123456")
+	? ""
+
+	? f"  Updated Memory chunks stored: {oAgent.oMemory.count()}"
+
+	# Clean up model
+	oModel.close()
+	? nl + "===================================================================="
+	? "  Demo Completed Successfully!"
+	? "===================================================================="
+}
+
+# --------------------------------------------------------------------
+# Helper Functions
+# --------------------------------------------------------------------
+func findModel(aCandidates) {
+	aSearchDirs = ["models/", "../../models/", "../models/", "../../../models/"]
+	for cName in aCandidates {
+		for cDir in aSearchDirs {
+			cFullPath = cDir + cName
+			if fexists(cFullPath) { return cFullPath }
+		}
+	}
+	return ""
+}

@@ -1,94 +1,112 @@
-# Madar AI - Local LLM & RAG Showcase Examples
+# Madar AI - Local LLM & RAG Showcase Examples (أمثلة مدار للذكاء الاصطناعي)
 
-This directory contains standalone examples demonstrating local LLM inference, embedding extraction, and RAG (Retrieval-Augmented Generation) in Madar using pure C99/Ring without external dependencies.
+This directory contains production-ready showcase examples demonstrating local LLM inference, embedding extraction, RAG (Retrieval-Augmented Generation), DataFrame analytics, and autonomous tool-calling agents in Madar using pure C99/Ring without external dependencies.
 
 ---
 
-## Available Examples
+## 🌟 Available Examples
 
-### 1. `chat.ring` - Interactive Terminal Chat
+### 1. `stream_demo.ring` - Real-Time Token Streaming & Generator Pipeline
+Demonstrates 4 distinct levels of high-speed streaming:
+- **Direct Terminal Streaming:** Low-level C zero-latency token streaming to stdout.
+- **Callback Streaming:** Ring function interceptor callback receiving token chunks in real-time.
+- **Generator Loop:** Low-level `prefill()` and autoregressive `step()` loops.
+- **Agent Streaming:** Real-time tool-calling autonomous agent streaming.
+- **Chronos Telemetry:** Microsecond-precision generation metrics and throughput (tokens/sec).
+
+```cmd
+bin\ring.exe examples\ai\stream_demo.ring
+```
+
+---
+
+### 2. `bge_rag_demo.ring` - Dual-Model High-Precision RAG (BGE-M3 + Qwen)
+The gold standard for production RAG pipelines:
+- **BGE-M3 (1024-dim):** Produces dense, normalized vector representations with supreme semantic accuracy.
+- **C-Tensor Cosine Similarity:** Microsecond-level vector search without Python or LangChain.
+- **Qwen Generation:** Deterministic answering grounded strictly in retrieved context chunks.
+
+```cmd
+bin\ring.exe examples\ai\bge_rag_demo.ring
+```
+
+---
+
+### 3. `chat.ring` - Interactive Terminal Chat Assistant
 Real-time conversational assistant:
-- **Models:** Supports Qwen2.5 (0.5B / 3B) and DeepSeek-R1 (1.5B) GGUF models.
-- **Features:** Streaming token generation, parameter tuning (`/tokens <N>`, `/temp <0.0-1.0>`), context memory reset (`reset`), and performance stats (tokens/sec).
+- **Models:** Seamlessly runs Qwen2.5 (0.5B / 1.5B / 3B) or DeepSeek-R1 (1.5B / 7B) with automatic multi-path discovery.
+- **Interactive Directives:** Streaming token generation, `/tokens <N>`, `/temp <0.0-1.0>`, `/gpu on|off`, and `/reset`.
+- **Chronos Stats:** Accurate tokens/sec throughput and generation duration.
 
 ```cmd
+bin\ring.exe examples\ai\chat.ring
 bin\ring.exe examples\ai\chat.ring qwen
+bin\ring.exe examples\ai\chat.ring deepseek
 ```
 
 ---
 
-### 2. `rag_demo.ring` - Local Semantic Search & Knowledge Assistant (RAG)
-Factual question answering grounded in local knowledge bases with **zero hallucination**:
-- **Leverages Madar Innovations:**
-  - **Native Continuous Tensors (`RingTensor`):** Computes normalized $L_2$ embeddings directly from the LLM core.
-  - **C-Speed Cosine Similarity:** Instantaneous vector matching (`tensor_cosine_similarity`).
-  - **Advanced Language Syntax:** Utilizes f-strings, default arguments, list comprehensions, and negative list slicing (`aList[::-1]`).
-- **Interactive Commands:**
-  - Type any question (Arabic or English) to retrieve context and generate grounded answers.
-  - `/search <text>`: Semantic search only without text generation.
-  - `/add <fact>`: Dynamically add knowledge facts to vector memory on the fly.
-  - `/file <filepath>`: Ingest an entire Markdown or text file into the vector database.
-  - `/list`: Inspect all indexed chunks in memory.
-  - `/clear`: Reset vector store.
-
-```cmd
-bin\ring.exe examples\ai\rag_demo.ring
-```
-
----
-
-### 3. `doc_search.ring` - CLI Semantic Document Search
+### 4. `doc_search.ring` - CLI Semantic Document Search
 A semantic equivalent of `grep` that searches files based on **meaning** rather than literal keyword matches:
-- Index a document once and query it semantically.
 - Fast, local, and private (no data leaves your machine).
+- Robust CLI argument parsing (supports `--json-errors` and custom flags transparently).
+- Automatic streaming synthesis answering questions from the top matching section.
 
 ```cmd
 bin\ring.exe examples\ai\doc_search.ring README.md "كيف يعمل محرك الذكاء الاصطناعي؟"
-```
-```cmd
-bin\ring.exe examples\ai\doc_search.ring
+bin\ring.exe examples\ai\doc_search.ring docs\ARCHITECTURE.md "JIT"
 ```
 
 ---
 
-### 4. `simple_rag.ring` - Minimal Declarative RAG Script
-The most clean and direct 4-step pipeline for RAG:
-```ring
-# 1. Open model
-embed_model = model_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
-llm         = embed_model
+### 5. `dataframe_demo.ring` - High-Speed C-Tensor Table Analytics
+Demonstrates Madar's zero-copy contiguous memory table engine:
+- Ingests CSV files into continuous C-allocated memory buffers in microseconds.
+- Native statistical calculations (`mean`, `max`, `describe`).
+- Fast vector-style boolean filtering (`df.filter("salary", ">", 4500)`).
 
-# 2. Extract query embedding
-query_vector = embed_model.get_embedding("كيف أصلح خطأ الذاكرة؟")
-
-# 3. Fast Vector Search using C Tensors
-best_chunk = vector_search(query_vector, store)
-
-# 4. Generate grounded answer
-prompt = "<|im_start|>system" + nl + 
-         "أجب بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
-         "<|im_start|>user" + nl + "كيف أصلح خطأ الذاكرة؟<|im_end|>" + nl +
-         "<|im_start|>assistant" + nl
-
-see llm.generateStream(prompt, 128)
+```cmd
+bin\ring.exe examples\ai\dataframe_demo.ring
 ```
-Run:
+
+---
+
+### 6. `agent_demo.ring` - Autonomous Function Calling & Tools
+Demonstrates the Madar AIAgent autonomous reasoning loop:
+- Registers custom Ring functions as callable tools (`currency_rate`, `calc`, `get_time`, DataFrame analytics).
+- Automatically plans and executes tools in response to user queries.
+
+```cmd
+bin\ring.exe examples\ai\agent_demo.ring
+```
+
+---
+
+### 7. `agent_rag_demo.ring` - Autonomous Agent with Long-Term Episodic Memory
+- Long-term vector memory (`agent.remember(...)` & `agent.recall(...)`).
+- Persistent binary memory caching on disk (`.bin`).
+- Dynamic memory injection into prompt context.
+
+```cmd
+bin\ring.exe examples\ai\agent_rag_demo.ring
+```
+
+---
+
+### 8. `simple_rag.ring` - Minimal Declarative RAG Script
+The most clean and direct 4-step pipeline for RAG:
 ```cmd
 bin\ring.exe examples\ai\simple_rag.ring
 ```
 
 ---
 
-### 5. `qalam_rag.ring` - Hybrid Search & Vector Persistence (Madar + AlQalam)
+### 9. `qalam_rag.ring` - Hybrid Search & Vector Persistence (Madar + AlQalam)
 The ultimate showcase combining **Madar C Core** with **AlQalam C++17**:
 - **PDF Extraction:** Index raw PDF manuals via `QalamReader`.
-- **Hybrid Search:** Combines semantic continuous tensor similarity (70%) with lexical keyword matching (30%).
+- **Hybrid Search:** Combines continuous tensor semantic similarity (70%) with lexical keyword matching (30%).
 - **Binary Persistence:** Caches vector stores on disk (`.bin`) and reloads thousands of embeddings in microseconds.
-- **QalamInk:** Zero-fragmentation C++ prompt accumulation.
-- **QalamChronos:** Nanosecond profiling of retrieval, embedding, and generation.
 
 ```cmd
 bin\ring.exe examples\ai\qalam_rag.ring
 ```
-
-

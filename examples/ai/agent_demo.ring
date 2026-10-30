@@ -4,48 +4,68 @@
 # ====================================================================
 load "stdlibCore.ring"
 load "agent.ring"
+load "chronos.ring"
 
-cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
-/*if not fexists(cModelPath)
-	cModelPath = "../../models/deepseek-r1-distill-qwen-1.5b-q4_0.gguf"
-ok*/
+func main {
+	cModelPath = findModel([
+		"qwen2.5-0.5b-instruct-q4_0.gguf",
+		"deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+	])
 
-if not fexists(cModelPath)
-	see "Error: Model file not found in models/" + nl
-	bye
-ok
+	if cModelPath = "" {
+		? "[ERROR] Model file not found in models/ directory!"
+		? "Please download a supported model using 'tools\download_model.bat'."
+		bye
+	}
 
-see "====================================================================" + nl
-see "  Madar AI Agent: Function Calling & Autonomous Tool Execution" + nl
-see "  (الوكيل الذكي في مدار: استدعاء الدوال التلقائي والأدوات البرمجية)" + nl
-see "====================================================================" + nl
+	? "===================================================================="
+	? "  Madar AI Agent: Function Calling & Autonomous Tool Execution"
+	? "  (الوكيل الذكي في مدار: استدعاء الدوال التلقائي والأدوات البرمجية)"
+	? "===================================================================="
+	? f"  [Model] {cModelPath}"
 
-model = new QwenModel(cModelPath)
-model.setThreads(4)
+	oModel = new QwenModel(cModelPath)
+	oModel.setThreads(4)
 
-agent = new AIAgent(model)
-agent.bStream = 1  # Real-Time Token Streaming Enabled
+	oAgent = new AIAgent(oModel)
+	oAgent.bStream = 1  # Real-Time Token Streaming Enabled
 
-# Register custom application tools
-agent.registerTool("currency_rate", "Returns exchange rate between two currencies", ["from_curr", "to_curr"], func(args) {
-	return "Exchange Rate 1 USD = 134.50 DZD (Algerian Dinar)"
-})
+	# Register custom application tools
+	oAgent.registerTool("currency_rate", "Returns exchange rate between two currencies", ["from_curr", "to_curr"], func(args) {
+		return "Exchange Rate 1 USD = 134.50 DZD (Algerian Dinar)"
+	})
 
-see nl + "1. Query: What is the current system date and time?" + nl
-agent.query("ما هو التاريخ والوقت الحالي للنظام؟")
+	? nl + "1. Query: What is the current system date and time?"
+	oAgent.query("ما هو التاريخ والوقت الحالي للنظام؟")
 
-see nl + "--------------------------------------------------------------------" + nl
-see "2. Query: Complex Mathematical Calculation" + nl
-agent.query("احسب لي ناتج العملية الحسابية بدقة: 1450 * 32 + 890")
+	? nl + "--------------------------------------------------------------------"
+	? "2. Query: Complex Mathematical Calculation"
+	oAgent.query("احسب لي ناتج العملية الحسابية بدقة: 1450 * 32 + 890")
 
-see nl + "--------------------------------------------------------------------" + nl
-see "3. Query: Custom Application Tool (Currency Rate)" + nl
-agent.query("كم سعر صرف الدولار مقابل الدينار الجزائري؟")
+	? nl + "--------------------------------------------------------------------"
+	? "3. Query: Custom Application Tool (Currency Rate)"
+	oAgent.query("كم سعر صرف الدولار مقابل الدينار الجزائري؟")
 
-see nl + "--------------------------------------------------------------------" + nl
-see "4. Query: Table Analytics & C-Tensor Data Query (DataFrame Integration)" + nl
-agent.query("ما هو أعلى راتب في جدول الموظفين؟")
+	? nl + "--------------------------------------------------------------------"
+	? "4. Query: Table Analytics & C-Tensor Data Query (DataFrame Integration)"
+	oAgent.query("ما هو أعلى راتب في جدول الموظفين؟")
 
-see nl + "====================================================================" + nl
-see "  Agent Demo Completed Successfully." + nl
-see "====================================================================" + nl
+	? nl + "===================================================================="
+	? "  Agent Demo Completed Successfully."
+	? "===================================================================="
+}
+
+# --------------------------------------------------------------------
+# Helper Functions
+# --------------------------------------------------------------------
+func findModel(aCandidates) {
+	aSearchDirs = ["models/", "../../models/", "../models/", "../../../models/"]
+	for cName in aCandidates {
+		for cDir in aSearchDirs {
+			cFullPath = cDir + cName
+			if fexists(cFullPath) { return cFullPath }
+		}
+	}
+	return ""
+}

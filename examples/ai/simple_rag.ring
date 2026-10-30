@@ -6,54 +6,94 @@
 load "stdlibCore.ring"
 load "madar_ai.ring"
 load "rag.ring"
+load "chronos.ring"
 
-# 1. تحديد مسار النموذج
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-if not fexists(cModelPath)
-	cModelPath = "../../models/qwen2.5-0.5b-instruct-q4_0.gguf"
-ok
+func main {
+	# 1. تحديد مسار النموذج متعدد المسارات
+	cModelPath = findModel([
+		"qwen2.5-0.5b-instruct-q4_0.gguf",
+		"deepseek-r1-distill-qwen-1.5b-q4_0.gguf",
+		"qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+	])
 
-if not fexists(cModelPath)
-	see "[ERROR] Model file not found in models/" + nl
-	bye
-ok
+	if cModelPath = "" {
+		? "[ERROR] Model file not found in models/ directory!"
+		? "Please download a supported model using 'tools\download_model.bat'."
+		bye
+	}
 
-# فتح نموذج التضمين والتوليد (يمكن استخدام نفس النموذج أو نموذجين منفصلين)
-embed_model = model_open(cModelPath)
-llm         = embed_model
-llm.setTemperature(0.2) # درجة حرارة منخفضة لضمان دقة الإجابة الحتمية والالتزام بالمرجع
+	? "===================================================================="
+	? "  Madar AI: Declarative RAG Workflow"
+	? "  (النمط الإعلاني للبحث الدلالي وتوليد الإجابة بمدار)"
+	? "===================================================================="
+	? f"  [Model] {cModelPath}"
 
-# إعداد قاعدة المعرفة السريعة (يمكن إضافة ملفات نصية أو PDF عبر store.addPDF)
-store = new VectorStore(embed_model)
-store.addText("لحل خطأ نفاد الذاكرة في C، تأكد من استدعاء free() لكل مؤشر تم تخصيصه بـ malloc وتجنب تسريب الموارد.")
-store.addText("لغة مدار تدعم المصفوفات الممتدة المتصلة ومحرك استنتاج ذكاء اصطناعي محلي خفيف الوزن فائق السرعة.")
-store.addText("عاصمة الجمهورية العربية السورية هي مدينة دمشق وتعتبر من أقدم مدن العالم.")
+	oTimer = new Chronos()
 
-# السؤال المراد البحث عنه
-cQuestion = "كيف أصلح خطأ الذاكرة؟"
-see nl + "السؤال: " + cQuestion + nl + nl
+	# فتح نموذج التضمين والتوليد
+	oEmbedModel = model_open(cModelPath)
+	oLLM = oEmbedModel
+	oLLM.setTemperature(0.2) # درجة حرارة منخفضة لضمان دقة الإجابة الحتمية والالتزام بالمرجع
 
-# 1. تحويل سؤال المستخدم إلى إحداثيات شعاعية (Embedding)
-query_vector = embed_model.get_embedding(cQuestion)
+	# إعداد قاعدة المعرفة السريعة
+	oStore = new VectorStore(oEmbedModel)
+	oStore.addText("لحل خطأ نفاد الذاكرة في C، تأكد من استدعاء free() لكل مؤشر تم تخصيصه بـ malloc وتجنب تسريب الموارد.")
+	oStore.addText("لغة مدار تدعم المصفوفات الممتدة المتصلة ومحرك استنتاج ذكاء اصطناعي محلي خفيف الوزن فائق السرعة.")
+	oStore.addText("عاصمة الجمهورية العربية السورية هي مدينة دمشق وتعتبر من أقدم مدن العالم.")
 
-# 2. قياس التشابه الرياضي بين السؤال والملفات المخزنة (عبر مصفوفات التينسور في C)
-see "درجات التشابه الرياضي (Cosine Similarity):" + nl
-aMatches = vector_search(query_vector, store, 3)
-for m in aMatches
-	see f"  - [{m[1]}] {m[2]}" + nl
-next
-see nl
+	# السؤال المراد البحث عنه
+	cQuestion = "كيف أصلح خطأ الذاكرة؟"
+	? nl + f"السؤال: {cQuestion}" + nl
 
-best_chunk = aMatches[1][2]
-see "المرجع الأعلى تطابقاً:" + nl
-see ">>> " + best_chunk + nl + nl
+	# 1. تحويل سؤال المستخدم إلى إحداثيات شعاعية (Embedding)
+	oTimer.reset()
+	query_vector = oEmbedModel.get_embedding(cQuestion)
+	oTimer.stop()
+	? f"  [Embedding generated in {oTimer.elapsed()}]"
 
-# 3. تمرير النتيجة فقط للنموذج لتوليد إجابة حتمية بدون هلوسة
-prompt = "<|im_start|>system" + nl + 
-         "أجب دائماً باللغة العربية الفصحى باختصار ودقة بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
-         "<|im_start|>user" + nl + cQuestion + "<|im_end|>" + nl +
-         "<|im_start|>assistant" + nl
+	# 2. قياس التشابه الرياضي بين السؤال والملفات المخزنة (عبر مصفوفات التينسور في C)
+	? nl + "درجات التشابه الرياضي (Cosine Similarity):"
+	oTimer.reset()
+	aMatches = vector_search(query_vector, oStore, 3)
+	oTimer.stop()
 
-see "إجابة النموذج:" + nl
-response = llm.generateStream(prompt, 128)
-see nl
+	for m in aMatches {
+		? f"  - [{round(m[1], 4)}] {m[2]}"
+	}
+	? f"  [Vector search finished in {oTimer.elapsed()}]"
+
+	best_chunk = aMatches[1][2]
+	? nl + "المرجع الأعلى تطابقاً:"
+	? f">>> {best_chunk}" + nl
+
+	# 3. تمرير النتيجة فقط للنموذج لتوليد إجابة حتمية بدون هلوسة
+	cPrompt = "<|im_start|>system" + nl + 
+	          "أجب دائماً باللغة العربية الفصحى باختصار ودقة بناءً على هذا المرجع فقط: " + best_chunk + "<|im_end|>" + nl +
+	          "<|im_start|>user" + nl + cQuestion + "<|im_end|>" + nl +
+	          "<|im_start|>assistant" + nl
+
+	see "إجابة النموذج: "
+	oTimer.reset()
+	cResponse = oLLM.generateStream(cPrompt, 128)
+	oTimer.stop()
+	? ""
+	? f"  [Response generated in {oTimer.elapsed()}]"
+
+	? nl + "===================================================================="
+	? "  Declarative RAG Completed Successfully."
+	? "===================================================================="
+}
+
+# --------------------------------------------------------------------
+# Helper Functions
+# --------------------------------------------------------------------
+func findModel(aCandidates) {
+	aSearchDirs = ["models/", "../../models/", "../models/", "../../../models/"]
+	for cName in aCandidates {
+		for cDir in aSearchDirs {
+			cFullPath = cDir + cName
+			if fexists(cFullPath) { return cFullPath }
+		}
+	}
+	return ""
+}
