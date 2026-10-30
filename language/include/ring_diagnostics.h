@@ -29,5 +29,6 @@ RING_API void ring_diagnostics_report_runtime_error(struct VM *pVM, const char *
 RING_API char *ring_diagnostics_get_snippet(const char *cFileName, int nTargetLine);
 RING_API char *ring_diagnostics_escape_json(const char *cInput);
 RING_API const char *ring_diagnostics_generate_hint(const char *cStage, const char *cCode, const char *cMsg, const char *cExtra);
+RING_API const char *ring_diagnostics_generate_fix(const char *cStage, const char *cCode, const char *cMsg, const char *cExtra);
 
 #endif /* ring_diagnostics_h */

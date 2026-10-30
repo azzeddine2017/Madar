@@ -54,6 +54,13 @@ RING_API RingState *ring_state_new(void) {
   pRingState->nInstructionsCount = 0;
   pRingState->lRunFromObjectFile = 0;
   pRingState->lJSONErrors = 0;
+  {
+    const char *pEnvJSON = getenv("MADAR_JSON_ERRORS");
+    if (pEnvJSON &&
+        (strcmp(pEnvJSON, "1") == 0 || strcmp(pEnvJSON, "true") == 0)) {
+      pRingState->lJSONErrors = 1;
+    }
+  }
   return pRingState;
 }
 
@@ -481,7 +488,7 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
   char *cEvalCode;
   char cFileName[RING_SMALLBUF];
   int x, lCGI, lRun, lPrintIC, lPrintICFinal, lTokens, lRules, lIns,
-      lPerformance, lSrc, lGenObj, lGenCObj, lWarn;
+      lPerformance, lSrc, lGenObj, lGenCObj, lWarn, lJSONErrors;
   /* Init Values */
   lCGI = 0;
   lRun = 1;
@@ -497,6 +504,7 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
   lGenObj = 0;
   lGenCObj = 0;
   lWarn = 0;
+  lJSONErrors = 0;
   lRingStateDebugSegFault = 0;
   lRingStateCGI = 0;
   signal(SIGSEGV, ring_state_segfaultaction);
@@ -563,6 +571,7 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
       } else if ((strcmp(pArgv[x], "--json-errors") == 0) ||
                  (strcmp(pArgv[x], "-json-errors") == 0)) {
         /* Structured JSON Error Mode for AI Agents */
+        lJSONErrors = 1;
       } else if ((ring_general_issourcefile(pArgv[x]) ||
                   ring_general_isobjectfile(pArgv[x])) &&
                  lSrc == 0) {
@@ -597,6 +606,7 @@ RING_API void ring_state_main(int nArgc, char *pArgv[]) {
     pRingState->lPrintTokens = lTokens;
     pRingState->lPrintRules = lRules;
     pRingState->lPrintInstruction = lIns;
+    pRingState->lJSONErrors = lJSONErrors;
     ring_state_runstring(pRingState, cEvalCode);
     ring_state_delete(pRingState);
     if (lPerformance) {

@@ -25,9 +25,11 @@ int ring_parser_start(RingState *pRingState, List *pTokens) {
 		ring_parser_delete(pParser);
 		return RING_PARSER_OK;
 	} else {
-		printf("\n%s errors count : %d \n",
-		       ring_list_getstring(pParser->pRingState->pRingFilesStack, nRingActiveFile),
-		       pParser->nErrorsCount);
+		if (!ring_diagnostics_is_json_enabled(pParser->pRingState)) {
+			printf("\n%s errors count : %d \n",
+			       ring_list_getstring(pParser->pRingState->pRingFilesStack, nRingActiveFile),
+			       pParser->nErrorsCount);
+		}
 	}
 	ring_parser_delete(pParser);
 	return RING_PARSER_FAIL;
@@ -201,7 +203,10 @@ void ring_parser_processkeywords(Parser *pParser) {
 void ring_parser_error(Parser *pParser, const char *cStr) {
 	int nRingActiveFile;
 	if (ring_diagnostics_is_json_enabled(pParser->pRingState)) {
-		ring_diagnostics_report_parser_error(pParser, "P1", (cStr && strcmp(cStr, RING_CSTR_EMPTY) != 0) ? cStr : RING_PARSER_ERROR_SYNTAXERROR);
+		if (pParser->nErrorLine != pParser->nLineNumber) {
+			pParser->nErrorLine = pParser->nLineNumber;
+			ring_diagnostics_report_parser_error(pParser, NULL, (cStr && strcmp(cStr, RING_CSTR_EMPTY) != 0) ? cStr : RING_PARSER_ERROR_SYNTAXERROR);
+		}
 		pParser->nErrorsCount++;
 		return;
 	}

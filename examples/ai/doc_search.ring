@@ -26,11 +26,8 @@ ok
 cDocPath = ""
 cQuery = ""
 
-if len(sysargv) >= 2
-	cDocPath = sysargv[2]
-ok
-if len(sysargv) >= 3
-	cQuery = sysargv[3]
+if len(sysargv) > 2
+	cDocPath = sysargv[3]
 ok
 
 see nl + "====================================================================" + nl

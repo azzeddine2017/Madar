@@ -67,9 +67,12 @@
    - Binds numeric columns to continuous `RingTensor` views for microsecond statistical calculations (`mean`, `sum`, `min`, `max`, `std`, `describe`).
    - High-productivity filtering (`df.filter("salary", ">", 4500)`) and column selection.
 
-9. **Self-Healing AI Agent Feedback Loop (`--json-errors`):**
+9. **Self-Healing AI Agent Feedback Loop & Contextual Diagnostics (`--json-errors`):**
    - RFC 8259 standardized structured JSON compiler and runtime diagnostics.
-   - Provides line context, exact error codes, call stacks, and context-aware intelligent fix suggestions.
+   - Full coverage of standard Ring 1.27 specifications (Compiler `C1`–`C31`, Scanner `S1`–`S3`, Runtime `R1`–`R55`, Environment `E1`–`E18`, and `TENSOR_ERR`).
+   - In-memory & `eval()` snippet reconstruction directly from scanner tokens (`pTokens`) with column offset, offending token identification, and visual caret markers (`^`).
+   - Actionable hints (`hint`) and suggested repair recipes (`suggested_fix`) for autonomous agent self-healing.
+   - Contextual `cCatchError` in `try ... catch` blocks returning `Line %d %s in %s`. See [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 
 10. **Native Python-Like Modern Syntax Enhancements:**
    - **Native `f-strings` (`f"Hello {name}, 1+2={1+2}"`):** Direct scanner-level expression interpolation with zero runtime overhead, nested expressions, and brace escaping (`{{...}}`, `\{...\}`).

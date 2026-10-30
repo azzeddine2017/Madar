@@ -26,7 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Ephemeral RAG Context & Sliding Window Management (`app.ring` & `config.ring`)**:
     - Ground-truth RAG knowledge chunks are injected strictly into the active turn's user prompt for immediate factual anchoring, but are **never** appended into persistent conversation history (`aHistory`), completely eliminating context explosion.
     - Configurable conversation sliding window (`bUseSlidingWindow = true`, `nHistoryWindow = 2`), ensuring flat memory usage during long dialogues.
-  - **Real-Time Latency & Generation Profiler**:
+  - **Contextual `cCatchError` Enhancement (`language/src/vmtry.c`):**
+  - Upgraded the native `cCatchError` variable populated inside `try ... catch` blocks to include the active line number, error code/description, and source file name (`Line %d %s in %s`), providing immediate debugging clarity without losing backward compatibility.
+
+- **Comprehensive Diagnostics & Structured Feedback Overhaul (`--json-errors`):**
+  - **Full Error Specification Coverage**: Integrated exhaustive diagnostic mappings covering all standard Ring 1.27 specifications: Compiler Errors (`C1`–`C31`), Scanner Errors (`S1`–`S3`), Runtime Errors (`R1`–`R55`), Environment Errors (`E1`–`E18`), and Native Tensor Errors (`TENSOR_ERR`).
+  - **In-Memory & `eval()` Snippet Reconstruction**: Automatically reconstructs source lines directly from scanner tokens (`pTokens`) when executing dynamically evaluated code or memory buffers, completely eliminating empty `source_snippet` outputs.
+  - **Accurate Token & Visual Marker Targeting**: Identifies the exact offending token (`offending_token`) and column offset (`column`), rendering ASCII visual caret pointers (`visual_marker`: `^`) pointing directly to syntax defects.
+  - **Context-Aware Actionable Hints & Suggested Fixes**: Rich explanatory hints (`hint`) coupled with concrete, actionable correction recipes (`suggested_fix`) designed specifically for autonomous LLM self-healing.
+  - **De-Duplication & Clean RFC 8259 Stream**: Suppressed duplicate line reporting and silenced plain text messages (e.g. `eval errors count : %d`) during `--json-errors` mode for 100% parseable JSON streams.
+  - Dynamic runtime activation across all execution flags (`-e`, files, and `MADAR_JSON_ERRORS=1`).
+
+- **Real-Time Latency & Generation Profiler**:
     - Embedded millisecond-precision profiler displaying Time-To-First-Token (TTFT), prefill speed (tok/s), and generation streaming throughput.
 
 ---
