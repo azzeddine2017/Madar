@@ -26,7 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Ephemeral RAG Context & Sliding Window Management (`app.ring` & `config.ring`)**:
     - Ground-truth RAG knowledge chunks are injected strictly into the active turn's user prompt for immediate factual anchoring, but are **never** appended into persistent conversation history (`aHistory`), completely eliminating context explosion.
     - Configurable conversation sliding window (`bUseSlidingWindow = true`, `nHistoryWindow = 2`), ensuring flat memory usage during long dialogues.
-  - **Contextual `cCatchError` Enhancement (`language/src/vmtry.c`):**
+  - **Native Arabic & Unicode UTF-8 Support in `ascii()` and `char()` (`language/src/genlib_e.c`):**
+  - **Multi-Byte UTF-8 Decoding in `ascii(cChar)`**: Transparently decodes 2-byte, 3-byte, and 4-byte UTF-8 character sequences into their respective Unicode code points. `ascii("م")` yields `1605` (`0x0645`), `ascii("ا")` yields `1575` (`0x0627`), resolving legacy `Bad parameter length` errors while preserving 100% backward compatibility for ASCII (0–127).
+  - **Dynamic Multi-Byte UTF-8 Encoding in `char(nCode)`**: Automatically emits valid 1 to 4-byte UTF-8 string sequences for Unicode code points up to `0x10FFFF`. `char(1605) + char(1583) + char(1575) + char(1585)` directly outputs `"مدار"`.
+  - **Bijective Symmetry**: Guarantees `char(ascii("م")) == "م"` and `ascii(char(1605)) == 1605`.
+
+- **Contextual `cCatchError` Enhancement (`language/src/vmtry.c`):**
   - Upgraded the native `cCatchError` variable populated inside `try ... catch` blocks to include the active line number, error code/description, and source file name (`Line %d %s in %s`), providing immediate debugging clarity without losing backward compatibility.
 
 - **Comprehensive Diagnostics & Structured Feedback Overhaul (`--json-errors`):**

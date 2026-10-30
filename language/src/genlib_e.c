@@ -704,21 +704,60 @@ void ring_vm_generallib_str2hexcstyle(void *pPointer) {
 }
 
 void ring_vm_generallib_ascii(void *pPointer) {
-	int x;
+	/* UTF-8 Native Arabic & Unicode Support */
+	int nLen;
 	unsigned char *cString;
+	unsigned int nCodePoint = 0;
 	if (RING_API_PARACOUNT != 1) {
 		RING_API_ERROR(RING_API_MISS1PARA);
 		return;
 	}
 	if (RING_API_ISSTRING(1)) {
-		if (RING_API_GETSTRINGSIZE(1) == 1) {
-			cString = (unsigned char *)RING_API_GETSTRING(1);
-			x = (int)cString[0];
-			RING_API_RETNUMBER(x);
-		} else {
+		nLen = RING_API_GETSTRINGSIZE(1);
+		if (nLen == 0) {
 			RING_API_ERROR(RING_API_BADPARALENGTH);
 			return;
 		}
+		cString = (unsigned char *)RING_API_GETSTRING(1);
+
+		/* 1-byte ASCII (0x00 - 0x7F) */
+		if (cString[0] < 0x80) {
+			nCodePoint = cString[0];
+			RING_API_RETNUMBER((double)nCodePoint);
+			return;
+		}
+		/* 2-byte UTF-8 sequence (0xC0 - 0xDF) - Native Arabic Support (U+0600 - U+06FF) */
+		else if ((cString[0] & 0xE0) == 0xC0) {
+			if (nLen >= 2 && (cString[1] & 0xC0) == 0x80) {
+				nCodePoint = ((cString[0] & 0x1F) << 6) | (cString[1] & 0x3F);
+				RING_API_RETNUMBER((double)nCodePoint);
+				return;
+			}
+		}
+		/* 3-byte UTF-8 sequence (0xE0 - 0xEF) */
+		else if ((cString[0] & 0xF0) == 0xE0) {
+			if (nLen >= 3 && (cString[1] & 0xC0) == 0x80 && (cString[2] & 0xC0) == 0x80) {
+				nCodePoint = ((cString[0] & 0x0F) << 12) | ((cString[1] & 0x3F) << 6) | (cString[2] & 0x3F);
+				RING_API_RETNUMBER((double)nCodePoint);
+				return;
+			}
+		}
+		/* 4-byte UTF-8 sequence (0xF0 - 0xF7) */
+		else if ((cString[0] & 0xF8) == 0xF0) {
+			if (nLen >= 4 && (cString[1] & 0xC0) == 0x80 && (cString[2] & 0xC0) == 0x80 && (cString[3] & 0xC0) == 0x80) {
+				nCodePoint = ((cString[0] & 0x07) << 18) | ((cString[1] & 0x3F) << 12) | ((cString[2] & 0x3F) << 6) | (cString[3] & 0x3F);
+				RING_API_RETNUMBER((double)nCodePoint);
+				return;
+			}
+		}
+
+		/* Fallback for raw byte if not valid UTF-8 lead byte but 1 byte length */
+		if (nLen == 1) {
+			RING_API_RETNUMBER((double)cString[0]);
+			return;
+		}
+
+		RING_API_ERROR(RING_API_BADPARALENGTH);
 	} else {
 		RING_API_ERROR(RING_API_BADPARATYPE);
 	}
@@ -726,20 +765,53 @@ void ring_vm_generallib_ascii(void *pPointer) {
 
 void ring_vm_generallib_char(void *pPointer) {
 	double x;
-	char cStr[RING_CHARBUF];
+	unsigned int nCode;
+	char cStr[8];
+	int nBytes = 0;
 	if (RING_API_PARACOUNT != 1) {
 		RING_API_ERROR(RING_API_MISS1PARA);
 		return;
 	}
 	if (RING_API_ISNUMBER(1)) {
 		x = RING_API_GETNUMBER(1);
-		if ((x < (double)INT_MIN) || (x != x) || (x > (double)INT_MAX)) {
+		if ((x < 0.0) || (x != x) || (x > 0x10FFFF)) {
 			RING_API_ERROR(RING_API_BADPARARANGE);
 			return;
 		}
-		cStr[0] = (char)(int)x;
-		cStr[1] = '\0';
-		RING_API_RETSTRING2(cStr, RING_ONE);
+		nCode = (unsigned int)x;
+
+		/* 1-byte ASCII (0 - 127) */
+		if (nCode <= 0x7F) {
+			cStr[0] = (char)nCode;
+			cStr[1] = '\0';
+			nBytes = 1;
+		}
+		/* 2-byte UTF-8 sequence (128 - 2047) - Native Arabic Support (U+0600 - U+06FF) */
+		else if (nCode <= 0x7FF) {
+			cStr[0] = (char)(0xC0 | ((nCode >> 6) & 0x1F));
+			cStr[1] = (char)(0x80 | (nCode & 0x3F));
+			cStr[2] = '\0';
+			nBytes = 2;
+		}
+		/* 3-byte UTF-8 sequence (2048 - 65535) */
+		else if (nCode <= 0xFFFF) {
+			cStr[0] = (char)(0xE0 | ((nCode >> 12) & 0x0F));
+			cStr[1] = (char)(0x80 | ((nCode >> 6) & 0x3F));
+			cStr[2] = (char)(0x80 | (nCode & 0x3F));
+			cStr[3] = '\0';
+			nBytes = 3;
+		}
+		/* 4-byte UTF-8 sequence (65536 - 1114111) */
+		else {
+			cStr[0] = (char)(0xF0 | ((nCode >> 18) & 0x07));
+			cStr[1] = (char)(0x80 | ((nCode >> 12) & 0x3F));
+			cStr[2] = (char)(0x80 | ((nCode >> 6) & 0x3F));
+			cStr[3] = (char)(0x80 | (nCode & 0x3F));
+			cStr[4] = '\0';
+			nBytes = 4;
+		}
+
+		RING_API_RETSTRING2(cStr, nBytes);
 	} else {
 		RING_API_ERROR(RING_API_BADPARATYPE);
 	}
