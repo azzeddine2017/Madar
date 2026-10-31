@@ -106,6 +106,7 @@ RING_API void ring_vm_computedgoto(VM *pVM) {
 		[ICO_SLICE] = &&L_ICO_SLICE,
 		[ICO_COMPSTART] = &&L_ICO_COMPSTART,
 		[ICO_COMPEND] = &&L_ICO_COMPEND,
+		[ICO_AWAIT] = &&L_ICO_AWAIT,
 		[ICO_AFTERCALLMETHOD] = &&L_ICO_AFTERCALLMETHOD,
 		[ICO_AFTERCALLMETHOD2] = &&L_ICO_AFTERCALLMETHOD2,
 		[ICO_NEWCLASS] = &&L_ICO_NEWCLASS,
@@ -246,6 +247,7 @@ RING_API void ring_vm_computedgoto(VM *pVM) {
 	L_ICO_SLICE: ring_vm_slice(pVM); NEXT();
 	L_ICO_COMPSTART: ring_vm_compstart(pVM); NEXT();
 	L_ICO_COMPEND: ring_vm_compend(pVM); NEXT();
+	L_ICO_AWAIT: ring_vm_await(pVM); NEXT();
 	L_ICO_AFTERCALLMETHOD: ring_vm_oop_aftercallmethod(pVM); NEXT();
 	L_ICO_AFTERCALLMETHOD2: ring_vm_oop_aftercallmethod(pVM); NEXT();
 	L_ICO_NEWCLASS: ring_vm_oop_newclass(pVM); NEXT();
@@ -385,6 +387,7 @@ RING_API void ring_vm_computedgoto(VM *pVM) {
 		case ICO_SLICE: ring_vm_slice(pVM); break;
 		case ICO_COMPSTART: ring_vm_compstart(pVM); break;
 		case ICO_COMPEND: ring_vm_compend(pVM); break;
+		case ICO_AWAIT: ring_vm_await(pVM); break;
 		case ICO_AFTERCALLMETHOD: ring_vm_oop_aftercallmethod(pVM); break;
 		case ICO_AFTERCALLMETHOD2: ring_vm_oop_aftercallmethod(pVM); break;
 		case ICO_NEWCLASS: ring_vm_oop_newclass(pVM); break;

@@ -873,6 +873,8 @@ void ring_vm_compstart(VM *pVM);
 
 void ring_vm_compend(VM *pVM);
 
+void ring_vm_await(VM *pVM);
+
 void ring_vm_liststart(VM *pVM);
 
 void ring_vm_listitem(VM *pVM);

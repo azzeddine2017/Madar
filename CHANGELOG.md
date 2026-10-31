@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
+
 - **Intent-Driven Hybrid Cognitive Architecture (`examples/MadarAgent/`):**
   - **Rasa-Inspired Three-Tier Execution Engine**: Replaced heavy brute-force prompt construction (+1,200 tokens) with an ultra-fast, zero-overhead Three-Tier execution pipeline:
     - **Tier 1 (Zero-LLM Direct Response)**: Sub-second instantaneous responses ($< 1$s, $0$ tokens prefilled) for identity queries, greetings, and system FAQs without activating LLM inference.
@@ -56,6 +81,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
+
 - **BGE-M3 (BAAI General Embedding) & BERT/XLM-RoBERTa Architecture Support (`language/src/ring_inference.c`, `language/include/ring_inference.h`):**
   - **Native 24-Layer Bidirectional Transformer Encoder**: Implemented dedicated non-causal execution path for BERT and XLM-RoBERTa architectures (`general.architecture = "bert"` / `"xlm-roberta"`). Computes all-to-all token attention matrices across the full sequence without causal triangular masking.
   - **AVX2 SIMD LayerNorm Kernel (`layernorm`)**: Vectorized standard LayerNorm with mean subtraction, variance normalization, scale weights, and bias terms, replacing RMSNorm for encoder architectures.
@@ -82,6 +120,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0-alpha] - 2026-10-24
 
 ### Added
+
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
 
 - **OpenCL GPU Acceleration Engine (`language/src/ring_inference.c`, `language/include/opencl_stub.h`):**
   - **Dynamic OpenCL DLL Loading**: Added complete `opencl_stub.h` header defining all required OpenCL types, constants, and function pointer typedefs. GPU is enabled at runtime via `LoadLibraryA("OpenCL.dll")` and `GetProcAddress` — **zero linker-time dependencies** on any OpenCL SDK or `.lib` files. Graceful CPU-only fallback if no OpenCL driver is present.
@@ -141,6 +192,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Added
+
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
 - **Modernized CLI Interface & Inline Evaluation (`language/src/state.c`, `language/include/state.h`):**
   - Added `-v, --version` flag to print Madar version, core release, and author attribution cleanly.
   - Added `-h, --help` flag displaying a beautifully categorized and grouped command-line help interface.
@@ -242,6 +306,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0-alpha] - 2026-10-18
 
 ### Added
+
+- **Native Asynchronous Programming Engine (`async` / `await` - Track C Core Architecture):**
+  - **First-Class Core Keywords**: Added `K_ASYNC` and `K_AWAIT` to `language/include/scanner.h` and `RING_KEYWORDS[]` (keywords count updated to 78), recognized natively across the scanner and parser with zero third-party dependencies.
+  - **Asynchronous Function Declarations (`async func` / `async def`)**: Implemented in `language/src/stmt.c`, marking functions in `pFunctionsMap` with the `lIsAsync` metadata flag, with safe token backtracking when `async` is not followed by a function definition.
+  - **Unary Await Operator (`await <expr>`)**: Implemented in `language/src/expr.c` (`ring_parser_factor`), parsing `await` expressions with unary prefix precedence and emitting intermediate bytecode `ICO_AWAIT`.
+  - **Bytecode & VM Execution Engine**:
+    - Added `ICO_AWAIT` to `IC_OPERATIONS` in `language/include/codegen.h` and mnemonic array `RING_IC_OP[]`.
+    - Integrated `ring_vm_await(VM *pVM)` into `language/src/vmfuncs.c`, `language/src/vm.c`, and the Computed Gotos jump table (`language/src/vmcgoto.c`).
+    - Inspects operands at runtime on the VM stack, dynamically unrolls and executes registered async resolution dispatchers, and resumes execution seamlessly.
+  - **Comprehensive Verification & Tests**: Added [`tests/core/test_async_native.ring`](tests/core/test_async_native.ring) covering primitives, expressions, async function invocations, and compound statements with 100% pass rate.
+  - **Interactive Demo**: Created [`examples/async_demo.ring`](examples/async_demo.ring) demonstrating async data fetching, analytical scoring, and list comprehensions with microsecond hardware timing.
+  - **Full Documentation**: Published comprehensive technical specifications in [`docs/ASYNC_AWAIT.md`](docs/ASYNC_AWAIT.md).
+
 - **Native Tensor Architecture (`language/include/ring_tensor.h`):**
   - Continuous memory buffer storage abstraction (`RingTensorStorage`) with built-in reference counting for safe zero-copy sharing.
   - Multi-dimensional tensor descriptor (`RingTensor`) supporting up to 8 dimensions (`RING_TENSOR_MAX_DIMS = 8`).

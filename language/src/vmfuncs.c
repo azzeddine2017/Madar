@@ -979,3 +979,38 @@ List *ring_vm_findfuncusinghashtable(VM *pVM, List *pFuncsList, const char *cFun
 	ring_vm_custmutexunlock(pVM, pVM->aCustomMutex[RING_VM_CUSTOMMUTEX_FUNCHASHTABLE]);
 	return pFuncList;
 }
+
+void ring_vm_await(VM *pVM) {
+	unsigned int nPC;
+	int lHasAwaitFunc;
+	CFunction *pCFunc;
+	if (pVM->nSP < 1) {
+		return;
+	}
+	lHasAwaitFunc = 0;
+	if (ring_vm_findfuncusinghashtable(pVM, pVM->pFunctionsMap, "await") != NULL) {
+		lHasAwaitFunc = 1;
+	} else {
+		pCFunc = pVM->pCFunction;
+		while (pCFunc != NULL) {
+			if (strcmp(pCFunc->cName, "await") == 0) {
+				lHasAwaitFunc = 1;
+				break;
+			}
+			pCFunc = pCFunc->pNext;
+		}
+	}
+	if (lHasAwaitFunc) {
+		if (ring_vm_loadfunc2(pVM, "await", RING_FALSE)) {
+			nPC = pVM->nPC;
+			ring_vm_call2(pVM);
+		do {
+			ring_vm_fetch(pVM);
+			if (pVM->nPC == nPC) {
+				break;
+			}
+		} while (pVM->nPC <= RING_VM_INSTRUCTIONSCOUNT);
+			ring_vm_pushv(pVM);
+		}
+	}
+}

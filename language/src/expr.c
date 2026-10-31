@@ -825,6 +825,17 @@ int ring_parser_factor(Parser *pParser, int *nFlag) {
 			return RING_PARSER_OK;
 		}
 	}
+	/* Factor --> Await Expression */
+	if (ring_parser_iskeyword(pParser, K_AWAIT)) {
+		ring_parser_nexttoken(pParser);
+		RING_PARSER_IGNORENEWLINE;
+		x = ring_parser_expr(pParser);
+		if (x == RING_PARSER_FAIL) {
+			return RING_PARSER_FAIL;
+		}
+		ring_parser_icg_newoperation(pParser, ICO_AWAIT);
+		return RING_PARSER_OK;
+	}
 	/* Factor --> Anonymous Function */
 	if (ring_parser_iskeyword(pParser, K_FUNC) || ring_parser_iskeyword(pParser, K_FUNCTION) ||
 	    ring_parser_iskeyword(pParser, K_DEF)) {

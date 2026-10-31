@@ -82,6 +82,16 @@
    - **Native Arabic & Unicode UTF-8 (`ascii()` & `char()`):** Full multi-byte UTF-8 decoding and encoding. `ascii("م")` yields `1605`, `char(1605)` yields `"م"`, enabling seamless Arabic NLP and text processing without external dependencies.
    - **High-Performance JIT Loops (`dour x = 1 to N`, `[x*x dour x in 1:N]`):** Native Arabic-derived loop keyword triggering Madar Auto-JIT via SLJIT to compile loops on the fly into native CPU machine code (7x - 90x speedup) while preserving 100% Ring standard interpreter compatibility with `for`.
 
+11. **Native Asynchronous Programming Engine (`async` / `await`):**
+    - **First-Class Core Keywords:** Native `async func` / `async def` declarations and unary prefix `await <expr>` expressions engineered directly into the lexer, parser, intermediate bytecode generator (`ICO_AWAIT`), and VM execution loop.
+    - **Non-Blocking Execution:** Provides first-class support for asynchronous pipelines, future promises, and non-blocking I/O with zero Node.js runtime dependencies.
+    - **Strict Backward Compatibility:** 100% compatibility with standard synchronous Ring code. See [docs/ASYNC_AWAIT.md](docs/ASYNC_AWAIT.md) and [examples/async_demo.ring](examples/async_demo.ring).
+
+12. **High-Resolution Hardware Monotonic Timers & Chronos Library:**
+    - Sub-nanosecond hardware timing via `nanotime()` (ns), `microtime()` (us), `perf_counter()` (fractional seconds), and `hrtime()` backed directly by CPU performance counters (`QueryPerformanceCounter` on Windows, `clock_gettime(CLOCK_MONOTONIC)` on POSIX).
+    - Eliminates the 15.6ms Windows granularity and multi-threaded inaccuracies of standard `clock()`.
+    - Object-oriented benchmarking and stopwatch utility via `Chronos` (`libraries/chronos.ring`).
+
 ---
 
 ## 🚀 Quick Start & Interactive Sessions
@@ -120,7 +130,12 @@ bin\ring.exe examples\ai\stream_demo.ring
 bin\ring.exe examples\ai\chat.ring
 ```
 
-### 6. Declarative Scripting API with BGE-M3 & GPU
+### 6. Native Asynchronous Engine Demo (البرمجة غير المتزامنة)
+```cmd
+bin\ring.exe examples\async_demo.ring
+```
+
+### 7. Declarative Scripting API with BGE-M3 & GPU
 ```ring
 load "madar_ai.ring"
 load "rag.ring"

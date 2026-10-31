@@ -33,6 +33,8 @@ echo.
 echo.
 "%RING_EXE%" test_nanotime.ring
 echo.
+"%RING_EXE%" test_async_native.ring
+echo.
 "%RING_EXE%" test_json_errors.ring
 cd "%~dp0"
 
