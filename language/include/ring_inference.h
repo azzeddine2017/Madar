@@ -111,11 +111,17 @@ typedef struct RingModel {
 	void *pGPUKernelQ4_1;
 	void *pGPUKernelQ8;
 	void *pGPUKernelQ6;
+	void *pGPUKernelQ4Batch;
+	void *pGPUKernelSiLUBatch;
 	void *pGPUBufX;
 	void *pGPUBufY;
+	void *pGPUBufGate;
+	void *pGPUBufUp;
+	void *pGPUBufDown;
 	void *pGPUBufOutputWeight;
 	size_t nGPUBufXSize;
 	size_t nGPUBufYSize;
+	size_t nGPUBufFFNSize;
 
 	/* Step-by-Step Generator & Streaming State */
 	int aGenTokens[8192];

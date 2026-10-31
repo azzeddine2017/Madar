@@ -203,9 +203,10 @@ class AgentApp
 				ok
 				for item in aRetrieved
 					cChunkData = item[2]
-					if len(cChunkData) > nRagMaxChars
+					/*if len(cChunkData) > nRagMaxChars
 						cChunkData = left(cChunkData, nRagMaxChars) + nl + "... [Truncated for brevity]"
-					ok
+					ok*/
+
 					cRagContext += "--- [Knowledge Chunk] ---" + nl + cChunkData + nl
 				next
 			ok
@@ -233,7 +234,7 @@ class AgentApp
 
 		cPrompt += "<|im_start|>user" + nl + cUserContent + "<|im_end|>" + nl
 		cPrompt += "<|im_start|>assistant" + nl
-
+? uiSuccess(cPrompt) 
 		return cPrompt
 
 	func processTurn(cUserInput)
@@ -335,7 +336,7 @@ class AgentApp
 			? "    └─ " + uiMuted("Generation Stream:           ") + f"{round(nGenSec, 2)}s ({nGenTokens} tokens, {round(fTokPerSec, 1)} tok/s)"
 			uiDivider()
 		ok
-
+        
 		# Check for Tool Calls
 		if oToolCaller.hasToolCall(cResponse)
 			aCalls = oToolCaller.extractToolCalls(cResponse)
@@ -362,7 +363,7 @@ class AgentApp
 					"Please provide the final synthesized response based on the tool results." +
 					"<|im_end|>" + nl +
 					"<|im_start|>assistant" + nl
-
+				
 				see uiAgentPrompt("MadarAgent (Synthesized)")
 				cFinal = oModel.generateStream(cSynthesisPrompt, nMaxGenTokens)
 				see nl
