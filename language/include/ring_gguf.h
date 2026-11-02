@@ -50,7 +50,8 @@ typedef enum RingGGUFTensorType {
 	RING_GGUF_TENSOR_I16     = 25,
 	RING_GGUF_TENSOR_I32     = 26,
 	RING_GGUF_TENSOR_I64     = 27,
-	RING_GGUF_TENSOR_F64     = 28
+	RING_GGUF_TENSOR_F64     = 28,
+	RING_GGUF_TENSOR_I2_S    = 36
 } RingGGUFTensorType;
 
 /* GGUF String */
@@ -144,6 +145,11 @@ typedef struct RingGGUFBlockQ6_K {
 	int8_t  scales[16];  /* 8-bit scales for 16-weight sub-blocks */
 	uint16_t d;          /* FP16 scale */
 } RingGGUFBlockQ6_K;
+
+#define QK_I2_S 128
+typedef struct RingGGUFBlockI2_S {
+	uint8_t qs[32];      /* 32 bytes = 128 ternary weights (2-bit each) */
+} RingGGUFBlockI2_S;
 #pragma pack(pop)
 
 /* Core C APIs */
@@ -170,6 +176,7 @@ RING_API void ring_gguf_dequantize_q4_0(const void *pSrc, float *pDst, uint64_t 
 RING_API void ring_gguf_dequantize_q4_1(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_q8_0(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_q6_k(const void *pSrc, float *pDst, uint64_t nElements);
+RING_API void ring_gguf_dequantize_i2_s(const void *pSrc, float *pDst, uint64_t nElements);
 RING_API void ring_gguf_dequantize_f16(const void *pSrc, float *pDst, uint64_t nElements);
 
 /* Scripting Registration */

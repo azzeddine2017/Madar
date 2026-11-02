@@ -56,6 +56,8 @@ RING_API const char *ring_gguf_tensor_type_name(uint32_t nType) {
 	case RING_GGUF_TENSOR_I32:  return "I32";
 	case RING_GGUF_TENSOR_I64:  return "I64";
 	case RING_GGUF_TENSOR_F64:  return "F64";
+	case RING_GGUF_TENSOR_I2_S:
+	case 35:                    return "I2_S";
 	default:                    return "CUSTOM";
 	}
 }
@@ -74,6 +76,8 @@ RING_API uint64_t ring_gguf_calc_tensor_size(uint32_t nType, uint64_t nElements)
 	case RING_GGUF_TENSOR_Q8_0: return ((nElements + 31) / 32) * sizeof(RingGGUFBlockQ8_0);
 	case RING_GGUF_TENSOR_Q8_1: return ((nElements + 31) / 32) * 36;
 	case RING_GGUF_TENSOR_Q6_K: return ((nElements + 255) / 256) * sizeof(RingGGUFBlockQ6_K);
+	case RING_GGUF_TENSOR_I2_S:
+	case 35:                    return ((nElements + 3) / 4) + 32;
 	default:                    return nElements * 4;
 	}
 }
@@ -611,6 +615,28 @@ RING_API void ring_gguf_dequantize_q6_k(const void *pSrc, float *pDst, uint64_t 
 	}
 }
 
+RING_API void ring_gguf_dequantize_i2_s(const void *pSrc, float *pDst, uint64_t nElements) {
+	const uint8_t *src = (const uint8_t *)pSrc;
+	uint64_t nBlocks = nElements / 128;
+	const float *pScalePtr = (const float *)(src + ((nElements + 3) / 4));
+	float fScale = (pScalePtr[0] != 0.0f && !isnan(pScalePtr[0]) && !isinf(pScalePtr[0])) ? pScalePtr[0] : 1.0f;
+	float s_lut[4];
+	s_lut[0] = -fScale;
+	s_lut[1] = 0.0f;
+	s_lut[2] = fScale;
+	s_lut[3] = 0.0f;
+	for (uint64_t b = 0; b < nBlocks; b++) {
+		const uint8_t *qs = src + b * 32;
+		for (int j = 0; j < 32; j++) {
+			uint8_t byte = qs[j];
+			pDst[b * 128 + 0  + j] = s_lut[(byte >> 6) & 3];
+			pDst[b * 128 + 32 + j] = s_lut[(byte >> 4) & 3];
+			pDst[b * 128 + 64 + j] = s_lut[(byte >> 2) & 3];
+			pDst[b * 128 + 96 + j] = s_lut[byte & 3];
+		}
+	}
+}
+
 /*
 ================================================================================
   Native Madar Tensor Construction
@@ -643,6 +669,8 @@ static RingTensor *gguf_create_tensor_from_info(void *pRingState, RingGGUF *pGGU
 			ring_gguf_dequantize_q4_1(pRawData, pDst, pInfo->nElements);
 		} else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
 			ring_gguf_dequantize_q6_k(pRawData, pDst, pInfo->nElements);
+		} else if (pInfo->nType == RING_GGUF_TENSOR_I2_S) {
+			ring_gguf_dequantize_i2_s(pRawData, pDst, pInfo->nElements);
 		} else {
 			ring_tensor_delete(pRingState, pTensor);
 			return NULL;

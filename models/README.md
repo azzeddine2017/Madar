@@ -15,3 +15,8 @@ To download DeepSeek-R1-Distill-1.5B (~1.1 GB):
 ```cmd
 tools\download_deepseek.bat
 ```
+
+To download Microsoft BitNet b1.58 2B-4T (1.58-bit Native LLM, I2_S GGUF ~0.75 GB):
+```cmd
+tools\download_bitnet.bat
+```

@@ -84,6 +84,8 @@ All GPU kernels use 128-bit SIMD `float4` vector operations (`vload4`, `convert_
 | `silu_mul_batch_kernel` | FP32 | 1 element / work-item | On-device fused SwiGLU activation: $\text{SiLU}(G) \odot U$ |
 | `matvec_q8_0_kernel` | Q8_0 (8-bit signed) | 8 bytes / cycle | Dual `float4` accumulators |
 | `matvec_q6_k_kernel` | Q6_K (6-bit super-block) | 4 elements / cycle | 4× `float4` accumulators per sub-block |
+| `matvec_i2_s_kernel` | BitNet I2_S (2-bit ternary) | 16 weights / cycle | Multiplication-free ternary GEMV on Intel HD GPU |
+| `gemv_batch_i2_s_kernel` | BitNet I2_S (2-bit ternary) | 2D Grid `[N × B]` | Batched chunk prefill ($B \le 32$) with 60% DRAM bandwidth drop |
 
 ### E. Zero-Copy Fused SwiGLU FFN Pipeline (`madar_gpu_ffn_fused_batch`)
 

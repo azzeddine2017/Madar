@@ -32,6 +32,7 @@ typedef struct RingModelConfig {
 	float fNormEps;
 	float fRopeFreqBase;
 	int bIsBert;       /* 1 if BERT/XLM-RoBERTa encoder architecture */
+	int bIsBitNet;     /* 1 if BitNet b1.58 SubLN architecture with ReLU^2 */
 	int nPoolingType;  /* 1=mean, 2=cls */
 } RingModelConfig;
 
@@ -46,12 +47,14 @@ typedef struct RingLayerWeights {
 	RingGGUFTensorInfo *pAttnV_Bias;
 	RingGGUFTensorInfo *pAttnOut;
 	RingGGUFTensorInfo *pAttnOut_Bias;
+	RingGGUFTensorInfo *pAttnSubNorm;   /* BitNet inner attention SubLN */
 
 	RingGGUFTensorInfo *pFFNNorm;
 	RingGGUFTensorInfo *pFFNNorm_Bias;
 	RingGGUFTensorInfo *pFFNGate;
 	RingGGUFTensorInfo *pFFNUp;
 	RingGGUFTensorInfo *pFFNUp_Bias;
+	RingGGUFTensorInfo *pFFNSubNorm;    /* BitNet FFN SubLN */
 	RingGGUFTensorInfo *pFFNDown;
 	RingGGUFTensorInfo *pFFNDown_Bias;
 
@@ -117,6 +120,8 @@ typedef struct RingModel {
 	void *pGPUKernelQ6;
 	void *pGPUKernelQ4Batch;
 	void *pGPUKernelSiLUBatch;
+	void *pGPUKernelI2_S;
+	void *pGPUKernelI2_SBatch;
 	void *pGPUBufX;
 	void *pGPUBufY;
 	void *pGPUBufGate;

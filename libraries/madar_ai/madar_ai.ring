@@ -14,6 +14,10 @@ func model_open(cPath)
 		oModel = new DeepSeekModel(cPath)
 		return oModel
 	ok
+	if substr(cLower, "bitnet") > 0
+		oModel = new BitNetModel(cPath)
+		return oModel
+	ok
 	oModel = new QwenModel(cPath)
 	return oModel
 
@@ -38,6 +42,8 @@ class QwenModel
 	fTemp = 0.7
 	nMaxTokens = 64
 	fTokensPerSec = 0.0
+	nLastGenTokens = 0
+	fLastGenTime = 0.0
 
 	func init(cFilePath)
 		cLoadedPath = cFilePath
@@ -211,6 +217,62 @@ class DeepSeekModel from QwenModel
 			return trim(substr(cResponse, nEnd + 8))
 		ok
 		return trim(cResponse)
+
+class BitNetModel from QwenModel
+	bRawPrompt = false
+
+	func init(cFilePath)
+		super.init(cFilePath)
+		setGPU(false)
+		return self
+
+	func formatChatPrompt(cUserMessage, cSystemMessage)
+		# BitNet b1.58 2B-4T official Hugging Face & bitnet.cpp chat template
+		if bRawPrompt
+			return cUserMessage
+		ok
+		if cSystemMessage != NULL and cSystemMessage != ""
+			return "System: " + cSystemMessage + "<|eot_id|>User: " + cUserMessage + "<|eot_id|>Assistant: "
+		ok
+		return "User: " + cUserMessage + "<|eot_id|>Assistant: "
+
+	func generate(cPrompt, nTokens = 0)
+		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
+			nMaxTokens = nTokens
+		ok
+		if !bRawPrompt and not substr(cPrompt, "<|eot_id|>") and not substr(cPrompt, "User:")
+			cPrompt = formatChatPrompt(cPrompt, "")
+		ok
+		t0 = clock()
+		cOutput = madar_model_generate(hModel, cPrompt, nMaxTokens, fTemp)
+		t1 = clock()
+		dt = (t1 - t0) / clockspersecond()
+		if dt > 0.0
+			aToks = tokenize(cOutput)
+			nLastGenTokens = len(aToks)
+			fLastGenTime = dt
+			fTokensPerSec = nLastGenTokens / dt
+		ok
+		return cOutput
+
+	func generateStream(cPrompt, nTokens = 0)
+		if nTokens != NULL and isnumber(nTokens) and nTokens > 0
+			nMaxTokens = nTokens
+		ok
+		if !bRawPrompt and not substr(cPrompt, "<|eot_id|>") and not substr(cPrompt, "User:")
+			cPrompt = formatChatPrompt(cPrompt, "")
+		ok
+		t0 = clock()
+		cOutput = madar_model_generate_stream(hModel, cPrompt, nMaxTokens, fTemp)
+		t1 = clock()
+		dt = (t1 - t0) / clockspersecond()
+		if dt > 0.0
+			aToks = tokenize(cOutput)
+			nLastGenTokens = len(aToks)
+			fLastGenTime = dt
+			fTokensPerSec = nLastGenTokens / dt
+		ok
+		return cOutput
 
 class BgeModel
 	hModel

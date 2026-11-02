@@ -76,6 +76,7 @@ run_test "$SCRIPT_DIR/tensor" "test_tensor_math.ring"       "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_tensor_operators.ring"  "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_ggml.ring"              "TENSOR"
 run_test "$SCRIPT_DIR/tensor" "test_gguf_loader.ring"       "TENSOR"
+run_test "$SCRIPT_DIR/tensor" "test_bitnet_i2s.ring"        "TENSOR"
 
 # ----------------------------------------------------------
 # 3. AI Engine & BPE Tokenizer Synthetic Tests

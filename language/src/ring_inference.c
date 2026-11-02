@@ -388,6 +388,45 @@ static float dot_f32(const float *f, const float *x, int k) {
   }
   return sum;
 }
+
+static float dot_i2_s(const uint8_t *qs, const float *x, int k) {
+  int nBlocks = k / 128;
+  float sum = 0.0f;
+  static const float s_lut[4] = {-1.0f, 0.0f, 1.0f, 0.0f};
+  int b, j, m;
+
+  __m256 vsum0 = _mm256_setzero_ps();
+  __m256 vsum1 = _mm256_setzero_ps();
+
+  for (b = 0; b < nBlocks; b++) {
+    const uint8_t *bqs = qs + b * 32;
+    const float *bx0 = x + b * 128;
+    const float *bx1 = bx0 + 32;
+    const float *bx2 = bx0 + 64;
+    const float *bx3 = bx0 + 96;
+
+    for (j = 0; j < 32; j += 8) {
+      float w0[8], w1[8], w2[8], w3[8];
+      for (m = 0; m < 8; m++) {
+        uint8_t byte = bqs[j + m];
+        w0[m] = s_lut[(byte >> 6) & 3];
+        w1[m] = s_lut[(byte >> 4) & 3];
+        w2[m] = s_lut[(byte >> 2) & 3];
+        w3[m] = s_lut[byte & 3];
+      }
+      vsum0 =
+          _mm256_fmadd_ps(_mm256_loadu_ps(w0), _mm256_loadu_ps(bx0 + j), vsum0);
+      vsum1 =
+          _mm256_fmadd_ps(_mm256_loadu_ps(w1), _mm256_loadu_ps(bx1 + j), vsum1);
+      vsum0 =
+          _mm256_fmadd_ps(_mm256_loadu_ps(w2), _mm256_loadu_ps(bx2 + j), vsum0);
+      vsum1 =
+          _mm256_fmadd_ps(_mm256_loadu_ps(w3), _mm256_loadu_ps(bx3 + j), vsum1);
+    }
+  }
+  sum = hsum_float_8(_mm256_add_ps(vsum0, vsum1));
+  return sum;
+}
 #else
 static float dot_q4_0(const RingGGUFBlockQ4_0 *b, const float *x, int k) {
   int nBlocks = k / 32;
@@ -487,6 +526,28 @@ static float dot_f32(const float *f, const float *x, int k) {
   int i;
   for (i = 0; i < k; i++) {
     sum += f[i] * x[i];
+  }
+  return sum;
+}
+
+static float dot_i2_s(const uint8_t *qs, const float *x, int k) {
+  int nBlocks = k / 128;
+  float sum = 0.0f;
+  static const float s_lut[4] = {-1.0f, 0.0f, 1.0f, 0.0f};
+  int b, j;
+
+  for (b = 0; b < nBlocks; b++) {
+    const uint8_t *bqs = qs + b * 32;
+    const float *xb = x + b * 128;
+    for (j = 0; j < 32; j++) {
+      uint8_t byte = bqs[j];
+      float w0 = s_lut[(byte >> 6) & 3];
+      float w1 = s_lut[(byte >> 4) & 3];
+      float w2 = s_lut[(byte >> 2) & 3];
+      float w3 = s_lut[byte & 3];
+      sum +=
+          w0 * xb[0 + j] + w1 * xb[32 + j] + w2 * xb[64 + j] + w3 * xb[96 + j];
+    }
   }
   return sum;
 }
@@ -648,6 +709,29 @@ static void matvec_compute_rows(MatVecTask *task) {
     const uint8_t *pRow = pRaw + (size_t)task->nStartRow * rowStride;
     for (r = task->nStartRow; r < task->nEndRow; r++, pRow += rowStride) {
       val = dot_q6_k((const RingGGUFBlockQ6_K *)pRow, task->pX, K);
+      if (task->pBias) {
+        val +=
+            (task->pBiasInfo && task->pBiasInfo->nType == RING_GGUF_TENSOR_F16)
+                ? fast_fp16_to_fp32(((const ggml_fp16_t *)task->pBias)[r])
+                : ((const float *)task->pBias)[r];
+      }
+      task->pY[r] = val;
+    }
+    return;
+  } else if (nType == RING_GGUF_TENSOR_I2_S || nType == 35) {
+    size_t rowStride = (size_t)(K / 4);
+    const uint8_t *pRow = pRaw + (size_t)task->nStartRow * rowStride;
+    float scale = 1.0f;
+    if (task->pInfo) {
+      uint64_t packedBytes = (task->pInfo->nElements + 3) / 4;
+      const float *pScalePtr = (const float *)(pRaw + packedBytes);
+      if (pScalePtr[0] != 0.0f && !isnan(pScalePtr[0]) &&
+          !isinf(pScalePtr[0])) {
+        scale = pScalePtr[0];
+      }
+    }
+    for (r = task->nStartRow; r < task->nEndRow; r++, pRow += rowStride) {
+      val = dot_i2_s(pRow, task->pX, K) * scale;
       if (task->pBias) {
         val +=
             (task->pBiasInfo && task->pBiasInfo->nType == RING_GGUF_TENSOR_F16)
@@ -1042,6 +1126,91 @@ static const char *s_madar_cl_source =
     "    float g = gate[i];\n"
     "    float silu_g = g / (1.0f + exp(-g));\n"
     "    gate[i] = silu_g * up[i];\n"
+    "}\n"
+    "\n"
+    "typedef struct {\n"
+    "    ushort d;\n"
+    "    uchar qs[32];\n"
+    "} block_i2_s;\n"
+    "\n"
+    "__kernel void matvec_i2_s_kernel(\n"
+    "    __global const block_i2_s* W,\n"
+    "    __global const float* x,\n"
+    "    __global float* y,\n"
+    "    int K, int N)\n"
+    "{\n"
+    "    int r = get_global_id(0);\n"
+    "    if (r >= N) return;\n"
+    "    int num_blocks = K / 128;\n"
+    "    __global const block_i2_s* row = W + (size_t)r * num_blocks;\n"
+    "    float sum = 0.0f;\n"
+    "    for (int b = 0; b < num_blocks; b++) {\n"
+    "        float d = fp16_to_fp32(row[b].d);\n"
+    "        __global const uchar* qs = row[b].qs;\n"
+    "        __global const float* bx = x + b * 128;\n"
+    "        float bsum = 0.0f;\n"
+    "        for (int j = 0; j < 32; j += 4) {\n"
+    "            uchar4 bytes = vload4(0, qs + j);\n"
+    "            int4 w0 = (int4)((bytes.x & 3) - 1, ((bytes.x >> 2) & 3) - 1, "
+    "((bytes.x >> 4) & 3) - 1, ((bytes.x >> 6) & 3) - 1);\n"
+    "            int4 w1 = (int4)((bytes.y & 3) - 1, ((bytes.y >> 2) & 3) - 1, "
+    "((bytes.y >> 4) & 3) - 1, ((bytes.y >> 6) & 3) - 1);\n"
+    "            int4 w2 = (int4)((bytes.z & 3) - 1, ((bytes.z >> 2) & 3) - 1, "
+    "((bytes.z >> 4) & 3) - 1, ((bytes.z >> 6) & 3) - 1);\n"
+    "            int4 w3 = (int4)((bytes.w & 3) - 1, ((bytes.w >> 2) & 3) - 1, "
+    "((bytes.w >> 4) & 3) - 1, ((bytes.w >> 6) & 3) - 1);\n"
+    "            float4 vx0 = vload4(0, bx + (j + 0) * 4);\n"
+    "            float4 vx1 = vload4(0, bx + (j + 1) * 4);\n"
+    "            float4 vx2 = vload4(0, bx + (j + 2) * 4);\n"
+    "            float4 vx3 = vload4(0, bx + (j + 3) * 4);\n"
+    "            float4 s = convert_float4(w0) * vx0 + convert_float4(w1) * "
+    "vx1 + convert_float4(w2) * vx2 + convert_float4(w3) * vx3;\n"
+    "            bsum += (s.x + s.y + s.z + s.w);\n"
+    "        }\n"
+    "        sum += bsum * d;\n"
+    "    }\n"
+    "    y[r] = sum;\n"
+    "}\n"
+    "\n"
+    "__kernel void gemv_batch_i2_s_kernel(\n"
+    "    __global const block_i2_s* W,\n"
+    "    __global const float* x,\n"
+    "    __global float* y,\n"
+    "    int K, int N, int B)\n"
+    "{\n"
+    "    int r = get_global_id(0);\n"
+    "    int t = get_global_id(1);\n"
+    "    if (r >= N || t >= B) return;\n"
+    "    int num_blocks = K / 128;\n"
+    "    __global const block_i2_s* row = W + (size_t)r * num_blocks;\n"
+    "    __global const float* bx_base = x + (size_t)t * K;\n"
+    "    float sum = 0.0f;\n"
+    "    for (int b = 0; b < num_blocks; b++) {\n"
+    "        float d = fp16_to_fp32(row[b].d);\n"
+    "        __global const uchar* qs = row[b].qs;\n"
+    "        __global const float* bx = bx_base + b * 128;\n"
+    "        float bsum = 0.0f;\n"
+    "        for (int j = 0; j < 32; j += 4) {\n"
+    "            uchar4 bytes = vload4(0, qs + j);\n"
+    "            int4 w0 = (int4)((bytes.x & 3) - 1, ((bytes.x >> 2) & 3) - 1, "
+    "((bytes.x >> 4) & 3) - 1, ((bytes.x >> 6) & 3) - 1);\n"
+    "            int4 w1 = (int4)((bytes.y & 3) - 1, ((bytes.y >> 2) & 3) - 1, "
+    "((bytes.y >> 4) & 3) - 1, ((bytes.y >> 6) & 3) - 1);\n"
+    "            int4 w2 = (int4)((bytes.z & 3) - 1, ((bytes.z >> 2) & 3) - 1, "
+    "((bytes.z >> 4) & 3) - 1, ((bytes.z >> 6) & 3) - 1);\n"
+    "            int4 w3 = (int4)((bytes.w & 3) - 1, ((bytes.w >> 2) & 3) - 1, "
+    "((bytes.w >> 4) & 3) - 1, ((bytes.w >> 6) & 3) - 1);\n"
+    "            float4 vx0 = vload4(0, bx + (j + 0) * 4);\n"
+    "            float4 vx1 = vload4(0, bx + (j + 1) * 4);\n"
+    "            float4 vx2 = vload4(0, bx + (j + 2) * 4);\n"
+    "            float4 vx3 = vload4(0, bx + (j + 3) * 4);\n"
+    "            float4 s = convert_float4(w0) * vx0 + convert_float4(w1) * "
+    "vx1 + convert_float4(w2) * vx2 + convert_float4(w3) * vx3;\n"
+    "            bsum += (s.x + s.y + s.z + s.w);\n"
+    "        }\n"
+    "        sum += bsum * d;\n"
+    "    }\n"
+    "    y[(size_t)t * N + r] = sum;\n"
     "}\n";
 
 static int madar_gpu_init(RingModel *pModel) {
@@ -1052,7 +1221,7 @@ static int madar_gpu_init(RingModel *pModel) {
   cl_command_queue queue = NULL;
   cl_program prog = NULL;
   cl_kernel kQ4 = NULL, kQ4_1 = NULL, kQ8 = NULL, kQ6 = NULL, kQ4Batch = NULL,
-            kSiLUBatch = NULL;
+            kSiLUBatch = NULL, kI2_S = NULL, kI2_SBatch = NULL;
   cl_mem bufGate = NULL, bufUp = NULL, bufDown = NULL;
   cl_int ret = 0;
   char devName[128] = {0};
@@ -1063,6 +1232,14 @@ static int madar_gpu_init(RingModel *pModel) {
   if (envGPU && strcmp(envGPU, "0") == 0) {
     printf("  [Madar GPU] Disabled via MADAR_GPU=0 (Running Pure CPU AVX2)\n");
     return 0;
+  }
+
+  if (pModel->config.bIsBitNet) {
+    if (!envGPU || strcmp(envGPU, "1") != 0) {
+      /* Default to high-performance CPU AVX2 multi-threading for BitNet ternary
+       * models */
+      return 0;
+    }
   }
 
   if (!madar_opencl_load_dll())
@@ -1124,6 +1301,8 @@ static int madar_gpu_init(RingModel *pModel) {
   kQ6 = p_clCreateKernel(prog, "matvec_q6_k_kernel", &ret);
   kQ4Batch = p_clCreateKernel(prog, "gemv_batch_q4_0_kernel", &ret);
   kSiLUBatch = p_clCreateKernel(prog, "silu_mul_batch_kernel", &ret);
+  kI2_S = p_clCreateKernel(prog, "matvec_i2_s_kernel", &ret);
+  kI2_SBatch = p_clCreateKernel(prog, "gemv_batch_i2_s_kernel", &ret);
 
   p_clReleaseProgram(prog);
 
@@ -1166,6 +1345,10 @@ static int madar_gpu_init(RingModel *pModel) {
       p_clReleaseKernel(kQ4Batch);
     if (kSiLUBatch)
       p_clReleaseKernel(kSiLUBatch);
+    if (kI2_S)
+      p_clReleaseKernel(kI2_S);
+    if (kI2_SBatch)
+      p_clReleaseKernel(kI2_SBatch);
     if (bufX)
       p_clReleaseMemObject(bufX);
     if (bufY)
@@ -1189,6 +1372,8 @@ static int madar_gpu_init(RingModel *pModel) {
   pModel->pGPUKernelQ6 = kQ6;
   pModel->pGPUKernelQ4Batch = kQ4Batch;
   pModel->pGPUKernelSiLUBatch = kSiLUBatch;
+  pModel->pGPUKernelI2_S = kI2_S;
+  pModel->pGPUKernelI2_SBatch = kI2_SBatch;
   pModel->pGPUBufX = bufX;
   pModel->pGPUBufY = bufY;
   pModel->pGPUBufGate = bufGate;
@@ -1213,35 +1398,44 @@ static int madar_gpu_init(RingModel *pModel) {
   }
 
   /* Pre-map FFN weights (Gate, Up, Down) for all layers to zero-copy GPU memory
-   */
+   * (Q4_0 models) */
   if (pModel->aLayers) {
     for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
       RingLayerWeights *layer = &pModel->aLayers[l];
-      if (layer->pFFNGate && layer->pFFNGate->nSize > 0) {
+      if (layer->pFFNGate && layer->pFFNGate->nType == RING_GGUF_TENSOR_Q4_0 &&
+          layer->pFFNGate->nSize > 0) {
         const void *pData =
             ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNGate);
         if (pData) {
           layer->pGPUBufGate = (void *)p_clCreateBuffer(
               ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
               (size_t)layer->pFFNGate->nSize, (void *)pData, &ret);
+          if (ret != CL_SUCCESS)
+            layer->pGPUBufGate = NULL;
         }
       }
-      if (layer->pFFNUp && layer->pFFNUp->nSize > 0) {
+      if (layer->pFFNUp && layer->pFFNUp->nType == RING_GGUF_TENSOR_Q4_0 &&
+          layer->pFFNUp->nSize > 0) {
         const void *pData =
             ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNUp);
         if (pData) {
           layer->pGPUBufUp = (void *)p_clCreateBuffer(
               ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
               (size_t)layer->pFFNUp->nSize, (void *)pData, &ret);
+          if (ret != CL_SUCCESS)
+            layer->pGPUBufUp = NULL;
         }
       }
-      if (layer->pFFNDown && layer->pFFNDown->nSize > 0) {
+      if (layer->pFFNDown && layer->pFFNDown->nType == RING_GGUF_TENSOR_Q4_0 &&
+          layer->pFFNDown->nSize > 0) {
         const void *pData =
             ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNDown);
         if (pData) {
           layer->pGPUBufDown = (void *)p_clCreateBuffer(
               ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
               (size_t)layer->pFFNDown->nSize, (void *)pData, &ret);
+          if (ret != CL_SUCCESS)
+            layer->pGPUBufDown = NULL;
         }
       }
     }
@@ -1271,6 +1465,8 @@ static int madar_gpu_matvec(RingModel *pModel, RingGGUFTensorInfo *pInfo,
     kernel = (cl_kernel)pModel->pGPUKernelQ8;
   } else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
     kernel = (cl_kernel)pModel->pGPUKernelQ6;
+  } else if (pInfo->nType == RING_GGUF_TENSOR_I2_S) {
+    kernel = (cl_kernel)pModel->pGPUKernelI2_S;
   } else {
     return 0;
   }
@@ -1410,6 +1606,14 @@ static void madar_gpu_cleanup(RingModel *pModel) {
   if (pModel->pGPUKernelSiLUBatch) {
     p_clReleaseKernel((cl_kernel)pModel->pGPUKernelSiLUBatch);
     pModel->pGPUKernelSiLUBatch = NULL;
+  }
+  if (pModel->pGPUKernelI2_S) {
+    p_clReleaseKernel((cl_kernel)pModel->pGPUKernelI2_S);
+    pModel->pGPUKernelI2_S = NULL;
+  }
+  if (pModel->pGPUKernelI2_SBatch) {
+    p_clReleaseKernel((cl_kernel)pModel->pGPUKernelI2_SBatch);
+    pModel->pGPUKernelI2_SBatch = NULL;
   }
   if (pModel->pGPUQueue) {
     p_clReleaseCommandQueue((cl_command_queue)pModel->pGPUQueue);
@@ -1581,9 +1785,9 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo,
 
   /* Adaptive multi-threading:
      Distribute across worker threads if N >= 512 and total ops >= 1,500,000.
-     For smaller matrices (e.g. Attn K/V projections), executing directly on the
-     calling core with AVX2 FMA is faster than the round-trip latency of thread
-     synchronization. */
+     For smaller matrices (e.g. Attn K/V projections), executing directly on
+     the calling core with AVX2 FMA is faster than the round-trip latency of
+     thread synchronization. */
   if (pModel->nThreads >= 2 && N >= 512 && ((int64_t)N * K >= 1500000) &&
       pModel->nWorkerCount > 0) {
     nTotalThreads = pModel->nThreads;
@@ -1871,6 +2075,14 @@ static float gguf_get_f32_val(RingGGUFKV *kv, float defVal) {
     return kv->value.val.f32;
   if (kv->value.nType == RING_GGUF_TYPE_FLOAT64)
     return (float)kv->value.val.f64;
+  if (kv->value.nType == RING_GGUF_TYPE_UINT32)
+    return (float)kv->value.val.u32;
+  if (kv->value.nType == RING_GGUF_TYPE_INT32)
+    return (float)kv->value.val.i32;
+  if (kv->value.nType == RING_GGUF_TYPE_UINT64)
+    return (float)kv->value.val.u64;
+  if (kv->value.nType == RING_GGUF_TYPE_INT64)
+    return (float)kv->value.val.i64;
   return defVal;
 }
 
@@ -1929,6 +2141,8 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
   pModel->config.bIsBert =
       (strcmp(arch, "bert") == 0 || strcmp(arch, "xlm-roberta") == 0 ||
        strcmp(arch, "roberta") == 0);
+  pModel->config.bIsBitNet =
+      (strcmp(arch, "bitnet-b1.58") == 0 || strcmp(arch, "bitnet") == 0);
 
   /* Vocabulary */
   pModel->config.nVocab = pTok->nVocabSize;
@@ -2030,6 +2244,7 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
       pModel->pOutput->nType != RING_GGUF_TENSOR_Q4_1 &&
       pModel->pOutput->nType != RING_GGUF_TENSOR_Q8_0 &&
       pModel->pOutput->nType != RING_GGUF_TENSOR_Q6_K &&
+      pModel->pOutput->nType != RING_GGUF_TENSOR_I2_S &&
       pModel->pOutput->nType != RING_GGUF_TENSOR_F16 &&
       pModel->pOutput->nType != RING_GGUF_TENSOR_F32) {
     if (pModel->pTokenEmbd &&
@@ -2037,6 +2252,7 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
          pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1 ||
          pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0 ||
          pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K ||
+         pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_I2_S ||
          pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16 ||
          pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F32)) {
       printf("  [Info] output.weight type (%u) not supported. Using tied "
@@ -2122,6 +2338,14 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
     snprintf(key, sizeof(key), "blk.%u.attn_output.bias", l);
     pModel->aLayers[l].pAttnOut_Bias = ring_gguf_find_tensor(pGGUF, key);
 
+    snprintf(key, sizeof(key), "blk.%u.attn_sub_norm.weight", l);
+    pModel->aLayers[l].pAttnSubNorm = ring_gguf_find_tensor(pGGUF, key);
+    if (!pModel->aLayers[l].pAttnSubNorm) {
+      snprintf(key, sizeof(key),
+               "model.layers.%u.self_attn.inner_attn_ln.weight", l);
+      pModel->aLayers[l].pAttnSubNorm = ring_gguf_find_tensor(pGGUF, key);
+    }
+
     snprintf(key, sizeof(key), "blk.%u.ffn_norm.weight", l);
     pModel->aLayers[l].pFFNNorm = ring_gguf_find_tensor(pGGUF, key);
     if (!pModel->aLayers[l].pFFNNorm) {
@@ -2156,6 +2380,13 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
     snprintf(key, sizeof(key), "blk.%u.ffn_up.bias", l);
     pModel->aLayers[l].pFFNUp_Bias = ring_gguf_find_tensor(pGGUF, key);
 
+    snprintf(key, sizeof(key), "blk.%u.ffn_sub_norm.weight", l);
+    pModel->aLayers[l].pFFNSubNorm = ring_gguf_find_tensor(pGGUF, key);
+    if (!pModel->aLayers[l].pFFNSubNorm) {
+      snprintf(key, sizeof(key), "model.layers.%u.mlp.ffn_layernorm.weight", l);
+      pModel->aLayers[l].pFFNSubNorm = ring_gguf_find_tensor(pGGUF, key);
+    }
+
     snprintf(key, sizeof(key), "blk.%u.ffn_down.weight", l);
     pModel->aLayers[l].pFFNDown = ring_gguf_find_tensor(pGGUF, key);
     if (!pModel->aLayers[l].pFFNDown) {
@@ -2167,8 +2398,8 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
   }
 
   if (pModel->config.nLayers > 0 && !pModel->aLayers[0].pAttnQ) {
-    printf(
-        "\n[MADAR AI] Error: Layer 0 attention Q weights not found in GGUF!\n");
+    printf("\n[MADAR AI] Error: Layer 0 attention Q weights not found in "
+           "GGUF!\n");
     ring_model_free(pModel);
     return NULL;
   }
@@ -2229,8 +2460,8 @@ RING_API RingModel *ring_model_load(const char *cFileName) {
   pModel->pLogits = (float *)calloc(pModel->config.nVocab, sizeof(float));
 
 #ifdef _WIN32
-  /* Initialize Persistent Thread Pool for Parallel Inference (Supports up to 8
-   * threads) */
+  /* Initialize Persistent Thread Pool for Parallel Inference (Supports up to
+   * 8 threads) */
   pModel->nWorkerCount = RING_MODEL_MAX_WORKERS;
   pModel->bWorkerShutdown = 0;
   {
@@ -2636,7 +2867,14 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos,
       }
     }
 
-    /* Attention Output Projection */
+    /* Attention Output Projection (SubLN in BitNet) */
+    if (layer->pAttnSubNorm) {
+      const float *subNormW = (const float *)ring_gguf_get_tensor_data(
+          pModel->pGGUF, layer->pAttnSubNorm);
+      if (subNormW) {
+        rmsnorm(pModel->pActAttOut, pModel->pActAttOut, subNormW, nEmbd, eps);
+      }
+    }
     matvec_multiply(pModel, layer->pAttnOut, pModel->pActAttOut, attnOut, NULL);
 
     /* Residual Addition: x = x + attnOut */
@@ -2657,18 +2895,33 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos,
                                                         layer->pFFNNorm);
     rmsnorm(pModel->pActXB, pModel->pActX, ffnNormW, nEmbd, eps);
 
-    /* SwiGLU FFN: Attempt GPU Fused Pipeline First */
+    /* SwiGLU / BitNet FFN: Attempt GPU Fused Pipeline First */
     if (!madar_gpu_ffn_fused(pModel, layer, pModel->pActXB, ffnOut)) {
-      /* Fallback to CPU Multi-Threaded SwiGLU */
+      /* Fallback to CPU Multi-Threaded FFN */
       matvec_multiply_gpu(pModel, layer->pFFNGate, layer->pGPUBufGate,
                           pModel->pActXB, pModel->pActHB, NULL);
       matvec_multiply_gpu(pModel, layer->pFFNUp, layer->pGPUBufUp,
                           pModel->pActXB, pModel->pActHB2, NULL);
 
-      for (i = 0; i < nFF; i++) {
-        g = pModel->pActHB[i];
-        silu_g = g / (1.0f + expf(-g));
-        pModel->pActHB[i] = silu_g * pModel->pActHB2[i];
+      if (pModel->config.bIsBitNet) {
+        for (i = 0; i < nFF; i++) {
+          g = pModel->pActHB[i];
+          float relu_g = g > 0.0f ? g : 0.0f;
+          pModel->pActHB[i] = (relu_g * relu_g) * pModel->pActHB2[i];
+        }
+        if (layer->pFFNSubNorm) {
+          const float *subNormW = (const float *)ring_gguf_get_tensor_data(
+              pModel->pGGUF, layer->pFFNSubNorm);
+          if (subNormW) {
+            rmsnorm(pModel->pActHB, pModel->pActHB, subNormW, nFF, eps);
+          }
+        }
+      } else {
+        for (i = 0; i < nFF; i++) {
+          g = pModel->pActHB[i];
+          silu_g = g / (1.0f + expf(-g));
+          pModel->pActHB[i] = silu_g * pModel->pActHB2[i];
+        }
       }
 
       matvec_multiply_gpu(pModel, layer->pFFNDown, layer->pGPUBufDown,
@@ -2744,7 +2997,8 @@ RING_API int ring_model_sample(RingModel *pModel, float fTemp) {
     return bestToken;
   }
 
-  /* Top-K Filtering (K = 40) to eliminate uniform tail noise across 151k vocab
+  /* Top-K Filtering (K = 40) to eliminate uniform tail noise across 151k
+   * vocab
    */
   if (topK > (int)nVocab)
     topK = (int)nVocab;
@@ -2990,6 +3244,13 @@ static void ring_model_forward_chunk(RingModel *pModel, const int *tokens,
         }
       }
 
+      if (layer->pAttnSubNorm) {
+        const float *subNormW = (const float *)ring_gguf_get_tensor_data(
+            pModel->pGGUF, layer->pAttnSubNorm);
+        if (subNormW) {
+          rmsnorm(pModel->pActAttOut, pModel->pActAttOut, subNormW, nEmbd, eps);
+        }
+      }
       matvec_multiply(pModel, layer->pAttnOut, pModel->pActAttOut,
                       pModel->pActAttnProj, NULL);
 
@@ -3019,9 +3280,24 @@ static void ring_model_forward_chunk(RingModel *pModel, const int *tokens,
         matvec_multiply(pModel, layer->pFFNGate, inXB, pModel->pActHB, NULL);
         matvec_multiply(pModel, layer->pFFNUp, inXB, pModel->pActHB2,
                         layer->pFFNUp_Bias);
-        for (i = 0; i < nFF; i++) {
-          float g = pModel->pActHB[i];
-          pModel->pActHB[i] = (g / (1.0f + expf(-g))) * pModel->pActHB2[i];
+        if (pModel->config.bIsBitNet) {
+          for (i = 0; i < nFF; i++) {
+            float g = pModel->pActHB[i];
+            float relu_g = g > 0.0f ? g : 0.0f;
+            pModel->pActHB[i] = (relu_g * relu_g) * pModel->pActHB2[i];
+          }
+          if (layer->pFFNSubNorm) {
+            const float *subNormW = (const float *)ring_gguf_get_tensor_data(
+                pModel->pGGUF, layer->pFFNSubNorm);
+            if (subNormW) {
+              rmsnorm(pModel->pActHB, pModel->pActHB, subNormW, nFF, eps);
+            }
+          }
+        } else {
+          for (i = 0; i < nFF; i++) {
+            float g = pModel->pActHB[i];
+            pModel->pActHB[i] = (g / (1.0f + expf(-g))) * pModel->pActHB2[i];
+          }
         }
         matvec_multiply(pModel, layer->pFFNDown, pModel->pActHB, outFFN,
                         layer->pFFNDown_Bias);
@@ -3235,10 +3511,12 @@ RING_API char *ring_model_step(RingModel *pModel) {
 
   nextToken = ring_model_sample(pModel, pModel->fCurrentTemp);
 
-  /* Check Qwen & Standard Stop Tokens */
+  /* Check Qwen & BitNet & Standard Stop Tokens */
   if (pModel->nGenCount > 0 && (nextToken == pModel->pTokenizer->nEosToken ||
                                 nextToken == 151643 ||  /* <|endoftext|> */
-                                nextToken == 151645)) { /* <|im_end|> */
+                                nextToken == 151645 ||  /* <|im_end|> */
+                                nextToken == 128001 ||  /* <|end_of_text|> */
+                                nextToken == 128009)) { /* <|eot_id|> */
     pModel->bGenFinished = 1;
     if (pModel->pTokenizer && pModel->pTokenizer->nUtf8BufLen > 0) {
       char flushBuf[16];
@@ -3819,8 +4097,8 @@ RING_API RingTensor *ring_model_embedding(void *pRingState, RingModel *pModel,
 
   ring_model_reset_kv(pModel);
 
-  /* Forward all prompt tokens through Transformer layers and accumulate hidden
-   * states for Mean Pooling */
+  /* Forward all prompt tokens through Transformer layers and accumulate
+   * hidden states for Mean Pooling */
   for (i = 0; i < nPromptTokens; i++) {
     ring_model_forward_ex(pModel, promptTokens[i], i, 0);
 

@@ -50,6 +50,8 @@ echo.
 "%RING_EXE%" test_ggml.ring
 echo.
 "%RING_EXE%" test_gguf_loader.ring
+echo.
+"%RING_EXE%" test_bitnet_i2s.ring
 cd "%~dp0"
 
 echo.
