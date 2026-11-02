@@ -153,7 +153,7 @@ class AgentApp
 		return ceil(nChars / 3.5)
 
 	# Build Scoped & Ephemeral Prompt based on Detected Intent
-	func buildScopedPrompt(cUserInput, oIntent = NULL)
+	async func buildScopedPrompt(cUserInput, oIntent = NULL)
 		# 1. Compact Base System Persona
 		cSystemPrompt = "You are MadarAgent, a precise, intelligent, and autonomous AI assistant." + nl +
 			"Always be helpful, concise, technically rigorous, and speak fluent Arabic and English as requested." + nl
@@ -194,7 +194,7 @@ class AgentApp
 		cRagContext = ""
 		if bNeedsRag and nRagTopK > 0
 			t_rag0 = clock()
-			aRetrieved = oMemory.search(cUserInput, nRagTopK)
+			aRetrieved = await oMemory.searchAsync(cUserInput, nRagTopK)
 			nRagDuration = (clock() - t_rag0) / clockspersecond()
 			if len(aRetrieved) > 0
 				? uiRagBadge(len(aRetrieved))
@@ -237,7 +237,7 @@ class AgentApp
 ? uiSuccess(cPrompt) 
 		return cPrompt
 
-	func processTurn(cUserInput)
+	async func processTurn(cUserInput)
 		cUserInput = trim(cUserInput)
 		if cUserInput = "" return ok
 
@@ -280,7 +280,7 @@ class AgentApp
 					cExpr = oEntityExtractor.extractMathExpression(cUserInput)
 					if cExpr != ""
 						? uiToolCallBadge("calc", cExpr)
-						cRes = oRegistry.execute("calc", [cExpr])
+						cRes = await oRegistry.executeAsync("calc", [cExpr])
 						? uiToolResultBlock("calc", cRes)
 						cDirectResp = f"الناتج الحسابي لـ ({cExpr}) هو: {cRes}"
 						see uiAgentPrompt("MadarAgent")
@@ -296,7 +296,7 @@ class AgentApp
 		# -----------------------------------------------------------------
 		# Path 3: Scoped LLM Execution (Lightweight Focused Prompt)
 		# -----------------------------------------------------------------
-		cPrompt = buildScopedPrompt(cUserInput, oIntent)
+		cPrompt = await buildScopedPrompt(cUserInput, oIntent)
 		nPromptChars = len(cPrompt)
 		nEstPromptTokens = ceil(nPromptChars / 3.5)
 
@@ -316,7 +316,17 @@ class AgentApp
 		t_gen0 = clock()
 		cResponse = ""
 		nGenTokens = 0
+		bCancelled = false
 		while oModel.hasMore()
+			# Non-blocking cancellation check (Esc = 27, Ctrl+C = 3)
+			if checkkey()
+				nKey = getkey()
+				if nKey = 27 or nKey = 3
+					bCancelled = true
+					? nl + uiWarn("  ✋ [Generation Cancelled by User (Esc)]")
+					exit
+				ok
+			ok
 			cChunk = oModel.step()
 			if cChunk != ""
 				see cChunk
@@ -333,10 +343,21 @@ class AgentApp
 			uiDivider()
 			? uiInfo("  ⏱ [Performance Profiler]")
 			? "    ├─ " + uiMuted("Prompt Processing (Prefill): ") + f"{round(nPrefillSec, 2)}s ({nPromptTokens} tokens, {round(nPromptTokens / (nPrefillSec + 0.001), 1)} tok/s)"
-			? "    └─ " + uiMuted("Generation Stream:           ") + f"{round(nGenSec, 2)}s ({nGenTokens} tokens, {round(fTokPerSec, 1)} tok/s)"
+			cStatusStr = ""
+			if bCancelled cStatusStr = " " + uiWarn("[Cancelled]") ok
+			? "    └─ " + uiMuted("Generation Stream:           ") + f"{round(nGenSec, 2)}s ({nGenTokens} tokens, {round(fTokPerSec, 1)} tok/s)" + cStatusStr
 			uiDivider()
 		ok
         
+		# On cancellation, safely preserve session history and skip accidental tool execution
+		if bCancelled
+			if cResponse != ""
+				aHistory + [:role = "user", :content = cUserInput]
+				aHistory + [:role = "assistant", :content = cResponse + " [Cancelled]"]
+			ok
+			return
+		ok
+
 		# Check for Tool Calls
 		if oToolCaller.hasToolCall(cResponse)
 			aCalls = oToolCaller.extractToolCalls(cResponse)
@@ -351,7 +372,7 @@ class AgentApp
 					if len(cArgsStr) > 2 cArgsStr = left(cArgsStr, len(cArgsStr) - 2) ok
 
 					? uiToolCallBadge(cToolName, cArgsStr)
-					cRes = oRegistry.execute(cToolName, aArgs)
+					cRes = await oRegistry.executeAsync(cToolName, aArgs)
 					? uiToolResultBlock(cToolName, cRes)
 					cToolOutput += f"<tool_response name='{cToolName}'>" + nl + cRes + nl + "</tool_response>" + nl
 				next
@@ -378,7 +399,7 @@ class AgentApp
 	func run()
 		if !bRunning return ok
 
-		? uiHighlight("MadarAgent Terminal Interface. Type your prompt, or /help for commands, 'exit' to quit.") + nl
+		? uiHighlight("MadarAgent Terminal Interface. Type your prompt, /help for commands, 'exit' to quit. [Press Esc to cancel generation]") + nl
 
 		while bRunning
 			see uiUserPrompt()
@@ -394,5 +415,5 @@ class AgentApp
 				exit
 			ok
 
-			processTurn(cInput)
+			await processTurn(cInput)
 		end

@@ -151,3 +151,16 @@ class ToolCallingEngine
 			cResponses += "</tool_response>" + nl
 		next
 		return cResponses
+
+	async func executeCallsAsync(aCalls)
+		if len(aCalls) = 0 return "" ok
+		cResponses = ""
+		for callItem in aCalls
+			cName = callItem[1]
+			aArgs = callItem[2]
+			cRes = await oRegistry.executeAsync(cName, aArgs)
+			cResponses += f"<tool_response name='{cName}'>" + nl
+			cResponses += cRes + nl
+			cResponses += "</tool_response>" + nl
+		next
+		return cResponses

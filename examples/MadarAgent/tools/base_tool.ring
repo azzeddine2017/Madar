@@ -22,6 +22,9 @@ class AgentTool
 		# Subclasses MUST override this method
 		return "Error: Tool execution not implemented for " + cName
 
+	async func executeAsync(aArgs)
+		return await execute(aArgs)
+
 	func toXmlSchema()
 		cParamStr = ""
 		for p in aParameters
@@ -87,6 +90,19 @@ class ToolRegistry
 		# Safe execution boundary
 		try
 			cResult = oTool.execute(aArgs)
+			return "" + cResult
+		catch
+			return f"Error executing tool '{cName}': {cCatchError}"
+		done
+
+	async func executeAsync(cName, aArgs)
+		oTool = getTool(cName)
+		if oTool = NULL
+			return f"Error: Tool '{cName}' is not registered in ToolRegistry."
+		ok
+
+		try
+			cResult = await oTool.executeAsync(aArgs)
 			return "" + cResult
 		catch
 			return f"Error executing tool '{cName}': {cCatchError}"

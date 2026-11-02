@@ -39,6 +39,7 @@ Madar transforms the lightweight Ring Core engine into an AI-first runtime throu
 |      Bidirectional Transformer Encoder (BGE-M3 / BERT)      |
 |    - Dual Tokenizers: GPT-2 / Qwen BPE & SentencePiece (SPM)|
 |    - KV-Cache Engine & Prefill Logits Optimization          |
+|    - 2D Chunked Prefill Engine (32x DRAM Load Reduction)    |
 |    - CLS & Mean Pooling L2-Normalized Embedding Engine      |
 |    - See docs/AI_ENGINE.md for deep SIMD details            |
 +-------------------------------------------------------------+
@@ -48,6 +49,8 @@ Madar transforms the lightweight Ring Core engine into an AI-first runtime throu
 |    - Dynamic LoadLibrary("OpenCL.dll") — Zero SDK deps      |
 |    - Zero-Copy CL_MEM_USE_HOST_PTR for all FFN weights      |
 |    - Vectorized float4 kernels: Q4_0, Q8_0, Q6_K           |
+|    - 2D Batched Prefill Kernel (gemv_batch_q4_0_kernel)     |
+|    - On-Device Fused SwiGLU Pipeline (silu_mul_batch_kernel)|
 |    - Work-Group 64 tuned for Intel HD Graphics SIMD-16      |
 |    - Hybrid CPU+GPU: GPU = FFN + LM Head, CPU = Attention   |
 |    - Runtime toggle: /gpu on|off  or  model.setGPU(1/0)    |

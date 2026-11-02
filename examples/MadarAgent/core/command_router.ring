@@ -139,7 +139,7 @@ class CommandRouter
 			see "  Usage: /remember <fact or rule to store in memory>" + nl
 			return
 		ok
-		if oApp.oMemory.rememberFact(cFact)
+		if await oApp.oMemory.rememberFactAsync(cFact)
 			see "  [Memory] Fact stored successfully in Working Memory." + nl
 		else
 			see "  [Memory Error] Failed to store fact." + nl
@@ -150,7 +150,7 @@ class CommandRouter
 			see "  Usage: /recall <search query>" + nl
 			return
 		ok
-		aRes = oApp.oMemory.search(cQuery, 3)
+		aRes = await oApp.oMemory.searchAsync(cQuery, 3)
 		see nl + f"Search Results for '{cQuery}' ({len(aRes)} matches):" + nl
 		if len(aRes) = 0
 			see "  No matching chunks found." + nl
@@ -170,7 +170,7 @@ class CommandRouter
 			return
 		ok
 		see f"  [Learning] Ingesting and embedding '{cFilePath}'..." + nl
-		nAdded = oApp.oMemory.learnFile(cFilePath)
+		nAdded = await oApp.oMemory.learnFileAsync(cFilePath)
 		see f"  [Learned] Added {nAdded} chunks to Working Memory." + nl
 
 	func handleClearMemory()

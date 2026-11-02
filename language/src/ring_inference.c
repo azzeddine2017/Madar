@@ -3016,8 +3016,6 @@ static void ring_model_forward_chunk(RingModel *pModel, const int *tokens,
       for (t = 0; t < nChunkSize; t++) {
         const float *inXB = actBatchFFNIn + (size_t)t * nEmbd;
         float *outFFN = actBatchFFNOut + (size_t)t * nEmbd;
-        matvec_multiply(pModel, layer->pFFNGate, inXB, pModel->pActHB,
-                        layer->pFFNGate_Bias);
         matvec_multiply(pModel, layer->pFFNGate, inXB, pModel->pActHB, NULL);
         matvec_multiply(pModel, layer->pFFNUp, inXB, pModel->pActHB2,
                         layer->pFFNUp_Bias);

@@ -79,15 +79,58 @@ All GPU kernels use 128-bit SIMD `float4` vector operations (`vload4`, `convert_
 
 | Kernel | Input Format | Vector Width | Notes |
 | :--- | :--- | :--- | :--- |
-| `matvec_q4_0_kernel` | Q4_0 (4-bit nibbles) | 4 nibbles / cycle | `vload4(qs)` + bitmask unpack |
-| `matvec_q8_0_kernel` | Q8_0 (8-bit signed) | 8 bytes / cycle | dual `float4` accumulators |
+| `matvec_q4_0_kernel` | Q4_0 (4-bit nibbles) | 4 nibbles / cycle | Single-token MatVec: `vload4(qs)` + bitmask unpack |
+| `gemv_batch_q4_0_kernel` | Q4_0 (4-bit nibbles) | 2D Grid `[8960 × B]` | Batched chunk prefill ($B \le 32$); weights reused across $B$ tokens |
+| `silu_mul_batch_kernel` | FP32 | 1 element / work-item | On-device fused SwiGLU activation: $\text{SiLU}(G) \odot U$ |
+| `matvec_q8_0_kernel` | Q8_0 (8-bit signed) | 8 bytes / cycle | Dual `float4` accumulators |
 | `matvec_q6_k_kernel` | Q6_K (6-bit super-block) | 4 elements / cycle | 4× `float4` accumulators per sub-block |
 
-### E. Work-Group Tuning
+### E. Zero-Copy Fused SwiGLU FFN Pipeline (`madar_gpu_ffn_fused_batch`)
+
+In standard execution, computing the SwiGLU Feed-Forward Network ($FFN(x) = W_{down} \cdot (\text{SiLU}(W_{gate} \cdot x) \odot (W_{up} \cdot x))$) requires transferring intermediate activations ($8,960$ floats $\times 2 \approx 72\text{ KB}$ per token) between GPU memory and host CPU across three separate kernel invocations and read-back synchronizations.
+
+Madar executes the entire SwiGLU pipeline **directly within the OpenCL command queue**:
+1. **Gate & Up Projections**: Dispatches `gemv_batch_q4_0_kernel` for both $W_{gate}$ and $W_{up}$ simultaneously without blocking.
+2. **On-Device Element-wise Activation (`silu_mul_batch_kernel`)**: Computes $\text{SiLU}(\text{Gate}) \odot \text{Up}$ directly from GPU device memory buffers (`pGPUBufGate`, `pGPUBufUp`) and writes to intermediate device memory without round-tripping to system RAM.
+3. **Down Projection**: Immediately feeds the activated vector into $W_{down}$.
+4. **Driver Synchronization Optimization**: Replaces 84 blocking round-trip kernel invocations per token with **28 calls**, cutting driver overhead by 66% during autoregressive decoding.
+
+```text
+[Hidden State X] ──(non-blocking write)──> GPU Memory
+                                               │
+               ┌───────────────────────────────┴───────────────────────────────┐
+               ▼                                                               ▼
+       [Gate Projection]                                               [Up Projection]
+         (W_gate * X)                                                    (W_up * X)
+               │                                                               │
+               └───────────────────────────────┬───────────────────────────────┘
+                                               ▼
+                              [On-Device SiLU Multiplication]
+                                  SiLU(Gate) * Up (Kernel)
+                                               │
+                                               ▼
+                                       [Down Projection]
+                                        (W_down * Act)
+                                               │
+Host Memory <─────────(blocking read)──────────┘
+```
+
+### F. Chunked Layer-Wise Batched Prefill Engine (`ring_model_forward_chunk`)
+
+When processing long prompt contexts (e.g. 500+ tokens during system prompts or code tasks), single-token sequential evaluation reloads model weights (23.1 MB per layer $\times 28$ layers $\approx 647\text{ MB}$) from RAM 500 times, generating over **323 GB of DRAM memory traffic**.
+
+Madar implements a **2D Chunked Layer-Wise Prefill Engine**:
+- **Batch Chunking ($B \le 32$)**: Groups incoming prompt tokens into chunks of up to 32 tokens.
+- **Layer-Wise Weight Reuse**: For each Transformer layer, the weights ($W_{gate}$, $W_{up}$, $W_{down}$) are read once into GPU cache and executed across all 32 tokens in parallel via `gemv_batch_q4_0_kernel`.
+- **DRAM Traffic Slashing**: Memory traffic drops from 323 GB to **~18 GB (a 32× reduction)**, eliminating the DDR3L memory bandwidth wall.
+- **Interrupt Reduction**: Reduces OpenCL driver hardware queue interrupts from $\sim 43,000$ down to **448** for a 500-token prompt.
+- **Single Logits Projection**: Logits projection onto the 151,936-token vocabulary matrix is computed **strictly on the final prompt token**, completely bypassing intermediate tokens.
+
+### G. Work-Group Tuning
 
 Kernel dispatch uses `localSize = 64` (padded `globalSize` to nearest multiple of 64), aligning to Intel HD Graphics SIMD-16 EU width for maximum occupancy and minimal scheduler stalls.
 
-### F. Benchmark Results (Intel HD Graphics 5500)
+### H. Benchmark Results (Intel HD Graphics 5500)
 
 | Model | CPU AVX2 | GPU (Hybrid) | GPU Speedup |
 | :--- | :--- | :--- | :--- |

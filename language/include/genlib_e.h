@@ -193,6 +193,10 @@ void ring_vm_generallib_customprint(void *pPointer, const char *cCommand);
 void ring_vm_generallib_input(void *pPointer);
 
 void ring_vm_generallib_getchar(void *pPointer);
+
+void ring_vm_generallib_checkkey(void *pPointer);
+
+void ring_vm_generallib_getkey(void *pPointer);
 /* Date and Time */
 
 void ring_vm_generallib_clock(void *pPointer);

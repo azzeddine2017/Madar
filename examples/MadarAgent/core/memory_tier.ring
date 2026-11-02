@@ -48,11 +48,17 @@ class TwoTierMemory
 		saveWorking()
 		return (oChunk != NULL)
 
+	async func rememberFactAsync(cFact, cCategory = "user_fact")
+		return await rememberFact(cFact, cCategory)
+
 	func learnFile(cFilePath)
 		if not fexists(cFilePath) return 0 ok
 		nCount = oWorkingKB.addFile(cFilePath, 40)
 		saveWorking()
 		return nCount
+
+	async func learnFileAsync(cFilePath)
+		return await learnFile(cFilePath)
 
 	func saveWorking()
 		if len(oWorkingKB.aChunks) > 0
@@ -111,6 +117,9 @@ class TwoTierMemory
 			return aReversed[1:nTopK]
 		ok
 		return aReversed
+
+	async func searchAsync(cQuery, nTopK = 3)
+		return await search(cQuery, nTopK)
 
 	func getStats()
 		nBaseCount = len(oBaseKB.aChunks)

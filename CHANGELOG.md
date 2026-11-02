@@ -23,10 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Single Non-Blocking Write & Read**: Emits a single non-blocking write (`CL_FALSE`) for hidden state $x$, and a single blocking read (`CL_TRUE`) for the final feed-forward output $ffnOut$.
   - **3x Autoregressive Generation Speedup**: Reduced synchronous blocking driver calls during single-token decoding (`ring_model_step`) from 84 down to 28 calls per token.
 
+- **Native Non-Blocking Console Keyboard Engine (`checkkey()`, `kbhit()`, `getkey()` - `language/src/genlib_e.c`, `language/include/genlib_e.h`):**
+  - Added `checkkey()` and `kbhit()` functions returning `1` if a key is waiting in the input buffer and `0` otherwise, without blocking the thread (`_kbhit()` on Windows, zero-timeout `select()` on POSIX).
+  - Added `getkey()` returning the ASCII integer code of the pressed key (`_getch()` on Windows, non-blocking `read()` on POSIX).
+
+- **Interactive Generation Cancellation & Non-Blocking Terminal in MadarAgent (`examples/MadarAgent/app.ring`):**
+  - Integrated real-time polling during `oModel.step()` streaming loop, allowing users to press `Esc` (27) or `Ctrl+C` (3) to immediately halt token generation.
+  - **Zero State Loss**: Gracefully exits the generation loop, updates elapsed time and token-per-second statistics in the performance profiler, safely preserves turn history, and returns to `You > ` prompt without crashing the session or dropping vector memory.
+
 ### Fixed
 
+- **MSVC Header Inclusion Order & Self-Contained Header Guards (`language/src/ring_inference.c`, `language/include/ring_gguf.h`, `language/include/ring_inference.h`):**
+  - **Header Precedence Fix**: Corrected include order in `language/src/ring_inference.c` to load root header `ring.h` before `ring_inference.h`.
+  - **Defensive Self-Contained Header Guards**: Added idempotent `#ifndef ring_h / #include "ring.h" / #endif` guards in `language/include/ring_gguf.h` and `language/include/ring_inference.h`, eliminating compile errors (`C2065: RING_TENSOR_MAX_DIMS`, `C2054: RING_API`, `C2061: ggml_fp16_t`) when sub-headers are included standalone or out-of-order.
+
 - **MSVC Compiler Compatibility in Core Inference Engine (`language/src/ring_inference.c`):**
-  - Resolved `C2039: 'pFFNGate_Bias': is not a member of 'RingLayerWeights'` and `C2198: too few arguments for call` by passing `NULL` for gate bias in the CPU fallback path of `ring_model_forward_chunk`.
+  - Resolved `C2039: 'pFFNGate_Bias': is not a member of 'RingLayerWeights'` and `C2198: too few arguments for call` in both the single-token forward pass and the chunk prefill CPU fallback path (`ring_model_forward_chunk`) by removing invalid gate bias references and properly passing `NULL`.
   - Added dedicated GPU buffer handles (`pGPUBufGate`, `pGPUBufUp`, `pGPUBufDown`) and kernel pointers (`pGPUKernelQ4Batch`, `pGPUKernelSiLUBatch`) to `RingModel` struct definition.
 
 ---

@@ -7,6 +7,10 @@
 #ifndef ring_gguf_h
 #define ring_gguf_h
 
+#ifndef ring_h
+#include "ring.h"
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

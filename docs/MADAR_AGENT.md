@@ -133,7 +133,32 @@ During live interactive sessions (`main.ring`), the following runtime directives
 
 ---
 
-## 7. Empirical Benchmarks & Profiler Measurements
+## 7. Non-Blocking Interactive Terminal & Async Generation Interruption
+
+In conventional synchronous command-line agent architectures, the main execution thread is 100% blocked during token generation. If a generative model begins emitting undesired output or enters an infinite loop, the user has no recourse other than terminating the entire process via `Ctrl+C`, resulting in crashed sessions and lost vector memory.
+
+MadarAgent 2.0 integrates **real-time non-blocking keyboard polling** and **asynchronous execution patterns**:
+
+### A. Low-Level Keyboard Polling Engine (`genlib_e.c`)
+- **`checkkey()` / `kbhit()`**: Native non-blocking inspection of the standard console input buffer (`_kbhit()` on Windows, zero-timeout `select()` on POSIX) returning `1` if a keypress is pending and `0` otherwise.
+- **`getkey()`**: Reads the raw integer ASCII code (`_getch()` on Windows, non-blocking single-byte `read()` on POSIX).
+
+### B. Graceful Generation Interruption (`Esc` & `Ctrl+C`)
+During autoregressive streaming (`while oModel.hasMore()` in `app.ring`):
+1. The generation loop continuously polls `checkkey()` after emitting each token with negligible overhead ($< 1\mu\text{s}$).
+2. When the user presses **`Esc` (ASCII 27)** or **`Ctrl+C` (ASCII 3)**:
+   - Generation terminates cleanly with an immediate indicator: `[Generation Interrupted by User]`.
+   - The token counter and high-resolution timer (`microtime()`) record the partial generation metrics.
+   - The generated response is safely committed to conversation history and memory.
+   - Control immediately returns to the `You > ` prompt without crashing the session or dropping vector memory.
+
+### C. Asynchronous Core Architecture (`async func` / `await`)
+- **`TwoTierMemory`**: High-performance semantic vector search and long-term knowledge ingestion operate asynchronously (`searchAsync`, `rememberFactAsync`, `learnFileAsync`).
+- **`ToolRegistry` & `ToolCallingEngine`**: Tool dispatches run asynchronously (`executeCallsAsync`), enabling concurrent execution for future multi-agent tool pipelines.
+
+---
+
+## 8. Empirical Benchmarks & Profiler Measurements
 
 The following measurements were captured on consumer commodity hardware (**Intel Core i3-5005U**, **Intel HD Graphics 5500**, **DDR3L RAM**):
 

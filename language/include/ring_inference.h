@@ -7,6 +7,10 @@
 #ifndef ring_inference_h
 #define ring_inference_h
 
+#ifndef ring_h
+#include "ring.h"
+#endif
+
 #include "ring_gguf.h"
 #include "ring_tokenizer.h"
 #include "ring_tensor.h"
