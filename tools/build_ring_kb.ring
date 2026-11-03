@@ -5,7 +5,7 @@
 
 load "stdlibcore.ring"
 load "madar_ai.ring"
-load "rag.ring"
+load "../libraries/madar_ai/rag/init.ring"
 
 see nl + "====================================================================" + nl
 see "  Madar AI - High-Precision Ring Knowledge Base Builder" + nl
@@ -30,10 +30,23 @@ ok
 see f"  Loading Embedding Model: {cModelPath}" + nl
 t0 = clock()
 embedModel = ai_open(cModelPath)
+embedModel.setThreads(4)
 t1 = clock()
 see f"  Embedding Model initialized in {round((t1 - t0) / clockspersecond(), 2)}s" + nl
 
-store = new VectorStore(embedModel)
+# Primary Decoupled Storage for MadarAgent
+cPrimaryDir = "examples/MadarAgent/memory/ring_kb"
+if not direxists(cPrimaryDir) and direxists("../examples/MadarAgent/memory/ring_kb")
+	cPrimaryDir = "../examples/MadarAgent/memory/ring_kb"
+ok
+cPrimaryDB = cPrimaryDir + "/ring_kb"
+
+# Clean old primary files if any
+if fexists(cPrimaryDB + ".meta") remove(cPrimaryDB + ".meta") ok
+if fexists(cPrimaryDB + ".vec")  remove(cPrimaryDB + ".vec")  ok
+if fexists(cPrimaryDB + ".idx")  remove(cPrimaryDB + ".idx")  ok
+
+oDB = new MadarVectorDB(1024, cPrimaryDB)
 
 
 # --------------------------------------------------------------------
@@ -81,7 +94,8 @@ for aDoc in aTargetDocs
 		t0 = clock()
 		nDocChunks = 0
 		for ch in aFileChunks
-			store.addText(ch, f"{JustFileName(cPath)}_c{nDocChunks + 1}", ["source" = cRelPath, "title" = cTitle])
+			oVec = embedModel.embedding(ch)
+			oDB.addDocument(ch, oVec)
 			nDocChunks++
 		next
 		t1 = clock()
@@ -95,32 +109,14 @@ for aDoc in aTargetDocs
 next
 
 # --------------------------------------------------------------------
-# 4. Save to Persistent Binary Storage
+# 4. Save to Persistent Decoupled Storage (.vec, .idx, .meta)
 # --------------------------------------------------------------------
-aOutputs = [
-	"examples/ai/agent_memory.bin",
-	"examples/agent_chat/agent_memory.bin",
-	"agent_memory.bin"
-]
-
 see nl + f"  [Indexing Complete] Total: {nTotalChunks} high-density chunks generated." + nl
-for cOut in aOutputs
-	cDest = cOut
-	if not direxists(JustFilePath(cDest)) and fexists(f"../../{cDest}")
-		cDest = f"../../{cDest}"
-	elseif not direxists(JustFilePath(cDest)) and fexists(f"../{cDest}")
-		cDest = f"../{cDest}"
-	ok
-
-	cDir = JustFilePath(cDest)
-	if cDir = "" or direxists(cDir)
-		store.saveBinary(cDest)
-		see f"  Saved memory to: {cDest}" + nl
-	ok
-next
+oDB.saveDB(cPrimaryDB)
+see f"  Primary memory saved: {cPrimaryDB} (.vec, .idx, .meta)" + nl
 
 see nl + "====================================================================" + nl
-see "  Success! Ring Knowledge Base is fully built and ready for Madar AI." + nl
+see "  Success! Ring Knowledge Base is fully built and ready in " + cPrimaryDir + nl
 see "====================================================================" + nl
 
 # --------------------------------------------------------------------

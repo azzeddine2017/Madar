@@ -10,6 +10,7 @@
 
 
 load "stdlibcore.ring"
+load "rag/init.ring"
 
 # Safely load AlQalam if available
 try

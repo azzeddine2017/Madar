@@ -33,6 +33,7 @@ class AgentApp
 	oIntentRegistry  = NULL
 	oSemanticRouter  = NULL
 	oEntityExtractor = NULL
+	oContextManager  = NULL
 
 	aHistory         = []
 	bGPU             = true
@@ -80,6 +81,7 @@ class AgentApp
 
 		# 4. Initialize Two-Tier Memory
 		setupMemory()
+		oContextManager = new MadarContextManager(nMaxContext, nMaxGenTokens)
 
 		# 5. Setup Tool Registry
 		setupTools()
@@ -201,14 +203,20 @@ class AgentApp
 				if bDebug
 					? uiMuted(f"    (RAG Search took {round(nRagDuration, 3)}s)")
 				ok
+				aDocTexts = []
 				for item in aRetrieved
-					cChunkData = item[2]
-					/*if len(cChunkData) > nRagMaxChars
-						cChunkData = left(cChunkData, nRagMaxChars) + nl + "... [Truncated for brevity]"
-					ok*/
 
-					cRagContext += "--- [Knowledge Chunk] ---" + nl + cChunkData + nl
+					aDocTexts + item[2]
 				next
+
+				# Mitigate 'Lost in the Middle': place Rank 1 right adjacent to the user query
+				aArranged = oContextManager.arrangeContext(aDocTexts)
+
+				for i = 1 to len(aArranged)
+					cRagContext += f"--- [Knowledge Reference #{i}] ---" + nl + aArranged[i] + nl
+				next
+
+
 			ok
 		ok
 

@@ -1,22 +1,52 @@
 # ====================================================================
-#   MadarAgent - Two-Tier Memory Architecture
+#   MadarAgent - Decoupled Two-Tier Memory Architecture
 #   نظام الذاكرة المعمارية ثنائية الطبقات (قاعدة معرفية أساسية + ذاكرة تشغيلية)
+#   تخزين متجهي منفصل (Zero RAM Text Footprint) + تقطيع متداخل (Overlap)
 # ====================================================================
+
+load "stdlibcore.ring"
 
 class TwoTierMemory
 	oModel
 	oBaseKB                 # Tier 1: Fixed Long-Term Knowledge (e.g. Ring Language Manual)
 	oWorkingKB              # Tier 2: Dynamic Working Memory (User facts, learned files)
+	oChunker                # Semantic & Overlapping Chunker
 	cBaseKbPath      = ""
 	cWorkingKbPath   = ""
 
-	func init(oEmbeddingModel, cBasePath = "memory/ring_kb.bin", cWorkingPath = "memory/user_memory.bin")
+	func init(oEmbeddingModel, cBasePath = "memory/ring_kb/ring_kb", cWorkingPath = "memory/user_memory/user_memory")
 		oModel = ref(oEmbeddingModel)
+
+		# Normalize path extensions (strip legacy .bin)
+		if right(cBasePath, 4) = ".bin"
+			cBasePath = left(cBasePath, len(cBasePath) - 4)
+		ok
+		if right(cWorkingPath, 4) = ".bin"
+			cWorkingPath = left(cWorkingPath, len(cWorkingPath) - 4)
+		ok
+
+		# Support directory paths
+		if direxists(cBasePath)
+			cBasePath = cBasePath + "/ring_kb"
+		ok
+		if direxists(cWorkingPath)
+			cWorkingPath = cWorkingPath + "/user_memory"
+		ok
+
 		cBaseKbPath = cBasePath
 		cWorkingKbPath = cWorkingPath
 
-		oBaseKB = new VectorStore(oModel)
-		oWorkingKB = new VectorStore(oModel)
+		nDim = 1024
+		try
+			if isAttribute(oModel, "nDim")
+				nDim = oModel.nDim
+			ok
+		catch
+		done
+
+		oBaseKB    = new MadarVectorDB(nDim, cBaseKbPath)
+		oWorkingKB = new MadarVectorDB(nDim, cWorkingKbPath)
+		oChunker   = new MadarChunker(150, 30) # 150 words per chunk, 30 words overlap
 
 		loadBases()
 		return self
@@ -27,33 +57,49 @@ class TwoTierMemory
 			system("mkdir memory >nul 2>&1")
 		ok
 
-		# Load Tier 1 (Base KB) if exists
-		if fexists(cBaseKbPath)
-			nCount = oBaseKB.loadBinary(cBaseKbPath)
-			see f"  [Memory Tier 1] Loaded {nCount} chunks from Base KB ({cBaseKbPath})" + nl
+		# Load Tier 1 (Base KB) if exists (.vec + .idx)
+		if fexists(cBaseKbPath + ".vec") and fexists(cBaseKbPath + ".idx")
+			nCount = oBaseKB.loadDB(cBaseKbPath)
+			see f"  [Memory Tier 1] Loaded {nCount} chunks from Base KB ({cBaseKbPath}) [Zero RAM Text]" + nl
 		else
-			see f"  [Memory Tier 1] Base KB not found at ({cBaseKbPath}). Ready for manual placement." + nl
+			see f"  [Memory Tier 1] Base KB not found at ({cBaseKbPath}). Ready for generation." + nl
 		ok
 
-		# Load Tier 2 (Working KB) if exists
-		if fexists(cWorkingKbPath)
-			nCount = oWorkingKB.loadBinary(cWorkingKbPath)
+		# Load Tier 2 (Working KB) if exists (.vec + .idx)
+		if fexists(cWorkingKbPath + ".vec") and fexists(cWorkingKbPath + ".idx")
+			nCount = oWorkingKB.loadDB(cWorkingKbPath)
 			see f"  [Memory Tier 2] Loaded {nCount} user memories from ({cWorkingKbPath})" + nl
 		ok
 
 	func rememberFact(cFact, cCategory = "user_fact")
 		if trim(cFact) = "" return false ok
-		cId = f"fact_{len(oWorkingKB.aChunks) + 1}"
-		oChunk = oWorkingKB.addText(cFact, cId, ["category" = cCategory, "time" = time(), "date" = date()])
+		oVec = oModel.embedding(cFact)
+		oWorkingKB.addDocument(cFact, oVec)
 		saveWorking()
-		return (oChunk != NULL)
+		return true
 
 	async func rememberFactAsync(cFact, cCategory = "user_fact")
 		return await rememberFact(cFact, cCategory)
 
 	func learnFile(cFilePath)
 		if not fexists(cFilePath) return 0 ok
-		nCount = oWorkingKB.addFile(cFilePath, 40)
+		cContent = read(cFilePath)
+		cExt = lower(JustFileExt(cFilePath))
+
+		aChunks = []
+		if cExt = "md" or cExt = "markdown"
+			aChunks = oChunker.chunkMarkdown(cContent, JustFileName(cFilePath))
+		else
+			aChunks = oChunker.chunkText(cContent)
+		ok
+
+		nCount = 0
+		for ch in aChunks
+			oVec = oModel.embedding(ch)
+			oWorkingKB.addDocument(ch, oVec)
+			nCount++
+		next
+
 		saveWorking()
 		return nCount
 
@@ -61,49 +107,49 @@ class TwoTierMemory
 		return await learnFile(cFilePath)
 
 	func saveWorking()
-		if len(oWorkingKB.aChunks) > 0
-			oWorkingKB.saveBinary(cWorkingKbPath)
+		if oWorkingKB.count() > 0
+			oWorkingKB.saveDB(cWorkingKbPath)
 			return true
 		ok
 		return false
 
 	func clearWorking()
-		oWorkingKB.aChunks = []
-		if fexists(cWorkingKbPath)
-			remove(cWorkingKbPath)
-		ok
+		oWorkingKB.clear()
+		if fexists(cWorkingKbPath + ".vec")  remove(cWorkingKbPath + ".vec")  ok
+		if fexists(cWorkingKbPath + ".idx")  remove(cWorkingKbPath + ".idx")  ok
+		if fexists(cWorkingKbPath + ".meta") remove(cWorkingKbPath + ".meta") ok
 		return true
 
 	func commitWorkingToBase()
 		nMoved = 0
-		for ch in oWorkingKB.aChunks
-			oBaseKB.aChunks + ch
+		for i = 1 to oWorkingKB.count()
+			cText = oWorkingKB.fetchText(i)
+			oVec  = oWorkingKB.aVectors[i]
+			oBaseKB.addDocument(cText, oVec)
 			nMoved++
 		next
-		oBaseKB.saveBinary(cBaseKbPath)
+		oBaseKB.saveDB(cBaseKbPath)
 		clearWorking()
 		return nMoved
 
 	func search(cQuery, nTopK = 3)
 		aCombined = []
+		oQueryVec = oModel.embedding(cQuery)
 
 		# 1. Search Working Memory first (Tier 2 - high temporal relevance)
-		if len(oWorkingKB.aChunks) > 0
-			aWorkResults = oWorkingKB.hybridSearch(cQuery, nTopK, 0.40)
+		if oWorkingKB.count() > 0
+			aWorkResults = oWorkingKB.query(oQueryVec, nTopK)
 			for res in aWorkResults
-				cTxt = ""
-				if isobject(res[2]) cTxt = res[2].cText else cTxt = "" + res[2] ok
-				aCombined + [res[1], "[Working Memory] " + cTxt, res[2]]
+				# res is [:id=..., :score=..., :text=..., :offset=...]
+				aCombined + [res[:score], "[Working Memory] " + res[:text], res[:text]]
 			next
 		ok
 
 		# 2. Search Base KB (Tier 1 - foundation knowledge)
-		if len(oBaseKB.aChunks) > 0
-			aBaseResults = oBaseKB.hybridSearch(cQuery, nTopK, 0.50)
+		if oBaseKB.count() > 0
+			aBaseResults = oBaseKB.query(oQueryVec, nTopK)
 			for res in aBaseResults
-				cTxt = ""
-				if isobject(res[2]) cTxt = res[2].cText else cTxt = "" + res[2] ok
-				aCombined + [res[1], "[Knowledge Base] " + cTxt, res[2]]
+				aCombined + [res[:score], "[Knowledge Base] " + res[:text], res[:text]]
 			next
 		ok
 
@@ -122,8 +168,8 @@ class TwoTierMemory
 		return await search(cQuery, nTopK)
 
 	func getStats()
-		nBaseCount = len(oBaseKB.aChunks)
-		nWorkCount = len(oWorkingKB.aChunks)
+		nBaseCount = oBaseKB.count()
+		nWorkCount = oWorkingKB.count()
 		return [
 			"base_chunks" = nBaseCount,
 			"working_chunks" = nWorkCount,

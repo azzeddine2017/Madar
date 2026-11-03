@@ -8,8 +8,8 @@ load "stdlibcore.ring"
 class AgentConfig
 	cModelPath       = ""
 	cEmbeddingPath   = ""
-	cBaseKbPath      = "memory/ring_kb.bin"
-	cWorkingKbPath   = "memory/user_memory.bin"
+	cBaseKbPath      = "memory/ring_kb/ring_kb"
+	cWorkingKbPath   = "memory/user_memory/user_memory"
 	cSkillsDir       = "agentSkills"
 	nTemperature     = 0.30
 	nMaxContext      = 8192
@@ -22,7 +22,7 @@ class AgentConfig
 	bUseSlidingWindow = true
 	nHistoryWindow    = 2
 	# Semantic Intent Router Controls
-	cIntentCachePath  = "memory/intent_cache.bin"
+	cIntentCachePath  = "memory/intent_cache/intent_cache"
 	nIntentThreshold  = 0.52
 
 	func init(aArgs = [])
