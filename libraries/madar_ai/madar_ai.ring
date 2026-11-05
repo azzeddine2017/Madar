@@ -27,9 +27,7 @@ func ai_open(cPath)
 func round(val, nDec)
 	if isobject(val) or islist(val) return "" ok
 	decimals(nDec)
-	cRes = "" + val
-	decimals(6)
-	return cRes
+	return "" + val
 
 
 

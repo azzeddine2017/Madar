@@ -1,6 +1,6 @@
 {
-  "lora_rank": 16,
-  "lora_alpha": 32,
+  "lora_rank": 32,
+  "lora_alpha": 64,
   "base_lr": 0.00,
-  "steps": 2190
+  "steps": 4380
 }

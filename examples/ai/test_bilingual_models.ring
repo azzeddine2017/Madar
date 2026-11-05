@@ -70,13 +70,13 @@ if bHaveDeepSeek
 	? "--- [Prompt: Arabic] ---"
 	? cArabicPrompt
 	? "--- [Response] ---"
-	cResp1 = oR1.generate(cArabicPrompt, cSystemPrompt)
+	cResp1 = oR1.generateStream(cArabicPrompt, cSystemPrompt)
 	? cResp1
 	? ""
 	? "--- [Prompt: English] ---"
 	? cEnglishPrompt
 	? "--- [Response] ---"
-	cResp2 = oR1.generate(cEnglishPrompt, cSystemPrompt)
+	cResp2 = oR1.generateStream(cEnglishPrompt, cSystemPrompt)
 	? cResp2
 ok
 
