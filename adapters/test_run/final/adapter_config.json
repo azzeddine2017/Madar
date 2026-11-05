@@ -1,6 +1,0 @@
-{
-  "lora_rank": 8,
-  "lora_alpha": 16,
-  "base_lr": 0.00,
-  "steps": 20
-}

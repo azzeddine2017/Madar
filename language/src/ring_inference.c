@@ -4006,7 +4006,7 @@ RING_FUNC(ring_model_api_set_threads) {
 
 RING_FUNC(ring_model_api_tokenize) {
   RingModel *pModel;
-  int aTokens[1024];
+  int aTokens[2048];
   int n, i;
   List *pList;
 
@@ -4019,7 +4019,7 @@ RING_FUNC(ring_model_api_tokenize) {
   RING_API_CHECKNULLPOINTER(pModel);
 
   n = ring_tokenizer_encode(pModel->pTokenizer, RING_API_GETSTRING(2), aTokens,
-                            1024);
+                            2048);
 
   pList = RING_API_NEWLIST;
   for (i = 0; i < n; i++) {
@@ -4838,11 +4838,23 @@ RING_FUNC(ring_model_api_export_merged_gguf) {
   RING_API_RETNUMBER(nRes);
 }
 
+RING_FUNC(ring_model_api_get_dim) {
+  RingModel *pModel;
+  if (RING_API_PARACOUNT != 1 || !RING_API_ISPOINTER(1)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  RING_API_RETNUMBER((double)pModel->config.nEmbd);
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_open", ring_model_api_open);
   RING_API_REGISTER("madar_model_close", ring_model_api_close);
   RING_API_REGISTER("madar_model_set_threads", ring_model_api_set_threads);
   RING_API_REGISTER("madar_model_set_gpu", ring_model_api_set_gpu);
+  RING_API_REGISTER("madar_model_get_dim", ring_model_api_get_dim);
   RING_API_REGISTER("madar_model_load_lora", ring_model_api_load_lora);
   RING_API_REGISTER("madar_model_enable_lora", ring_model_api_enable_lora);
   RING_API_REGISTER("madar_model_set_lora_scale",

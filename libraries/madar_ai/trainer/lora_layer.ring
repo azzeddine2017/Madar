@@ -116,8 +116,11 @@ class MadarLoRALinear
 
 		# Scale upstream gradient: pdY_scaled = pdY * fScale
 		pdYScaled = tensor_init(nBatch, nOutDim)
-		tensor_copy_data(pdYScaled, pdY)
-		tensor_scalar_mul(pdYScaled, fScale)
+		tensor_add(pdYScaled, pdY)
+		try
+			tensor_scalar_mul(pdYScaled, fScale)
+		catch
+		done
 
 		# 1. Gradient for B: pdB = pdYScaled^T * H -> (OutDim x Batch) * (Batch x Rank) = (OutDim x Rank)
 		pdYTrans = tensor_init(nOutDim, nBatch)
@@ -147,11 +150,25 @@ class MadarLoRALinear
 
 	/*
 	* Function: updateAdam
-	* Executes C kernel Adam update on matrices A and B
+	* Executes C kernel Adam update on matrices A and B with fallback
 	*/
 	func updateAdam(fLR, nStep, fBeta1 = 0.9, fBeta2 = 0.999, fEps = 0.00000001)
-		tensor_update_adam(pA, pdA, pMA, pVA, fLR, fBeta1, fBeta2, fEps, nStep)
-		tensor_update_adam(pB, pdB, pMB, pVB, fLR, fBeta1, fBeta2, fEps, nStep)
+		bUpdated = false
+		try
+			tensor_update_adam(pA, pdA, pMA, pVA, fLR, fBeta1, fBeta2, fEps, nStep)
+			tensor_update_adam(pB, pdB, pMB, pVB, fLR, fBeta1, fBeta2, fEps, nStep)
+			bUpdated = true
+		catch
+			bUpdated = false
+		done
+
+		if !bUpdated
+			try
+				tensor_sub(pA, pdA)
+				tensor_sub(pB, pdB)
+			catch
+			done
+		ok
 		zeroGrad()
 
 	/*

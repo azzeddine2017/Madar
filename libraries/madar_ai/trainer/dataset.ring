@@ -3,6 +3,7 @@
 # Handles JSONL datasets, chat formatting, and target token masking
 # ====================================================================
 
+load "stdlibcore.ring"
 load "jsonlib.ring"
 
 class MadarInstructDataset
@@ -105,6 +106,10 @@ class MadarInstructDataset
 
 		cPrompt = formatPrompt(oSample[:instruction], oSample[:input])
 		cResponse = oSample[:output]
+		# Bound response length to ensure rapid tokenization within training context limit (512 tokens)
+		if len(cResponse) > 1600
+			cResponse = left(cResponse, 1600)
+		ok
 		if cTemplate = "chatml"
 			cResponse += "<|im_end|>"
 		ok

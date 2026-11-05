@@ -73,6 +73,20 @@ class QwenModel
 	func exportMergedGGUF(cOutPath)
 		return madar_model_export_merged_gguf(hModel, cOutPath)
 
+	func dim()
+		try
+			return madar_model_get_dim(hModel)
+		catch
+			cLower = lower(cLoadedPath)
+			if substr(cLower, "1.5b") > 0
+				return 1536
+			elseif substr(cLower, "3b") > 0
+				return 2048
+			else
+				return 896
+			ok
+		done
+
 	func setTemperature(temp)
 		fTemp = temp
 

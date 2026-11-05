@@ -51,20 +51,17 @@ class MadarLoRATrainer
 	*/
 	func initDefaultAdapters()
 		aLayers = []
-		# Model dimension inferred from model embedding or default 896 for Qwen 0.5B / 1536 for 1.5B
+		# Incur model dimension dynamically from model
 		nDim = 896
 		try
 			if !isnull(oModel)
-				aProbe = oModel.embedding("test")
-				if islist(aProbe) and len(aProbe) > 0
-					nDim = len(aProbe)
-				ok
+				nDim = oModel.dim()
 			ok
 		catch
 			nDim = 896
 		done
 
-		# Create adapters for Attention Q and Attention Out projections (full 896 x 896)
+		# Create adapters for Attention Q and Attention Out projections
 		oLayerQ   = new MadarLoRALinear("attn_q_proj",   nDim, nDim, nRank, fAlpha)
 		oLayerOut = new MadarLoRALinear("attn_out_proj", nDim, nDim, nRank, fAlpha)
 
