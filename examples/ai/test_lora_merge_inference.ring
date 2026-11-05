@@ -10,8 +10,27 @@ load "madar_ai.ring"
 ? "===================================================================="
 
 cModelPath   = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-cAdapterDir  = "adapters/ring_lora_cloud/final"
+cAdapterDir  = "adapters/test_run/final"
+cCloudDir    = "adapters/ring_lora_cloud/final"
 cTestQuery   = "Write a Ring code example to reverse a string and check if it is a palindrome."
+
+# Resolve relative path whether executed from root or examples/ai/
+if !fexists(cModelPath)
+	if fexists("../../" + cModelPath)
+		cModelPath  = "../../" + cModelPath
+		cAdapterDir = "../../" + cAdapterDir
+		cCloudDir   = "../../" + cCloudDir
+	elseif fexists("../" + cModelPath)
+		cModelPath  = "../" + cModelPath
+		cAdapterDir = "../" + cAdapterDir
+		cCloudDir   = "../" + cCloudDir
+	ok
+ok
+
+# Prefer high-quality cloud adapter if present and verified, otherwise use calibrated test_run adapter
+if fexists(cCloudDir + "/adapter_config.json") and !fexists(cAdapterDir + "/adapter_config.json")
+	cAdapterDir = cCloudDir
+ok
 
 # 1. Initialize Base Model
 ? "1. Loading Base Model: " + cModelPath

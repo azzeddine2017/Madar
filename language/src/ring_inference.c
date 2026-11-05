@@ -4355,6 +4355,76 @@ RING_FUNC(ring_model_api_embedding) {
                               (void (*)(void *, void *))ring_tensor_delete);
 }
 
+RING_FUNC(ring_model_api_get_token_embeddings) {
+  RingModel *pModel;
+  List *pTokensList;
+  RingTensor *pTensor;
+  int nTokens, t;
+  size_t aShape[2];
+  float *pData;
+  const uint8_t *pRawEmbd;
+  int nEmbd;
+
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISLIST(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+
+  pTokensList = RING_API_GETLIST(2);
+  nTokens = ring_list_getsize(pTokensList);
+  if (nTokens <= 0) {
+    RING_API_ERROR("Token list is empty!");
+    return;
+  }
+
+  nEmbd = (int)pModel->config.nEmbd;
+  aShape[0] = (size_t)nTokens;
+  aShape[1] = (size_t)nEmbd;
+
+  pTensor = ring_tensor_new(RING_API_STATE, RING_TENSOR_TYPE_FLOAT32, 2, aShape);
+  if (!pTensor) {
+    RING_API_ERROR("Failed to allocate tensor for embeddings!");
+    return;
+  }
+  pData = (float *)ring_tensor_data(pTensor);
+  pRawEmbd = (const uint8_t *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenEmbd);
+
+  for (t = 0; t < nTokens; t++) {
+    int tok = (int)ring_list_getdouble(pTokensList, t + 1);
+    float *xt = pData + (size_t)t * nEmbd;
+    if (tok >= 0 && (uint32_t)tok < pModel->config.nVocab && pRawEmbd && pModel->pTokenEmbd) {
+      if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
+        const RingGGUFBlockQ4_0 *b4 =
+            (const RingGGUFBlockQ4_0 *)(pRawEmbd +
+                                        (size_t)tok * (nEmbd / 32) *
+                                            sizeof(RingGGUFBlockQ4_0));
+        ring_gguf_dequantize_q4_0(b4, xt, nEmbd);
+      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
+        const RingGGUFBlockQ8_0 *b8 =
+            (const RingGGUFBlockQ8_0 *)(pRawEmbd +
+                                        (size_t)tok * (nEmbd / 32) *
+                                            sizeof(RingGGUFBlockQ8_0));
+        ring_gguf_dequantize_q8_0(b8, xt, nEmbd);
+      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
+        ring_gguf_dequantize_f16(
+            (const ggml_fp16_t *)pRawEmbd + (size_t)tok * nEmbd, xt, nEmbd);
+      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F32) {
+        memcpy(xt, (const float *)pRawEmbd + (size_t)tok * nEmbd,
+               nEmbd * sizeof(float));
+      } else {
+        memset(xt, 0, nEmbd * sizeof(float));
+      }
+    } else {
+      memset(xt, 0, nEmbd * sizeof(float));
+    }
+  }
+
+  RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR", (void (*)(void *, void *))ring_tensor_delete);
+}
+
 RING_FUNC(ring_model_api_prefill) {
   RingModel *pModel;
   const char *cPrompt;
@@ -4490,4 +4560,5 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_reset", ring_model_api_reset);
   RING_API_REGISTER("madar_is_arabic", ring_model_api_is_arabic);
   RING_API_REGISTER("madar_model_embedding", ring_model_api_embedding);
+  RING_API_REGISTER("madar_model_get_token_embeddings", ring_model_api_get_token_embeddings);
 }

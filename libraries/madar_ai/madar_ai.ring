@@ -94,6 +94,9 @@ class QwenModel
 	func get_embedding(cText)
 		return embedding(cText)
 
+	func getTokenEmbeddings(aTokens)
+		return madar_model_get_token_embeddings(hModel, aTokens)
+
 	func formatChatPrompt(cUserMessage, cSystemMessage)
 		# Official Qwen2.5 / DeepSeek-R1 ChatML format
 		if cSystemMessage = NULL or cSystemMessage = ""
@@ -321,6 +324,9 @@ class BgeModel
 
 	func get_embedding(cText)
 		return embedding(cText)
+
+	func getTokenEmbeddings(aTokens)
+		return madar_model_get_token_embeddings(hModel, aTokens)
 
 	func isArabic(cText)
 		return madar_is_arabic(cText)

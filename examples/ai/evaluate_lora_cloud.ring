@@ -13,6 +13,17 @@ load "madar_trainer.ring"
 cAdapterDir = "adapters/ring_lora_cloud/final"
 cModelPath  = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
 
+# Resolve relative path whether executed from root or examples/ai/
+if !fexists(cAdapterDir)
+	if fexists("../../" + cAdapterDir)
+		cAdapterDir = "../../" + cAdapterDir
+		cModelPath  = "../../" + cModelPath
+	elseif fexists("../" + cAdapterDir)
+		cAdapterDir = "../" + cAdapterDir
+		cModelPath  = "../" + cModelPath
+	ok
+ok
+
 # 1. Load and parse adapter configuration metadata
 cMetaFile = cAdapterDir + "/adapter_config.json"
 if !fexists(cMetaFile)
