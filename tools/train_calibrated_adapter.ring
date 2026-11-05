@@ -3,11 +3,22 @@
 # Trains directional syntax adapter directly into adapters/ring_lora_cloud/final
 # ====================================================================
 
+load "stdlibcore.ring"
 load "madar_ai.ring"
 load "madar_trainer.ring"
 
-cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
-cDataPath  = "data/ring_instruct_dataset.jsonl"
+cModelPath = "models/qwen2.5-coder-3b-instruct-q4_0.gguf"
+if !fexists(cModelPath) and !fexists("../" + cModelPath) and !fexists("../../" + cModelPath)
+	cModelPath = "models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+	if !fexists(cModelPath) and !fexists("../" + cModelPath) and !fexists("../../" + cModelPath)
+		cModelPath = "models/qwen2.5-0.5b-instruct-q4_0.gguf"
+	ok
+ok
+
+cDataPath  = "data/ring_instruct_bilingual.jsonl"
+if !fexists(cDataPath) and !fexists("../" + cDataPath) and !fexists("../../" + cDataPath)
+	cDataPath = "data/ring_instruct_dataset.jsonl"
+ok
 cOutputDir = "adapters/ring_lora_cloud/final"
 
 # Resolve relative path if run from examples/ or tools/

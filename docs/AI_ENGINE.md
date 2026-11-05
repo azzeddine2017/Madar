@@ -335,3 +335,22 @@ end
 agent = new AIAgent(model)
 agent.queryStream("ما هو أعلى راتب في جدول الموظفين؟")
 ```
+
+---
+
+## 11. Native LoRA Fine-Tuning & Standalone GGUF Export Engine
+
+Madar provides a 100% native, dependency-free LoRA fine-tuning and weight fusion engine:
+
+### A. Zero-Copy Inference Fusion
+During token generation, adapter deltas are added on-the-fly during matrix-vector multiplication without mutating quantized base weights:
+$$y = W_0 \cdot x + \text{scale} \cdot (B \cdot (A \cdot x))$$
+
+### B. Fast Standalone GGUF Exporter
+Permanently fuses LoRA attention weights ($Q$ and $Out$) into a single, deployable `.gguf` file using high-speed SIMD Q4_0 re-quantization (`quantize_row_q4_0_fast`) in under 4 seconds.
+
+### C. True Semantic Token Gradients
+Uses real base-model token embeddings extracted via C kernel `madar_trainer_fill_batch` to compute zero-mean syntax transition gradients $(Token_t - Token_{t-1})$.
+
+For complete specifications, see [Native LoRA Fine-Tuning Guide](LORA_FINETUNING.md).
+

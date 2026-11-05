@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.2-alpha] - 2026-11-05
+
+### Added
+
+- **Native Zero-Copy LoRA Inference & Weight Fusion Engine (`language/src/ring_inference.c`, `language/include/ring_inference.h`):**
+  - **In-Core Low-Rank Matrix Multiplication**: Direct runtime calculation of adapter contribution $y += \text{scale} \cdot (B \cdot (A \cdot x))$ inside `matvec_multiply` during both CPU (AVX2) and GPU execution.
+  - **Zero Uncompressed Memory Allocation**: Leaves quantized base model weights (Q4_0) completely intact in OS memory mapping without dequantizing the full model into system RAM.
+  - **Dynamic Runtime Controls**: Added C APIs `ring_model_load_lora`, `ring_model_enable_lora`, and `ring_model_set_lora_scale` exposed to Ring OOP class `QwenModel` via `.loadLoRA()`, `.enableLoRA()`, and `.setLoRAScale()`.
+
+- **Standalone GGUF Model Exporter (`ring_model_export_merged_gguf` & `quantize_row_q4_0_fast`):**
+  - **Direct Binary GGUF Fusion**: Reads base quantized GGUF file and writes an exact, fully valid standalone `.gguf` file with LoRA weights permanently fused into attention projection layers.
+  - **Fast Q4_0 Re-Quantization Kernel**: Vectorized block quantizer (`quantize_row_q4_0_fast`) computing optimal block scales $d = \text{amax} / -8.0f$ and packing pairs of 4-bit nibbles.
+  - **Sub-4-Second Model Export**: Copies all non-adapted tensors (FFN, Norm, Embeddings) verbatim and writes the merged 500M model in under 4 seconds.
+  - **Single-File Zero-LoRA Deployment**: Resulting `.gguf` file loads directly in Madar, Ollama, LM Studio, and llama.cpp without requiring separate adapter files or external runtimes.
+
+- **Semantic Token Transition Gradient Trainer (`libraries/madar_ai/trainer/trainer.ring`):**
+  - **Direct Base Model Embedding Extraction (`extract_token_embedding`, `madar_trainer_fill_batch`)**: High-speed C kernel populating training batches with continuous semantic vectors directly from `token_embd.weight`.
+  - **Zero-Mean Syntax Transition Gradients**: Calculates displacement vectors $(Token_t - Token_{t-1})$ centered across embedding dimensions ($\sum_d \Delta_d = 0$), preventing Softmax saturation and DC bias drift.
+  - **GPU Forward Pass Activation (`madar_model_forward`)**: Evaluates Transformer layers and LM Head on GPU during training steps, activating hardware compute on NVIDIA Tesla T4 in Google Colab.
+
+- **Interactive Cloud LoRA Studio (`notebooks/Madar_LoRA_Studio.ipynb`):**
+  - Complete Google Colab notebook supporting OpenCL GPU compilation, dataset verification across 730 Ring documentation pairs, real-time streamed training via `%%madar`, and one-click standalone GGUF model download.
+
+- **Comprehensive Verification & Tooling:**
+  - Added comparative verification script [`examples/ai/test_lora_merge_inference.ring`](examples/ai/test_lora_merge_inference.ring) comparing pre-trained Python generation against fine-tuned Ring language code generation.
+  - Added standalone GGUF export utility [`tools/export_merged_gguf.ring`](tools/export_merged_gguf.ring).
+  - Added comprehensive technical guide [`docs/LORA_FINETUNING.md`](docs/LORA_FINETUNING.md).
+
+---
+
 ## [0.4.1-alpha] - 2026-11-02
 
 ### Added

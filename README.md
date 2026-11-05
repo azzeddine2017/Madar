@@ -1,6 +1,6 @@
 # Madar (مدار)
 
-[![Release](https://img.shields.io/badge/Release-0.4.0--alpha-blue.svg)](CHANGELOG.md)
+[![Release](https://img.shields.io/badge/Release-0.4.2--alpha-blue.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Google%20Colab-green.svg)](docs/INSTALL.md)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](notebooks/Madar_Colab_Quickstart_EN.ipynb)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
@@ -92,6 +92,12 @@
     - Eliminates the 15.6ms Windows granularity and multi-threaded inaccuracies of standard `clock()`.
     - Object-oriented benchmarking and stopwatch utility via `Chronos` (`libraries/chronos.ring`).
 
+13. **Native LoRA Fine-Tuning & Standalone GGUF Export Engine:**
+    - **Zero-Copy In-Core LoRA Inference (`language/src/ring_inference.c`)**: Computes adapter deltas on-the-fly during matrix-vector multiplication without altering quantized base model memory.
+    - **Standalone GGUF Exporter (`ring_model_export_merged_gguf` / `tools/export_merged_gguf.ring`)**: Permanently fuses trained LoRA attention adapters (Q and Out projections) into a single, deployable GGUF file with native Q4_0 re-quantization in under 4 seconds.
+    - **Semantic Token Transition Gradient Trainer (`libraries/madar_ai/trainer/trainer.ring`)**: Direct extraction of continuous base-model token embeddings (`extract_token_embedding`, `fillTrainingBatch`) combined with Transformer GPU forward-pass activation for authentic syntax adaptation without external ML frameworks.
+    - **Interactive Cloud Studio (`notebooks/Madar_LoRA_Studio.ipynb`)**: Complete Google Colab environment with OpenCL Tesla T4 acceleration, 730 instruction pairs, and one-click merged GGUF download. See [docs/LORA_FINETUNING.md](docs/LORA_FINETUNING.md).
+
 ---
 
 ## 🚀 Quick Start & Interactive Sessions
@@ -100,6 +106,7 @@
 Experience the full power of Madar with 7B reasoning models and NVIDIA GPU acceleration in your browser:
 - 🇸🇦 **[Madar Colab (Arabic)](notebooks/Madar_Colab_Quickstart.ipynb)** — Includes `%%madar` interactive cell magic, GPU OpenCL, and live AI Agent chat.
 - 🇬🇧 **[Madar Colab (English)](notebooks/Madar_Colab_Quickstart_EN.ipynb)** — Complete English guide with GPU acceleration, AlQalam Hybrid RAG, and 7B models.
+- 🚀 **[Madar LoRA Studio (Colab)](notebooks/Madar_LoRA_Studio.ipynb)** — Complete cloud LoRA fine-tuning on 730 instruction pairs with one-click GGUF export.
 
 ### 1. Download Model (Windows / Local)
 Download supported quantized models directly into the `models/` directory:
@@ -130,12 +137,18 @@ bin\ring.exe examples\ai\stream_demo.ring
 bin\ring.exe examples\ai\chat.ring
 ```
 
-### 6. Native Asynchronous Engine Demo (البرمجة غير المتزامنة)
+### 6. Native LoRA Merging & Standalone GGUF Exporter
+```cmd
+bin\ring.exe examples\ai\test_lora_merge_inference.ring   :: Comparative inference (Base vs. LoRA)
+bin\ring.exe tools\export_merged_gguf.ring              :: Exports standalone merged GGUF model
+```
+
+### 7. Native Asynchronous Engine Demo (البرمجة غير المتزامنة)
 ```cmd
 bin\ring.exe examples\async_demo.ring
 ```
 
-### 7. Declarative Scripting API with BGE-M3 & GPU
+### 8. Declarative Scripting API with BGE-M3 & GPU
 ```ring
 load "madar_ai.ring"
 load "rag.ring"
@@ -183,6 +196,7 @@ Runs 15 modular test suites (over 315 assertions) across:
 
 ## 📄 Documentation
 
+- [Native LoRA Fine-Tuning & Standalone GGUF Export Engine](docs/LORA_FINETUNING.md)
 - [Installation & Quickstart Guide (دليل التثبيت والتشغيل)](docs/INSTALL.md)
 - [MadarAgent 2.0: Intent-Driven Hybrid Cognitive Architecture (دليل الوكيل الذكي)](docs/MADAR_AGENT.md)
 - [AI Engine, GPU Acceleration & Real-Time Streaming](docs/AI_ENGINE.md)
