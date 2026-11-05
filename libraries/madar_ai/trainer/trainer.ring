@@ -152,7 +152,7 @@ class MadarLoRATrainer
 					fPerplexity = exp(fAvgLoss)
 					if fPerplexity > 9999.0 fPerplexity = 9999.0 ok
 					fCurLR = oOptim.fCurrentLR
-					fElapsedSec = (clock() - nStartTime) / 1000.0
+					fElapsedSec = (clock() - nStartTime) / clockspersecond()
 
 					? "  [Step " + nCurrentStep + "/" + nTotalSteps + "] " +
 					  "Loss: " + round(fAvgLoss, 4) + " | " +
@@ -170,7 +170,7 @@ class MadarLoRATrainer
 			next
 		next
 
-		nTotalElapsed = (clock() - nStartTime) / 1000.0
+		nTotalElapsed = (clock() - nStartTime) / clockspersecond()
 		? ""
 		? "===================================================================="
 		? "  Training Completed Successfully in " + round(nTotalElapsed, 2) + "s"
@@ -240,5 +240,18 @@ class MadarLoRATrainer
 			fputs(fp, '  "steps": ' + nCurrentStep + nl)
 			fputs(fp, "}" + nl)
 			fclose(fp)
+		ok
+
+		# Save loss history if at final checkpoint
+		if substr(cFolder, "final") > 0 and len(aLossHistory) > 0
+			cLossPath = cFolder + "/loss_history.csv"
+			fpLoss = fopen(cLossPath, "w")
+			if fpLoss != NULL
+				fputs(fpLoss, "step,loss" + nl)
+				for i = 1 to len(aLossHistory)
+					fputs(fpLoss, "" + i + "," + aLossHistory[i] + nl)
+				next
+				fclose(fpLoss)
+			ok
 		ok
 		? "  [Checkpoint] Saved LoRA adapters to: " + cFolder
