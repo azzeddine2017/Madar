@@ -36,6 +36,16 @@ if [ -d "$MADAR_ROOT/extensions/ringcurl" ]; then
     (cd "$MADAR_ROOT/extensions/ringcurl" && bash buildgcc.sh || true)
 fi
 
+if [ -d "$MADAR_ROOT/extensions/ringtensor" ]; then
+    echo "  - Building RingTensor extension (OpenCL + Autograd + Adam Kernels)..."
+    (cd "$MADAR_ROOT/extensions/ringtensor" && bash buildgcc.sh || true)
+fi
+
+if [ -d "$MADAR_ROOT/extensions/ringcjson" ]; then
+    echo "  - Building RingCJSON extension..."
+    (cd "$MADAR_ROOT/extensions/ringcjson" && bash buildgcc.sh || true)
+fi
+
 # Ensure standard library case-compatibility symlinks on Linux
 if [ -d "$MADAR_ROOT/bin/load" ]; then
     (cd "$MADAR_ROOT/bin/load" && ln -sf stdlibcore.ring stdlibCore.ring 2>/dev/null || true)

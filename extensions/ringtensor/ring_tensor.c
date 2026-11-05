@@ -32,8 +32,9 @@ static int     arena_active  = 0;       /* 1 when graph owns the arena       */
 /* --- GPU ACCELERATION (OpenCL) -------------------------------------- */
 /* ==================================================================== */
 
-// Uncomment this line to enable GPU, or define it in compiler flags
+#ifndef USE_OPENCL
 #define USE_OPENCL 1 
+#endif 
 
 #ifdef USE_OPENCL
 #include "opencl_stub.h"

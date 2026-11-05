@@ -1,13 +1,33 @@
-
 # RingTensor Extension Loader
-# Defines constants and loads the DLL
+# Defines constants and loads the dynamic library
 
 if iswindows()
     LoadLib("ring_tensor.dll")
 but ismacosx()
     LoadLib("libring_tensor.dylib")
 else
-    LoadLib("libring_tensor.so")
+    # Multi-path dynamic resolution for Linux / Colab
+    bLoaded = false
+    aLibPaths = [
+        "libring_tensor.so",
+        "lib/libring_tensor.so",
+        "bin/libring_tensor.so",
+        "/content/Madar/lib/libring_tensor.so",
+        "/content/Madar/bin/libring_tensor.so",
+        "/content/Madar/extensions/ringtensor/libring_tensor.so"
+    ]
+    for cLib in aLibPaths
+        try
+            LoadLib(cLib)
+            bLoaded = true
+            exit
+        catch
+            # Try next candidate path
+        done
+    next
+    if !bLoaded
+        LoadLib("libring_tensor.so")
+    ok
 ok
 
 Load "tensor.ring"
@@ -43,7 +63,6 @@ RT_OP_EMBEDDING   = 31
 RT_OP_ADD_ROW_VEC = 32
 RT_OP_ATTENTION   = 33
 RT_OP_REPEAT_ROWS = 34
-
 
 # Optimizer Constants
 OPTIMIZER_SGD  = 0

@@ -7,6 +7,37 @@
 #define RING_TENSOR_H
 
 #include "ring.h"
+
+/* Prevent C symbol collision with Madar core functions declared in language/include/ring_tensor.h */
+#define ring_tensor_new            rt_ext_api_new
+#define ring_tensor_new_from_buffer rt_ext_api_new_from_buffer
+#define ring_tensor_delete         rt_ext_api_delete
+#define ring_tensor_create_view    rt_ext_api_create_view
+#define ring_tensor_slice          rt_ext_api_slice
+#define ring_tensor_reshape        rt_ext_api_reshape
+#define ring_tensor_print          rt_ext_api_print
+#define ring_tensor_to_list        rt_ext_api_to_list
+#define ring_tensor_fill           rt_ext_api_fill
+#define ring_tensor_add            rt_ext_api_add
+#define ring_tensor_sub            rt_ext_api_sub
+#define ring_tensor_mul            rt_ext_api_mul
+#define ring_tensor_div            rt_ext_api_div
+#define ring_tensor_scale          rt_ext_api_scale
+#define ring_tensor_add_scalar     rt_ext_api_add_scalar
+#define ring_tensor_matmul         rt_ext_api_matmul
+#define ring_tensor_relu           rt_ext_api_relu
+#define ring_tensor_gelu           rt_ext_api_gelu
+#define ring_tensor_sigmoid        rt_ext_api_sigmoid
+#define ring_tensor_softmax        rt_ext_api_softmax
+#define ring_tensor_sum            rt_ext_api_sum
+#define ring_tensor_mean           rt_ext_api_mean
+#define ring_tensor_max            rt_ext_api_max
+#define ring_tensor_min            rt_ext_api_min
+#define ring_tensor_cosine_similarity rt_ext_api_cosine_similarity
+#define ring_tensor_element_size   rt_ext_api_element_size
+#define ring_tensor_total_elements rt_ext_api_total_elements
+#define ring_tensor_data           rt_ext_api_data
+#define ring_tensor_loadfunctions  rt_ext_api_loadfunctions
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
