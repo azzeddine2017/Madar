@@ -80,6 +80,7 @@ class MadarLoRATrainer
 	* Executes the training loop across all dataset samples
 	*/
 	func train(nNumEpochs = 0)
+		decimals(6)
 		if nNumEpochs != NULL and nNumEpochs > 0
 			nEpochs = nNumEpochs
 		ok
@@ -109,7 +110,7 @@ class MadarLoRATrainer
 		? "  Total Train Steps   : " + nTotalSteps
 		? "  LoRA Rank (r)       : " + nRank
 		? "  LoRA Alpha (alpha)  : " + fAlpha
-		? "  Base Learning Rate  : " + fBaseLR
+		? "  Base Learning Rate  : " + round(fBaseLR, 6)
 		? "  Attached Adapters   : " + len(aLayers)
 		? "===================================================================="
 		? ""
@@ -150,9 +151,9 @@ class MadarLoRATrainer
 					fElapsedSec = (clock() - nStartTime) / clockspersecond()
 
 					? "  [Step " + nCurrentStep + "/" + nTotalSteps + "] " +
-					  "Loss: " + round(fAvgLoss, 4) + " | " +
-					  "PPL: " + round(fPerplexity, 2) + " | " +
-					  "LR: " + fCurLR + " | " +
+					  "Loss: " + round(fAvgLoss, 6) + " | " +
+					  "PPL: " + round(fPerplexity, 4) + " | " +
+					  "LR: " + round(fCurLR, 6) + " | " +
 					  "Time: " + round(fElapsedSec, 1) + "s"
 
 					fRunningLoss = 0.0
