@@ -61,6 +61,15 @@ class QwenModel
 	func setGPU(bEnable)
 		madar_model_set_gpu(hModel, bEnable)
 
+	func loadLoRA(cDir)
+		return madar_model_load_lora(hModel, cDir)
+
+	func enableLoRA(bEnable)
+		madar_model_enable_lora(hModel, bEnable)
+
+	func setLoRAScale(fScale)
+		madar_model_set_lora_scale(hModel, fScale)
+
 	func setTemperature(temp)
 		fTemp = temp
 
@@ -294,6 +303,15 @@ class BgeModel
 
 	func setGPU(bEnable)
 		madar_model_set_gpu(hModel, bEnable)
+
+	func loadLoRA(cDir)
+		return madar_model_load_lora(hModel, cDir)
+
+	func enableLoRA(bEnable)
+		madar_model_enable_lora(hModel, bEnable)
+
+	func setLoRAScale(fScale)
+		madar_model_set_lora_scale(hModel, fScale)
 
 	func tokenize(cText)
 		return madar_model_tokenize(hModel, cText)

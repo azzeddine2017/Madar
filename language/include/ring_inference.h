@@ -140,6 +140,18 @@ typedef struct RingModel {
 	int nCurPos;
 	float fCurrentTemp;
 	int bGenFinished;
+
+	/* LoRA Adapter Fusion (Zero-Copy Native Merge) */
+	int bLoRAEnabled;
+	float fLoRAScale;
+	int nLoRARank;
+	float *pLoRA_A_Q;     /* [nRank * nEmbd] */
+	float *pLoRA_B_Q;     /* [nEmbd * nRank] */
+	float *pLoRA_A_V;     /* [nRank * nEmbd] */
+	float *pLoRA_B_V;     /* [nEmbd * nRank] */
+	float *pLoRA_A_Out;   /* [nRank * nEmbd] */
+	float *pLoRA_B_Out;   /* [nEmbd * nRank] */
+	float *pLoRA_Scratch; /* [nRank] */
 } RingModel;
 
 /* Inference Engine Lifecycle */
@@ -150,6 +162,9 @@ RING_API void ring_model_free(RingModel *pModel);
 RING_API void ring_model_set_threads(RingModel *pModel, int nThreads);
 RING_API void ring_model_set_gpu(RingModel *pModel, int bEnable);
 RING_API void ring_model_reset_kv(RingModel *pModel);
+RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir);
+RING_API void ring_model_enable_lora(RingModel *pModel, int bEnable);
+RING_API void ring_model_set_lora_scale(RingModel *pModel, float fScale);
 
 /* Forward Evaluation & Sampling */
 RING_API void ring_model_forward(RingModel *pModel, int nToken, int nPos);

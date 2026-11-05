@@ -1855,6 +1855,53 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo,
                             const float *x, float *y,
                             RingGGUFTensorInfo *pBiasInfo) {
   matvec_multiply_gpu(pModel, pInfo, NULL, x, y, pBiasInfo);
+
+  /* LoRA Adapter Fusion (Zero-Copy Native Merge) */
+  if (pModel && pModel->bLoRAEnabled && pModel->pLoRA_A_Q && pInfo && pInfo->pName) {
+    const char *pName = pInfo->pName;
+    const float *pA = NULL;
+    const float *pB = NULL;
+
+    if (strstr(pName, "attn_q") || strstr(pName, "q_proj")) {
+      pA = pModel->pLoRA_A_Q;
+      pB = pModel->pLoRA_B_Q;
+    } else if (strstr(pName, "attn_v") || strstr(pName, "v_proj")) {
+      pA = pModel->pLoRA_A_V;
+      pB = pModel->pLoRA_B_V;
+    } else if (strstr(pName, "attn_output") || strstr(pName, "attn_out") || strstr(pName, "out_proj")) {
+      pA = pModel->pLoRA_A_Out;
+      pB = pModel->pLoRA_B_Out;
+    }
+
+    if (pA && pB) {
+      int r = pModel->nLoRARank;
+      int inDim = (int)pInfo->aDims[0];
+      int outDim = (int)pInfo->aDims[1];
+      float scale = pModel->fLoRAScale;
+      float *h = pModel->pLoRA_Scratch;
+      int i, j;
+
+      /* 1. Low-rank projection: h = A * x (Rank x 1) */
+      for (i = 0; i < r; i++) {
+        const float *pRowA = pA + (size_t)i * inDim;
+        float sum = 0.0f;
+        for (j = 0; j < inDim; j++) {
+          sum += pRowA[j] * x[j];
+        }
+        h[i] = sum;
+      }
+
+      /* 2. Residual delta projection: y += scale * (B * h) */
+      for (i = 0; i < outDim; i++) {
+        const float *pRowB = pB + (size_t)i * r;
+        float sum = 0.0f;
+        for (j = 0; j < r; j++) {
+          sum += pRowB[j] * h[j];
+        }
+        y[i] += scale * sum;
+      }
+    }
+  }
 }
 
 /*
@@ -2651,6 +2698,15 @@ RING_API void ring_model_free(RingModel *pModel) {
   if (pModel->pGGUF)
     ring_gguf_close(pModel->pGGUF);
 
+  /* Clean up LoRA adapter memory */
+  if (pModel->pLoRA_A_Q) free(pModel->pLoRA_A_Q);
+  if (pModel->pLoRA_B_Q) free(pModel->pLoRA_B_Q);
+  if (pModel->pLoRA_A_V) free(pModel->pLoRA_A_V);
+  if (pModel->pLoRA_B_V) free(pModel->pLoRA_B_V);
+  if (pModel->pLoRA_A_Out) free(pModel->pLoRA_A_Out);
+  if (pModel->pLoRA_B_Out) free(pModel->pLoRA_B_Out);
+  if (pModel->pLoRA_Scratch) free(pModel->pLoRA_Scratch);
+
   free(pModel);
 }
 
@@ -2679,6 +2735,123 @@ RING_API void ring_model_reset_kv(RingModel *pModel) {
   memset(pModel->pKVCache_V, 0, kvSize * sizeof(ggml_fp16_t));
   if (pModel->pTokenizer)
     pModel->pTokenizer->nUtf8BufLen = 0;
+}
+
+/*
+================================================================================
+  LoRA Adapter Fusion Engine (Dynamic Low-Rank Weight Injection)
+================================================================================
+*/
+
+static float *read_tensor_file_to_f32(const char *cFile, int *pRows, int *pCols) {
+  FILE *fp = fopen(cFile, "rb");
+  if (!fp) return NULL;
+  int rows = 0, cols = 0;
+  if (fread(&rows, sizeof(int), 1, fp) != 1 ||
+      fread(&cols, sizeof(int), 1, fp) != 1) {
+    fclose(fp);
+    return NULL;
+  }
+  size_t count = (size_t)rows * cols;
+  double *pTemp = (double *)malloc(count * sizeof(double));
+  if (!pTemp) {
+    fclose(fp);
+    return NULL;
+  }
+  if (fread(pTemp, sizeof(double), count, fp) != count) {
+    free(pTemp);
+    fclose(fp);
+    return NULL;
+  }
+  fclose(fp);
+  float *pFloat = (float *)malloc(count * sizeof(float));
+  if (!pFloat) {
+    free(pTemp);
+    return NULL;
+  }
+  for (size_t i = 0; i < count; i++) {
+    pFloat[i] = (float)pTemp[i];
+  }
+  free(pTemp);
+  if (pRows) *pRows = rows;
+  if (pCols) *pCols = cols;
+  return pFloat;
+}
+
+RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir) {
+  if (!pModel || !cAdapterDir) return 0;
+  char path[1024];
+
+  /* Free previous LoRA tensors if loaded */
+  if (pModel->pLoRA_A_Q) { free(pModel->pLoRA_A_Q); pModel->pLoRA_A_Q = NULL; }
+  if (pModel->pLoRA_B_Q) { free(pModel->pLoRA_B_Q); pModel->pLoRA_B_Q = NULL; }
+  if (pModel->pLoRA_A_V) { free(pModel->pLoRA_A_V); pModel->pLoRA_A_V = NULL; }
+  if (pModel->pLoRA_B_V) { free(pModel->pLoRA_B_V); pModel->pLoRA_B_V = NULL; }
+  if (pModel->pLoRA_A_Out) { free(pModel->pLoRA_A_Out); pModel->pLoRA_A_Out = NULL; }
+  if (pModel->pLoRA_B_Out) { free(pModel->pLoRA_B_Out); pModel->pLoRA_B_Out = NULL; }
+  if (pModel->pLoRA_Scratch) { free(pModel->pLoRA_Scratch); pModel->pLoRA_Scratch = NULL; }
+
+  int rA = 0, cA = 0, rB = 0, cB = 0;
+
+  snprintf(path, sizeof(path), "%s/attn_q_proj_lora_a.tensor", cAdapterDir);
+  pModel->pLoRA_A_Q = read_tensor_file_to_f32(path, &rA, &cA);
+
+  snprintf(path, sizeof(path), "%s/attn_q_proj_lora_b.tensor", cAdapterDir);
+  pModel->pLoRA_B_Q = read_tensor_file_to_f32(path, &rB, &cB);
+
+  snprintf(path, sizeof(path), "%s/attn_v_proj_lora_a.tensor", cAdapterDir);
+  pModel->pLoRA_A_V = read_tensor_file_to_f32(path, &rA, &cA);
+
+  snprintf(path, sizeof(path), "%s/attn_v_proj_lora_b.tensor", cAdapterDir);
+  pModel->pLoRA_B_V = read_tensor_file_to_f32(path, &rB, &cB);
+
+  snprintf(path, sizeof(path), "%s/attn_out_proj_lora_a.tensor", cAdapterDir);
+  pModel->pLoRA_A_Out = read_tensor_file_to_f32(path, &rA, &cA);
+
+  snprintf(path, sizeof(path), "%s/attn_out_proj_lora_b.tensor", cAdapterDir);
+  pModel->pLoRA_B_Out = read_tensor_file_to_f32(path, &rB, &cB);
+
+  if (!pModel->pLoRA_A_Q || !pModel->pLoRA_B_Q) {
+    return 0;
+  }
+
+  pModel->nLoRARank = rA; /* e.g. 16 */
+
+  /* Read alpha from adapter_config.json if available */
+  snprintf(path, sizeof(path), "%s/adapter_config.json", cAdapterDir);
+  FILE *fpConfig = fopen(path, "r");
+  float fAlpha = 32.0f;
+  if (fpConfig) {
+    char buf[1024];
+    size_t nr = fread(buf, 1, sizeof(buf) - 1, fpConfig);
+    buf[nr] = '\0';
+    fclose(fpConfig);
+    char *pAlpha = strstr(buf, "\"lora_alpha\":");
+    if (pAlpha) {
+      fAlpha = (float)atof(pAlpha + 13);
+    }
+  }
+  if (fAlpha <= 0.0f) fAlpha = 32.0f;
+  pModel->fLoRAScale = (pModel->nLoRARank > 0) ? (fAlpha / (float)pModel->nLoRARank) : 2.0f;
+
+  pModel->pLoRA_Scratch = (float *)malloc((size_t)pModel->nLoRARank * sizeof(float));
+  pModel->bLoRAEnabled = 1;
+
+  printf("[MADAR AI] LoRA Adapter Successfully Merged! (Rank=%d, Alpha=%.1f, Scale=%.2f)\n",
+         pModel->nLoRARank, (float)pModel->nLoRARank * pModel->fLoRAScale, pModel->fLoRAScale);
+  return 1;
+}
+
+RING_API void ring_model_enable_lora(RingModel *pModel, int bEnable) {
+  if (pModel) {
+    pModel->bLoRAEnabled = bEnable ? 1 : 0;
+  }
+}
+
+RING_API void ring_model_set_lora_scale(RingModel *pModel, float fScale) {
+  if (pModel) {
+    pModel->fLoRAScale = fScale;
+  }
 }
 
 /*
@@ -4254,11 +4427,58 @@ RING_FUNC(ring_model_api_set_gpu) {
   ring_model_set_gpu(pModel, bEnable);
 }
 
+RING_FUNC(ring_model_api_load_lora) {
+  RingModel *pModel;
+  const char *cDir;
+  int res;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISSTRING(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  cDir = RING_API_GETSTRING(2);
+  res = ring_model_load_lora(pModel, cDir);
+  RING_API_RETNUMBER(res);
+}
+
+RING_FUNC(ring_model_api_enable_lora) {
+  RingModel *pModel;
+  int bEnable;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISNUMBER(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  bEnable = (int)RING_API_GETNUMBER(2);
+  ring_model_enable_lora(pModel, bEnable);
+}
+
+RING_FUNC(ring_model_api_set_lora_scale) {
+  RingModel *pModel;
+  float fScale;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISNUMBER(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  fScale = (float)RING_API_GETNUMBER(2);
+  ring_model_set_lora_scale(pModel, fScale);
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_open", ring_model_api_open);
   RING_API_REGISTER("madar_model_close", ring_model_api_close);
   RING_API_REGISTER("madar_model_set_threads", ring_model_api_set_threads);
   RING_API_REGISTER("madar_model_set_gpu", ring_model_api_set_gpu);
+  RING_API_REGISTER("madar_model_load_lora", ring_model_api_load_lora);
+  RING_API_REGISTER("madar_model_enable_lora", ring_model_api_enable_lora);
+  RING_API_REGISTER("madar_model_set_lora_scale", ring_model_api_set_lora_scale);
   RING_API_REGISTER("madar_model_tokenize", ring_model_api_tokenize);
   RING_API_REGISTER("madar_model_detokenize", ring_model_api_detokenize);
   RING_API_REGISTER("madar_model_generate", ring_model_api_generate);
