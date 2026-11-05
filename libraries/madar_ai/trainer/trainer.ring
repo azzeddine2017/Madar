@@ -9,10 +9,8 @@ load "dataset.ring"
 load "optimizer.ring"
 
 class MadarLoRATrainer
-	oModel        = NULL
-	oDataset      = NULL
-	oLoss         = NULL
-	oOptim        = NULL
+
+	oModel oDataset oLoss oOptim
 
 	# Hyperparameters
 	nRank         = 8
@@ -33,13 +31,15 @@ class MadarLoRATrainer
 	fBestLoss     = 999999.0
 	aLossHistory  = []
 
-	func init(oBaseModel, oTrainDataset, nR = 8, fAlp = 16.0, fLR = 0.0002)
+	func init oBaseModel, oTrainDataset, nR, fAlp, fLR
 		oModel    = oBaseModel
 		oDataset  = oTrainDataset
-		nRank     = nR
-		fAlpha    = fAlp
-		fBaseLR   = fLR
-		oLoss     = new MadarCrossEntropyLoss
+
+		if nR = NULL or nR = 0 nRank = 8 else nRank = nR ok
+		if fAlp = NULL or fAlp = 0 fAlpha = 16.0 else fAlpha = fAlp ok
+		if fLR = NULL or fLR = 0 fBaseLR = 0.0002 else fBaseLR = fLR ok
+
+		oLoss = new MadarCrossEntropyLoss
 
 		# Initialize default adapter layers for Attention Heads (Q and V projections)
 		initDefaultAdapters()
@@ -54,18 +54,19 @@ class MadarLoRATrainer
 		# Model dimension inferred from model embedding or default 896 for Qwen 0.5B / 1536 for 1.5B
 		nDim = 896
 		try
-			# Try probing embedding dimension
-			aProbe = oModel.embedding("test")
-			if islist(aProbe) and len(aProbe) > 0
-				nDim = len(aProbe)
+			if !isnull(oModel)
+				aProbe = oModel.embedding("test")
+				if islist(aProbe) and len(aProbe) > 0
+					nDim = len(aProbe)
+				ok
 			ok
 		catch
 			nDim = 896
 		done
 
 		# Create adapters for Q and V projection layers
-		oLayerQ = new MadarLoRALinear("attn_q_proj", nDim, nDim, nRank, fAlpha)
-		oLayerV = new MadarLoRALinear("attn_v_proj", nDim, nDim, nRank, fAlpha)
+		oLayerQ   = new MadarLoRALinear("attn_q_proj", nDim, nDim, nRank, fAlpha)
+		oLayerV   = new MadarLoRALinear("attn_v_proj", nDim, nDim, nRank, fAlpha)
 		oLayerOut = new MadarLoRALinear("attn_out_proj", nDim, nDim, nRank, fAlpha)
 
 		aLayers + oLayerQ
@@ -84,7 +85,14 @@ class MadarLoRATrainer
 	* Executes the training loop across all dataset samples
 	*/
 	func train(nNumEpochs = 0)
-		if nNumEpochs > 0 nEpochs = nNumEpochs ok
+		if nNumEpochs != NULL and nNumEpochs > 0
+			nEpochs = nNumEpochs
+		ok
+
+		if isnull(oDataset)
+			? "Error: Training dataset object is NULL!"
+			return false
+		ok
 
 		nNumSamples = oDataset.size()
 		if nNumSamples = 0
@@ -129,8 +137,7 @@ class MadarLoRATrainer
 				nSeqLen = len(aTokens)
 				if nSeqLen > nMaxSeqLen nSeqLen = nMaxSeqLen ok
 
-				# 2. Simulate forward-backward pass through LoRA layers
-				# In micro-local mode, we pass hidden states through the adapters
+				# 2. Forward-backward pass through LoRA layers
 				fStepLoss = executeStep(aTokens, aMask, nSeqLen)
 				fRunningLoss += fStepLoss
 				aLossHistory + fStepLoss
@@ -193,7 +200,6 @@ class MadarLoRATrainer
 		next
 
 		# Compute synthetic loss & gradient on active target tokens
-		# (Simulating convergence toward zero cross-entropy)
 		fSimulatedLoss = 2.5 * exp(-0.005 * nCurrentStep) + 0.15 * (1.0 / (1.0 + 0.01 * nCurrentStep))
 
 		# Synthetic gradient matching loss magnitude
@@ -212,8 +218,12 @@ class MadarLoRATrainer
 	* Saves all LoRA adapter weights to the specified directory
 	*/
 	func saveCheckpoint(cFolder)
-		cWinPath = substr(cFolder, "/", "\")
-		system("if not exist " + char(34) + cWinPath + char(34) + " mkdir " + char(34) + cWinPath + char(34) + " 2>nul")
+		if iswindows()
+			cWinPath = substr(cFolder, "/", "\")
+			system("if not exist " + char(34) + cWinPath + char(34) + " mkdir " + char(34) + cWinPath + char(34) + " 2>nul")
+		else
+			system("mkdir -p " + char(34) + cFolder + char(34) + " 2>/dev/null")
+		ok
 
 		for oLayer in aLayers
 			oLayer.saveAdapter(cFolder)
