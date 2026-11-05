@@ -1,0 +1,6 @@
+{
+  "lora_rank": 16,
+  "lora_alpha": 32,
+  "base_lr": 0.00,
+  "steps": 2190
+}
