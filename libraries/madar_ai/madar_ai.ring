@@ -70,6 +70,9 @@ class QwenModel
 	func setLoRAScale(fScale)
 		madar_model_set_lora_scale(hModel, fScale)
 
+	func exportMergedGGUF(cOutPath)
+		return madar_model_export_merged_gguf(hModel, cOutPath)
+
 	func setTemperature(temp)
 		fTemp = temp
 
@@ -96,6 +99,12 @@ class QwenModel
 
 	func getTokenEmbeddings(aTokens)
 		return madar_model_get_token_embeddings(hModel, aTokens)
+
+	func forward(nToken, nPos)
+		madar_model_forward(hModel, nToken, nPos)
+
+	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
+		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)
 
 	func formatChatPrompt(cUserMessage, cSystemMessage)
 		# Official Qwen2.5 / DeepSeek-R1 ChatML format
@@ -316,6 +325,9 @@ class BgeModel
 	func setLoRAScale(fScale)
 		madar_model_set_lora_scale(hModel, fScale)
 
+	func exportMergedGGUF(cOutPath)
+		return madar_model_export_merged_gguf(hModel, cOutPath)
+
 	func tokenize(cText)
 		return madar_model_tokenize(hModel, cText)
 
@@ -327,6 +339,12 @@ class BgeModel
 
 	func getTokenEmbeddings(aTokens)
 		return madar_model_get_token_embeddings(hModel, aTokens)
+
+	func forward(nToken, nPos)
+		madar_model_forward(hModel, nToken, nPos)
+
+	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
+		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)
 
 	func isArabic(cText)
 		return madar_is_arabic(cText)

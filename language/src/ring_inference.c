@@ -1857,7 +1857,8 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo,
   matvec_multiply_gpu(pModel, pInfo, NULL, x, y, pBiasInfo);
 
   /* LoRA Adapter Fusion (Zero-Copy Native Merge) */
-  if (pModel && pModel->bLoRAEnabled && pModel->pLoRA_A_Q && pInfo && pInfo->pName) {
+  if (pModel && pModel->bLoRAEnabled && pModel->pLoRA_A_Q && pInfo &&
+      pInfo->pName) {
     const char *pName = pInfo->pName;
     const float *pA = NULL;
     const float *pB = NULL;
@@ -1868,7 +1869,8 @@ static void matvec_multiply(RingModel *pModel, RingGGUFTensorInfo *pInfo,
     } else if (strstr(pName, "attn_v") || strstr(pName, "v_proj")) {
       pA = pModel->pLoRA_A_V;
       pB = pModel->pLoRA_B_V;
-    } else if (strstr(pName, "attn_output") || strstr(pName, "attn_out") || strstr(pName, "out_proj")) {
+    } else if (strstr(pName, "attn_output") || strstr(pName, "attn_out") ||
+               strstr(pName, "out_proj")) {
       pA = pModel->pLoRA_A_Out;
       pB = pModel->pLoRA_B_Out;
     }
@@ -2699,13 +2701,20 @@ RING_API void ring_model_free(RingModel *pModel) {
     ring_gguf_close(pModel->pGGUF);
 
   /* Clean up LoRA adapter memory */
-  if (pModel->pLoRA_A_Q) free(pModel->pLoRA_A_Q);
-  if (pModel->pLoRA_B_Q) free(pModel->pLoRA_B_Q);
-  if (pModel->pLoRA_A_V) free(pModel->pLoRA_A_V);
-  if (pModel->pLoRA_B_V) free(pModel->pLoRA_B_V);
-  if (pModel->pLoRA_A_Out) free(pModel->pLoRA_A_Out);
-  if (pModel->pLoRA_B_Out) free(pModel->pLoRA_B_Out);
-  if (pModel->pLoRA_Scratch) free(pModel->pLoRA_Scratch);
+  if (pModel->pLoRA_A_Q)
+    free(pModel->pLoRA_A_Q);
+  if (pModel->pLoRA_B_Q)
+    free(pModel->pLoRA_B_Q);
+  if (pModel->pLoRA_A_V)
+    free(pModel->pLoRA_A_V);
+  if (pModel->pLoRA_B_V)
+    free(pModel->pLoRA_B_V);
+  if (pModel->pLoRA_A_Out)
+    free(pModel->pLoRA_A_Out);
+  if (pModel->pLoRA_B_Out)
+    free(pModel->pLoRA_B_Out);
+  if (pModel->pLoRA_Scratch)
+    free(pModel->pLoRA_Scratch);
 
   free(pModel);
 }
@@ -2743,9 +2752,11 @@ RING_API void ring_model_reset_kv(RingModel *pModel) {
 ================================================================================
 */
 
-static float *read_tensor_file_to_f32(const char *cFile, int *pRows, int *pCols) {
+static float *read_tensor_file_to_f32(const char *cFile, int *pRows,
+                                      int *pCols) {
   FILE *fp = fopen(cFile, "rb");
-  if (!fp) return NULL;
+  if (!fp)
+    return NULL;
   int rows = 0, cols = 0;
   if (fread(&rows, sizeof(int), 1, fp) != 1 ||
       fread(&cols, sizeof(int), 1, fp) != 1) {
@@ -2773,23 +2784,47 @@ static float *read_tensor_file_to_f32(const char *cFile, int *pRows, int *pCols)
     pFloat[i] = (float)pTemp[i];
   }
   free(pTemp);
-  if (pRows) *pRows = rows;
-  if (pCols) *pCols = cols;
+  if (pRows)
+    *pRows = rows;
+  if (pCols)
+    *pCols = cols;
   return pFloat;
 }
 
 RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir) {
-  if (!pModel || !cAdapterDir) return 0;
+  if (!pModel || !cAdapterDir)
+    return 0;
   char path[1024];
 
   /* Free previous LoRA tensors if loaded */
-  if (pModel->pLoRA_A_Q) { free(pModel->pLoRA_A_Q); pModel->pLoRA_A_Q = NULL; }
-  if (pModel->pLoRA_B_Q) { free(pModel->pLoRA_B_Q); pModel->pLoRA_B_Q = NULL; }
-  if (pModel->pLoRA_A_V) { free(pModel->pLoRA_A_V); pModel->pLoRA_A_V = NULL; }
-  if (pModel->pLoRA_B_V) { free(pModel->pLoRA_B_V); pModel->pLoRA_B_V = NULL; }
-  if (pModel->pLoRA_A_Out) { free(pModel->pLoRA_A_Out); pModel->pLoRA_A_Out = NULL; }
-  if (pModel->pLoRA_B_Out) { free(pModel->pLoRA_B_Out); pModel->pLoRA_B_Out = NULL; }
-  if (pModel->pLoRA_Scratch) { free(pModel->pLoRA_Scratch); pModel->pLoRA_Scratch = NULL; }
+  if (pModel->pLoRA_A_Q) {
+    free(pModel->pLoRA_A_Q);
+    pModel->pLoRA_A_Q = NULL;
+  }
+  if (pModel->pLoRA_B_Q) {
+    free(pModel->pLoRA_B_Q);
+    pModel->pLoRA_B_Q = NULL;
+  }
+  if (pModel->pLoRA_A_V) {
+    free(pModel->pLoRA_A_V);
+    pModel->pLoRA_A_V = NULL;
+  }
+  if (pModel->pLoRA_B_V) {
+    free(pModel->pLoRA_B_V);
+    pModel->pLoRA_B_V = NULL;
+  }
+  if (pModel->pLoRA_A_Out) {
+    free(pModel->pLoRA_A_Out);
+    pModel->pLoRA_A_Out = NULL;
+  }
+  if (pModel->pLoRA_B_Out) {
+    free(pModel->pLoRA_B_Out);
+    pModel->pLoRA_B_Out = NULL;
+  }
+  if (pModel->pLoRA_Scratch) {
+    free(pModel->pLoRA_Scratch);
+    pModel->pLoRA_Scratch = NULL;
+  }
 
   int rA = 0, cA = 0, rB = 0, cB = 0;
 
@@ -2831,14 +2866,19 @@ RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir) {
       fAlpha = (float)atof(pAlpha + 13);
     }
   }
-  if (fAlpha <= 0.0f) fAlpha = 32.0f;
-  pModel->fLoRAScale = (pModel->nLoRARank > 0) ? (fAlpha / (float)pModel->nLoRARank) : 2.0f;
+  if (fAlpha <= 0.0f)
+    fAlpha = 32.0f;
+  pModel->fLoRAScale =
+      (pModel->nLoRARank > 0) ? (fAlpha / (float)pModel->nLoRARank) : 2.0f;
 
-  pModel->pLoRA_Scratch = (float *)malloc((size_t)pModel->nLoRARank * sizeof(float));
+  pModel->pLoRA_Scratch =
+      (float *)malloc((size_t)pModel->nLoRARank * sizeof(float));
   pModel->bLoRAEnabled = 1;
 
-  printf("[MADAR AI] LoRA Adapter Successfully Merged! (Rank=%d, Alpha=%.1f, Scale=%.2f)\n",
-         pModel->nLoRARank, (float)pModel->nLoRARank * pModel->fLoRAScale, pModel->fLoRAScale);
+  printf("[MADAR AI] LoRA Adapter Successfully Merged! (Rank=%d, Alpha=%.1f, "
+         "Scale=%.2f)\n",
+         pModel->nLoRARank, (float)pModel->nLoRARank * pModel->fLoRAScale,
+         pModel->fLoRAScale);
   return 1;
 }
 
@@ -2852,6 +2892,151 @@ RING_API void ring_model_set_lora_scale(RingModel *pModel, float fScale) {
   if (pModel) {
     pModel->fLoRAScale = fScale;
   }
+}
+
+static void quantize_row_q4_0_fast(const float *x, RingGGUFBlockQ4_0 *y,
+                                   int64_t k) {
+  int64_t nb = k / 32;
+  for (int64_t i = 0; i < nb; i++) {
+    float amax = 0.0f;
+    for (int l = 0; l < 32; l++) {
+      float v = x[i * 32 + l];
+      float av = fabsf(v);
+      if (amax < av)
+        amax = av;
+    }
+    float d = amax / -8.0f;
+    float id = (d != 0.0f) ? (1.0f / d) : 0.0f;
+    y[i].d = ggml_fp32_to_fp16(d);
+
+    for (int l = 0; l < 16; l++) {
+      float x0 = x[i * 32 + l] * id;
+      float x1 = x[i * 32 + l + 16] * id;
+
+      int xi0 = (int)(x0 + 8.5f);
+      int xi1 = (int)(x1 + 8.5f);
+
+      if (xi0 < 0)
+        xi0 = 0;
+      else if (xi0 > 15)
+        xi0 = 15;
+      if (xi1 < 0)
+        xi1 = 0;
+      else if (xi1 > 15)
+        xi1 = 15;
+
+      y[i].qs[l] = (uint8_t)(xi0 | (xi1 << 4));
+    }
+  }
+}
+
+RING_API int ring_model_export_merged_gguf(RingModel *pModel,
+                                           const char *cOutGGUFPath) {
+  if (!pModel || !pModel->pGGUF || !pModel->pGGUF->pMappedData ||
+      !cOutGGUFPath) {
+    return 0;
+  }
+
+  RingGGUF *pGGUF = pModel->pGGUF;
+  FILE *fpOut = fopen(cOutGGUFPath, "wb");
+  if (!fpOut) {
+    printf("[MADAR GGUF] Error: Failed to open output file '%s' for writing!\n",
+           cOutGGUFPath);
+    return 0;
+  }
+
+  /* 1. Copy exact header and metadata table up to nDataOffset */
+  if (fwrite(pGGUF->pMappedData, 1, (size_t)pGGUF->nDataOffset, fpOut) !=
+      (size_t)pGGUF->nDataOffset) {
+    fclose(fpOut);
+    return 0;
+  }
+
+  printf("[MADAR GGUF] Exporting merged model with LoRA to: %s\n",
+         cOutGGUFPath);
+  printf("[MADAR GGUF] Processing %llu tensors...\n",
+         (unsigned long long)pGGUF->nTensors);
+
+  int nMergedCount = 0;
+  for (uint64_t i = 0; i < pGGUF->nTensors; i++) {
+    RingGGUFTensorInfo *pInfo = &pGGUF->aTensors[i];
+    const char *pName = pInfo->pName ? pInfo->pName : "";
+    const uint8_t *pRawSrc =
+        (const uint8_t *)ring_gguf_get_tensor_data(pGGUF, pInfo);
+    if (!pRawSrc) {
+      fclose(fpOut);
+      return 0;
+    }
+
+    int bMergeQ =
+        (pModel->bLoRAEnabled && pModel->pLoRA_A_Q && pModel->pLoRA_B_Q &&
+         (strstr(pName, "attn_q") || strstr(pName, "q_proj")));
+    int bMergeOut =
+        (pModel->bLoRAEnabled && pModel->pLoRA_A_Out && pModel->pLoRA_B_Out &&
+         (strstr(pName, "attn_output") || strstr(pName, "attn_out") ||
+          strstr(pName, "out_proj")));
+
+    if ((bMergeQ || bMergeOut) && pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
+      const float *pA = bMergeQ ? pModel->pLoRA_A_Q : pModel->pLoRA_A_Out;
+      const float *pB = bMergeQ ? pModel->pLoRA_B_Q : pModel->pLoRA_B_Out;
+      int r = pModel->nLoRARank;
+      int inDim = (int)pInfo->aDims[0];
+      int outDim = (int)pInfo->aDims[1];
+      float scale = pModel->fLoRAScale;
+
+      float *f32 = (float *)malloc((size_t)pInfo->nElements * sizeof(float));
+      RingGGUFBlockQ4_0 *pDstBlocks =
+          (RingGGUFBlockQ4_0 *)malloc((size_t)pInfo->nSize);
+
+      if (f32 && pDstBlocks) {
+        ring_gguf_dequantize_q4_0(pRawSrc, f32, pInfo->nElements);
+
+        /* Add Delta W = scale * (B * A) */
+        for (int row = 0; row < outDim; row++) {
+          const float *pRowB = pB + (size_t)row * r;
+          float *pRowF32 = f32 + (size_t)row * inDim;
+          for (int col = 0; col < inDim; col++) {
+            float sum = 0.0f;
+            for (int k = 0; k < r; k++) {
+              sum += pRowB[k] * pA[(size_t)k * inDim + col];
+            }
+            pRowF32[col] += scale * sum;
+          }
+        }
+
+        quantize_row_q4_0_fast(f32, pDstBlocks, (int64_t)pInfo->nElements);
+        fwrite(pDstBlocks, 1, (size_t)pInfo->nSize, fpOut);
+        nMergedCount++;
+      } else {
+        fwrite(pRawSrc, 1, (size_t)pInfo->nSize, fpOut);
+      }
+
+      if (f32)
+        free(f32);
+      if (pDstBlocks)
+        free(pDstBlocks);
+    } else {
+      /* Direct copy of unadapted tensor */
+      fwrite(pRawSrc, 1, (size_t)pInfo->nSize, fpOut);
+    }
+
+    /* Preserve inter-tensor padding if present in original GGUF */
+    uint64_t nextOffset = (i + 1 < pGGUF->nTensors)
+                              ? pGGUF->aTensors[i + 1].nOffset
+                              : (pGGUF->nFileSize - pGGUF->nDataOffset);
+    uint64_t curEnd = pInfo->nOffset + pInfo->nSize;
+    if (nextOffset > curEnd) {
+      size_t nPad = (size_t)(nextOffset - curEnd);
+      const uint8_t *pPadSrc = pGGUF->pMappedData + pGGUF->nDataOffset + curEnd;
+      fwrite(pPadSrc, 1, nPad, fpOut);
+    }
+  }
+
+  fclose(fpOut);
+  printf("[MADAR GGUF] Merge complete! Successfully fused %d attention tensors "
+         "into: %s\n",
+         nMergedCount, cOutGGUFPath);
+  return 1;
 }
 
 /*
@@ -4351,8 +4536,129 @@ RING_FUNC(ring_model_api_embedding) {
     return;
   }
 
-  RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR",
+  RING_API_RETMANAGEDCPOINTER(pTensor, "tensor_t",
                               (void (*)(void *, void *))ring_tensor_delete);
+}
+
+typedef struct {
+  double *data;
+  int shape[4];
+  int ndim;
+  int rows;
+  int cols;
+  int size;
+  int is_owner;
+} MadarTensorBridge;
+
+static void extract_token_embedding(RingModel *pModel, int tok, float *xt) {
+  int nEmbd = (int)pModel->config.nEmbd;
+  const uint8_t *pRawEmbd = (const uint8_t *)ring_gguf_get_tensor_data(
+      pModel->pGGUF, pModel->pTokenEmbd);
+  if (tok >= 0 && (uint32_t)tok < pModel->config.nVocab && pRawEmbd &&
+      pModel->pTokenEmbd) {
+    if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
+      const RingGGUFBlockQ4_0 *b4 =
+          (const RingGGUFBlockQ4_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) *
+                                                     sizeof(RingGGUFBlockQ4_0));
+      ring_gguf_dequantize_q4_0(b4, xt, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
+      const RingGGUFBlockQ8_0 *b8 =
+          (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)tok * (nEmbd / 32) *
+                                                     sizeof(RingGGUFBlockQ8_0));
+      ring_gguf_dequantize_q8_0(b8, xt, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
+      ring_gguf_dequantize_f16(
+          (const ggml_fp16_t *)pRawEmbd + (size_t)tok * nEmbd, xt, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F32) {
+      memcpy(xt, (const float *)pRawEmbd + (size_t)tok * nEmbd,
+             nEmbd * sizeof(float));
+    } else {
+      memset(xt, 0, nEmbd * sizeof(float));
+    }
+  } else {
+    memset(xt, 0, nEmbd * sizeof(float));
+  }
+}
+
+RING_FUNC(ring_model_api_forward) {
+  RingModel *pModel;
+  int nToken, nPos;
+  if (RING_API_PARACOUNT != 3 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISNUMBER(2) || !RING_API_ISNUMBER(3)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  nToken = (int)RING_API_GETNUMBER(2);
+  nPos = (int)RING_API_GETNUMBER(3);
+  ring_model_forward(pModel, nToken, nPos);
+}
+
+RING_FUNC(ring_trainer_api_fill_batch) {
+  RingModel *pModel;
+  MadarTensorBridge *pX;
+  MadarTensorBridge *pdY;
+  List *pTokensList;
+  List *pIndicesList;
+  double fLossScale;
+
+  if (RING_API_PARACOUNT != 6 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISPOINTER(2) || !RING_API_ISPOINTER(3) || !RING_API_ISLIST(4) ||
+      !RING_API_ISLIST(5) || !RING_API_ISNUMBER(6)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  pX = (MadarTensorBridge *)RING_API_GETCPOINTER(2, "tensor_t");
+  pdY = (MadarTensorBridge *)RING_API_GETCPOINTER(3, "tensor_t");
+  pTokensList = RING_API_GETLIST(4);
+  pIndicesList = RING_API_GETLIST(5);
+  fLossScale = RING_API_GETNUMBER(6);
+
+  int nTargets = ring_list_getsize(pIndicesList);
+  int nEmbd = (int)pModel->config.nEmbd;
+  float *pCur = (float *)malloc((size_t)nEmbd * sizeof(float));
+  float *pPrev = (float *)malloc((size_t)nEmbd * sizeof(float));
+
+  if (!pCur || !pPrev) {
+    if (pCur)
+      free(pCur);
+    if (pPrev)
+      free(pPrev);
+    RING_API_ERROR(RING_OOM);
+    return;
+  }
+
+  for (int i = 0; i < nTargets; i++) {
+    int nTokIdx = (int)ring_list_getdouble(pIndicesList, i + 1);
+    int nTokID = (int)ring_list_getdouble(pTokensList, nTokIdx);
+    int nPrevID = (nTokIdx > 1)
+                      ? (int)ring_list_getdouble(pTokensList, nTokIdx - 1)
+                      : nTokID;
+
+    extract_token_embedding(pModel, nPrevID, pPrev);
+    extract_token_embedding(pModel, nTokID, pCur);
+
+    /* Compute zero-mean displacement vector */
+    double sumDiff = 0.0;
+    for (int d = 0; d < nEmbd; d++) {
+      sumDiff += (double)(pCur[d] - pPrev[d]);
+    }
+    double meanDiff = sumDiff / (double)nEmbd;
+
+    for (int d = 0; d < nEmbd; d++) {
+      double vX = (double)pPrev[d];
+      double vdY = ((double)(pCur[d] - pPrev[d]) - meanDiff) * fLossScale;
+      pX->data[i * nEmbd + d] = vX;
+      pdY->data[i * nEmbd + d] = vdY;
+    }
+  }
+
+  free(pCur);
+  free(pPrev);
+  RING_API_RETNUMBER(1);
 }
 
 RING_FUNC(ring_model_api_get_token_embeddings) {
@@ -4362,7 +4668,6 @@ RING_FUNC(ring_model_api_get_token_embeddings) {
   int nTokens, t;
   size_t aShape[2];
   float *pData;
-  const uint8_t *pRawEmbd;
   int nEmbd;
 
   if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
@@ -4384,45 +4689,22 @@ RING_FUNC(ring_model_api_get_token_embeddings) {
   aShape[0] = (size_t)nTokens;
   aShape[1] = (size_t)nEmbd;
 
-  pTensor = ring_tensor_new(RING_API_STATE, RING_TENSOR_TYPE_FLOAT32, 2, aShape);
+  pTensor =
+      ring_tensor_new(RING_API_STATE, RING_TENSOR_TYPE_FLOAT32, 2, aShape);
   if (!pTensor) {
     RING_API_ERROR("Failed to allocate tensor for embeddings!");
     return;
   }
   pData = (float *)ring_tensor_data(pTensor);
-  pRawEmbd = (const uint8_t *)ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pTokenEmbd);
 
   for (t = 0; t < nTokens; t++) {
     int tok = (int)ring_list_getdouble(pTokensList, t + 1);
     float *xt = pData + (size_t)t * nEmbd;
-    if (tok >= 0 && (uint32_t)tok < pModel->config.nVocab && pRawEmbd && pModel->pTokenEmbd) {
-      if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
-        const RingGGUFBlockQ4_0 *b4 =
-            (const RingGGUFBlockQ4_0 *)(pRawEmbd +
-                                        (size_t)tok * (nEmbd / 32) *
-                                            sizeof(RingGGUFBlockQ4_0));
-        ring_gguf_dequantize_q4_0(b4, xt, nEmbd);
-      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
-        const RingGGUFBlockQ8_0 *b8 =
-            (const RingGGUFBlockQ8_0 *)(pRawEmbd +
-                                        (size_t)tok * (nEmbd / 32) *
-                                            sizeof(RingGGUFBlockQ8_0));
-        ring_gguf_dequantize_q8_0(b8, xt, nEmbd);
-      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
-        ring_gguf_dequantize_f16(
-            (const ggml_fp16_t *)pRawEmbd + (size_t)tok * nEmbd, xt, nEmbd);
-      } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F32) {
-        memcpy(xt, (const float *)pRawEmbd + (size_t)tok * nEmbd,
-               nEmbd * sizeof(float));
-      } else {
-        memset(xt, 0, nEmbd * sizeof(float));
-      }
-    } else {
-      memset(xt, 0, nEmbd * sizeof(float));
-    }
+    extract_token_embedding(pModel, tok, xt);
   }
 
-  RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR", (void (*)(void *, void *))ring_tensor_delete);
+  RING_API_RETMANAGEDCPOINTER(pTensor, "tensor_t",
+                              (void (*)(void *, void *))ring_tensor_delete);
 }
 
 RING_FUNC(ring_model_api_prefill) {
@@ -4541,6 +4823,21 @@ RING_FUNC(ring_model_api_set_lora_scale) {
   ring_model_set_lora_scale(pModel, fScale);
 }
 
+RING_FUNC(ring_model_api_export_merged_gguf) {
+  RingModel *pModel;
+  const char *cOutGGUFPath;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISSTRING(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  cOutGGUFPath = RING_API_GETSTRING(2);
+  int nRes = ring_model_export_merged_gguf(pModel, cOutGGUFPath);
+  RING_API_RETNUMBER(nRes);
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_open", ring_model_api_open);
   RING_API_REGISTER("madar_model_close", ring_model_api_close);
@@ -4548,7 +4845,10 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_set_gpu", ring_model_api_set_gpu);
   RING_API_REGISTER("madar_model_load_lora", ring_model_api_load_lora);
   RING_API_REGISTER("madar_model_enable_lora", ring_model_api_enable_lora);
-  RING_API_REGISTER("madar_model_set_lora_scale", ring_model_api_set_lora_scale);
+  RING_API_REGISTER("madar_model_set_lora_scale",
+                    ring_model_api_set_lora_scale);
+  RING_API_REGISTER("madar_model_export_merged_gguf",
+                    ring_model_api_export_merged_gguf);
   RING_API_REGISTER("madar_model_tokenize", ring_model_api_tokenize);
   RING_API_REGISTER("madar_model_detokenize", ring_model_api_detokenize);
   RING_API_REGISTER("madar_model_generate", ring_model_api_generate);
@@ -4560,5 +4860,8 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_reset", ring_model_api_reset);
   RING_API_REGISTER("madar_is_arabic", ring_model_api_is_arabic);
   RING_API_REGISTER("madar_model_embedding", ring_model_api_embedding);
-  RING_API_REGISTER("madar_model_get_token_embeddings", ring_model_api_get_token_embeddings);
+  RING_API_REGISTER("madar_model_get_token_embeddings",
+                    ring_model_api_get_token_embeddings);
+  RING_API_REGISTER("madar_model_forward", ring_model_api_forward);
+  RING_API_REGISTER("madar_trainer_fill_batch", ring_trainer_api_fill_batch);
 }

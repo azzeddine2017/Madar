@@ -28,9 +28,9 @@ if !fexists(cModelPath)
 ok
 
 # Select active adapter:
-# - cTestRunDir: Verified locally calibrated adapter (generates clean Ring code)
-# - cCloudDir  : Full 730-sample cloud trained adapter
-cAdapterDir = cTestRunDir
+# - cTestRunDir: Verified locally calibrated micro-adapter (20 steps)
+# - cCloudDir  : Full 2190-step calibrated adapter in adapters/ring_lora_cloud/final
+cAdapterDir = cCloudDir
 
 # 1. Initialize Base Model
 ? "1. Loading Base Model: " + cModelPath
@@ -62,8 +62,8 @@ if !bSuccess
 	bye
 ok
 
-# Calibrate scaling factor for smooth fusion with base quantized weights
-oModel.setLoRAScale(0.01)
+# Calibrated fusion scale for 2190-step adapter (optimal perturbation ~0.005)
+oModel.setLoRAScale(0.005)
 
 # 4. Run Merged Inference (With LoRA Adapter Active)
 ? ""

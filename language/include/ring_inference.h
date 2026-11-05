@@ -165,6 +165,7 @@ RING_API void ring_model_reset_kv(RingModel *pModel);
 RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir);
 RING_API void ring_model_enable_lora(RingModel *pModel, int bEnable);
 RING_API void ring_model_set_lora_scale(RingModel *pModel, float fScale);
+RING_API int ring_model_export_merged_gguf(RingModel *pModel, const char *cOutGGUFPath);
 
 /* Forward Evaluation & Sampling */
 RING_API void ring_model_forward(RingModel *pModel, int nToken, int nPos);
