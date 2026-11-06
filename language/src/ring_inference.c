@@ -5218,7 +5218,8 @@ static void extract_token_embedding(RingModel *pModel, int tok, float *xt) {
 RING_FUNC(ring_model_api_forward) {
   RingModel *pModel;
   int nToken, nPos;
-  if (RING_API_PARACOUNT != 3 || !RING_API_ISPOINTER(1) ||
+  int bComputeLogits = 1;
+  if (RING_API_PARACOUNT < 3 || !RING_API_ISPOINTER(1) ||
       !RING_API_ISNUMBER(2) || !RING_API_ISNUMBER(3)) {
     RING_API_ERROR(RING_API_BADPARATYPE);
     return;
@@ -5227,7 +5228,10 @@ RING_FUNC(ring_model_api_forward) {
   RING_API_CHECKNULLPOINTER(pModel);
   nToken = (int)RING_API_GETNUMBER(2);
   nPos = (int)RING_API_GETNUMBER(3);
-  ring_model_forward(pModel, nToken, nPos);
+  if (RING_API_PARACOUNT >= 4 && RING_API_ISNUMBER(4)) {
+    bComputeLogits = (int)RING_API_GETNUMBER(4);
+  }
+  ring_model_forward_ex(pModel, nToken, nPos, bComputeLogits);
 }
 
 RING_FUNC(ring_trainer_api_fill_batch) {

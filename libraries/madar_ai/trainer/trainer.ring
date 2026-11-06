@@ -190,49 +190,53 @@ class MadarLoRATrainer
 	func executeStep(aTokens, aMask, nSeqLen)
 		# 1. High-Performance Multi-Layer Causal LM Training via Native C Engine
 		if !isnull(oModel) and oModel.hModel != NULL
+			# Reset KV Cache for pristine sample context
+			oModel.reset()
+
 			fTotalLoss = 0.0
 			nTargetCount = 0
 			nTokCount = len(aTokens)
 			if nTokCount > nSeqLen nTokCount = nSeqLen ok
 
-			# Collect response target indices where mask == 1
-			aTargets = []
-			for t = 1 to nTokCount - 1
-				if (t + 1) <= len(aMask) and aMask[t + 1] = 1
-					aTargets + t
+			# Find start of response
+			nRespStart = nTokCount
+			for t = 1 to nTokCount
+				if t <= len(aMask) and aMask[t] = 1
+					nRespStart = t
+					exit
 				ok
 			next
 
-			nNumTargets = len(aTargets)
-			if nNumTargets = 0 return 0.0 ok
+			# 1. Sequential Prompt Prefill (bComputeLogits = 0: fast, populates KV cache)
+			for t = 1 to nRespStart - 2
+				nTok = aTokens[t]
+				nPos = t - 1
+				oModel.forward(nTok, nPos, 0)
+			next
 
-			# Sub-sample up to 16 key response tokens evenly across the sequence
-			# (Balances high semantic gradient coverage with 50x GPU throughput)
-			nMaxTargets = 16
-			aSelectedTargets = []
-			if nNumTargets <= nMaxTargets
-				aSelectedTargets = aTargets
-			else
-				nStride = nNumTargets / nMaxTargets
-				for s = 1 to nMaxTargets
-					nIdx = floor((s - 1) * nStride) + 1
-					if nIdx > nNumTargets nIdx = nNumTargets ok
-					aSelectedTargets + aTargets[nIdx]
-				next
+			# 2. Sequential Response Training (bComputeLogits = 1: with full prompt context)
+			# Train on up to 32 response tokens sequentially
+			nMaxRespTokens = 32
+			nTrainEnd = nTokCount - 1
+			if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
+				nTrainEnd = nRespStart + nMaxRespTokens - 2
 			ok
 
-			for tIdx in aSelectedTargets
-				nCurTok  = aTokens[tIdx]
-				nNextTok = aTokens[tIdx + 1]
-				nPos     = tIdx - 1
+			for t = (nRespStart - 1) to nTrainEnd
+				if t < 1 loop ok
+				nCurTok  = aTokens[t]
+				nNextTok = aTokens[t + 1]
+				nPos     = t - 1
 
-				# Forward current token through transformer layers
-				oModel.forward(nCurTok, nPos)
+				# Forward current token through transformer with logits
+				oModel.forward(nCurTok, nPos, 1)
 
-				# Compute Cross-Entropy Loss & backpropagate across all 28 LoRA layers
-				fTokLoss = oModel.trainToken(nNextTok)
-				fTotalLoss += fTokLoss
-				nTargetCount++
+				# Target Cross-Entropy Loss computation & multi-layer backprop
+				if (t + 1) <= len(aMask) and aMask[t + 1] = 1
+					fTokLoss = oModel.trainToken(nNextTok)
+					fTotalLoss += fTokLoss
+					nTargetCount++
+				ok
 			next
 
 			if nTargetCount > 0

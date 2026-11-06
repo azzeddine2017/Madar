@@ -125,8 +125,8 @@ class QwenModel
 	func getTokenEmbeddings(aTokens)
 		return madar_model_get_token_embeddings(hModel, aTokens)
 
-	func forward(nToken, nPos)
-		madar_model_forward(hModel, nToken, nPos)
+	func forward(nToken, nPos, bComputeLogits = 1)
+		madar_model_forward(hModel, nToken, nPos, bComputeLogits)
 
 	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
 		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)
@@ -380,8 +380,8 @@ class BgeModel
 	func getTokenEmbeddings(aTokens)
 		return madar_model_get_token_embeddings(hModel, aTokens)
 
-	func forward(nToken, nPos)
-		madar_model_forward(hModel, nToken, nPos)
+	func forward(nToken, nPos, bComputeLogits = 1)
+		madar_model_forward(hModel, nToken, nPos, bComputeLogits)
 
 	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
 		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)
