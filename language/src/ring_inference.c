@@ -2980,7 +2980,10 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   float *pGradH = pModel->pGradH;
   memset(pGradH, 0, (size_t)nEmbd * sizeof(float));
 
-  float *pRowBuf = (float *)malloc((size_t)nEmbd * sizeof(float));
+  float rowBufStack[4096];
+  float *pRowBuf = (nEmbd <= 4096)
+                       ? rowBufStack
+                       : (float *)malloc((size_t)nEmbd * sizeof(float));
   if (!pRowBuf)
     return fLoss;
 
@@ -2991,23 +2994,27 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     pGradH[d] += gradTarget * pRowBuf[d];
   }
 
-  /* Candidate false-positive tokens (top logits where diff > -6.0f) */
-  for (uint32_t i = 0; i < nVocab; i++) {
+  /* Candidate false-positive tokens (top competitors with significant
+   * probability mass, max 8) */
+  int nFalseCount = 0;
+  for (uint32_t i = 0; i < nVocab && nFalseCount < 8; i++) {
     if (i == (uint32_t)nTargetToken)
       continue;
     float diff = pModel->pLogits[i] - maxLogit;
-    if (diff > -6.0f) {
+    if (diff > -4.0f) {
       float pFalse = expf(diff) * invSum;
-      if (pFalse > 0.001f) {
+      if (pFalse > 0.015f) {
         get_output_tensor_row_f32(pModel, i, pRowBuf);
         for (int d = 0; d < nEmbd; d++) {
           pGradH[d] += pFalse * pRowBuf[d];
         }
+        nFalseCount++;
       }
     }
   }
 
-  free(pRowBuf);
+  if (pRowBuf != rowBufStack)
+    free(pRowBuf);
 
   /* Gradient clipping on grad_h to prevent exploding gradients */
   float gradNormSq = 0.0f;
@@ -3023,7 +3030,9 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   /* 3. Backpropagate into All Layer LoRA Adapters */
   RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
   float *pU = pModel->pLoRA_Scratch; /* [r] */
-  float *pGu = (float *)malloc((size_t)r * sizeof(float));
+  float guStack[128];
+  float *pGu =
+      (r <= 128) ? guStack : (float *)malloc((size_t)r * sizeof(float));
   if (!pGu)
     return fLoss;
 
@@ -3104,7 +3113,8 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     }
   }
 
-  free(pGu);
+  if (pGu != guStack)
+    free(pGu);
   pModel->nTrainTokens++;
   return fLoss;
 }
