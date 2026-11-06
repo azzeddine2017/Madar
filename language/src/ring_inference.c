@@ -2868,7 +2868,8 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
 
   pModel->nLoRARank = nRank;
   pModel->fLoRAAlpha = fAlpha;
-  pModel->fLoRAScale = fAlpha / (float)nRank;
+  float depthScale = (nLayers > 1) ? (1.0f / sqrtf((float)nLayers)) : 1.0f;
+  pModel->fLoRAScale = (fAlpha / (float)nRank) * depthScale;
 
   /* Allocate scratch for low-rank dot products */
   if (pModel->pLoRA_Scratch)
@@ -2935,7 +2936,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->nStepAccumTokens = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
-         "| Alpha: %.1f | Scale: %.2f\n",
+         "| Alpha: %.1f | Scale: %.4f (Depth-Scaled)\n",
          nLayers, nRank, fAlpha, pModel->fLoRAScale);
   return 1;
 }
@@ -3146,9 +3147,13 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
     if (!pLayer->bActive)
       continue;
 
-#define UPDATE_TENSOR(W, dW, M, V, count)                                      \
+#define UPDATE_TENSOR(W, dW, M, V, count, maxVal)                              \
   for (size_t i = 0; i < (count); i++) {                                       \
     float g = dW[i] * invAccum;                                                \
+    if (g > 1.0f)                                                              \
+      g = 1.0f;                                                                \
+    else if (g < -1.0f)                                                        \
+      g = -1.0f;                                                               \
     M[i] = beta1 * M[i] + (1.0f - beta1) * g;                                  \
     V[i] = beta2 * V[i] + (1.0f - beta2) * (g * g);                            \
     float mHat =                                                               \
@@ -3156,18 +3161,23 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
     float vHat =                                                               \
         V[i] / (1.0f - powf(beta2, (float)pModel->nTrainTokens + 1.0f));       \
     float step = mHat / (sqrtf(vHat) + eps);                                   \
-    W[i] -= fLR * (step + fWeightDecay * W[i]);                                \
+    float newW = W[i] - fLR * (step + fWeightDecay * W[i]);                    \
+    if (newW > (maxVal))                                                       \
+      newW = (maxVal);                                                         \
+    else if (newW < -(maxVal))                                                 \
+      newW = -(maxVal);                                                        \
+    W[i] = newW;                                                               \
     dW[i] = 0.0f;                                                              \
   }
 
     UPDATE_TENSOR(pLayer->pA_Q, pLayer->pdA_Q, pLayer->pMA_Q, pLayer->pVA_Q,
-                  nSizeA);
+                  nSizeA, 0.35f);
     UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
-                  nSizeB);
+                  nSizeB, 0.05f);
     UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
-                  pLayer->pVA_Out, nSizeA);
+                  pLayer->pVA_Out, nSizeA, 0.35f);
     UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
-                  pLayer->pVB_Out, nSizeB);
+                  pLayer->pVB_Out, nSizeB, 0.05f);
 
 #undef UPDATE_TENSOR
   }
