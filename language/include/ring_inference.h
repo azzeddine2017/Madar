@@ -64,6 +64,26 @@ typedef struct RingLayerWeights {
 	void *pGPUBufDown;
 } RingLayerWeights;
 
+typedef struct RingLoRALayerAdapter {
+	int bActive;
+	float *pA_Q;    /* [nRank * nEmbd] */
+	float *pB_Q;    /* [nEmbd * nRank] */
+	float *pA_Out;  /* [nRank * nEmbd] */
+	float *pB_Out;  /* [nEmbd * nRank] */
+	float *pdA_Q;   /* Gradient Accumulators */
+	float *pdB_Q;
+	float *pdA_Out;
+	float *pdB_Out;
+	float *pMA_Q;   /* AdamW 1st moment (Mean) */
+	float *pVA_Q;   /* AdamW 2nd moment (Variance) */
+	float *pMB_Q;
+	float *pVB_Q;
+	float *pMA_Out;
+	float *pVA_Out;
+	float *pMB_Out;
+	float *pVB_Out;
+} RingLoRALayerAdapter;
+
 typedef struct RingModel {
 	RingGGUF *pGGUF;
 	RingTokenizer *pTokenizer;
@@ -152,6 +172,13 @@ typedef struct RingModel {
 	float *pLoRA_A_Out;   /* [nRank * nEmbd] */
 	float *pLoRA_B_Out;   /* [nEmbd * nRank] */
 	float *pLoRA_Scratch; /* [nRank] */
+	/* Multi-Layer LoRA Causal Training Engine */
+	int bMultiLayerLoRA;
+	float fLoRAAlpha;
+	void *aLoRALayers;                 /* RingLoRALayerAdapter [nLayers] */
+	float *pLayerActIn;                /* [nLayers * nEmbd] */
+	float *pGradH;                     /* [nEmbd] */
+	uint64_t nTrainTokens;
 } RingModel;
 
 /* Inference Engine Lifecycle */
@@ -166,6 +193,13 @@ RING_API int ring_model_load_lora(RingModel *pModel, const char *cAdapterDir);
 RING_API void ring_model_enable_lora(RingModel *pModel, int bEnable);
 RING_API void ring_model_set_lora_scale(RingModel *pModel, float fScale);
 RING_API int ring_model_export_merged_gguf(RingModel *pModel, const char *cOutGGUFPath);
+
+/* Native Multi-Layer LoRA Causal Training */
+RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha);
+RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken);
+RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR, float fWeightDecay);
+RING_API int ring_model_save_lora(RingModel *pModel, const char *cFolder);
+RING_API int ring_model_load_lora_folder(RingModel *pModel, const char *cFolder);
 
 /* Forward Evaluation & Sampling */
 RING_API void ring_model_forward(RingModel *pModel, int nToken, int nPos);

@@ -1,86 +1,66 @@
 # ====================================================================
-# Madar AI - Dual 1.5B Bilingual Model Comparison & Verification
-# Evaluates Qwen2.5-Coder-1.5B vs DeepSeek-R1-Distill-1.5B (Merged GGUFs)
+# Madar AI - Bilingual 1.5B Flagships CLI Runner
+# Executes one model at a time to preserve memory footprint
 # ====================================================================
 
 load "madar_ai.ring"
 
-cModelQwen     = "models/qwen2.5-coder-1.5b-ring-bilingual-merged.gguf"
-cModelDeepSeek = "models/deepseek-r1-distill-1.5b-ring-bilingual-merged.gguf"
+cChoice = "qwen"
+if len(sysargv) >= 2
+	cArg = lower(sysargv[2])
+	if substr(cArg, "deepseek") > 0 or substr(cArg, "r1") > 0 or cArg = "2"
+		cChoice = "deepseek"
+	elseif substr(cArg, "qwen") > 0 or substr(cArg, "coder") > 0 or cArg = "1"
+		cChoice = "qwen"
+	ok
+ok
 
-# 1. Verify existence of models
-bHaveQwen     = fexists(cModelQwen)
-bHaveDeepSeek = fexists(cModelDeepSeek)
+if cChoice = "qwen"
+	cModelPath = "models/qwen2.5-coder-1.5b-ring-bilingual-merged.gguf"
+	cModelName = "Qwen2.5-Coder-1.5B (Bilingual Ring Specialist)"
+	fTemp = 0.2
+	nMaxTok = 256
+else
+	cModelPath = "models/deepseek-r1-distill-1.5b-ring-bilingual-merged.gguf"
+	cModelName = "DeepSeek-R1-Distill-1.5B (Reasoning & Ring Bilingual)"
+	fTemp = 0.6
+	nMaxTok = 384
+ok
 
-cStatusQwen = "NOT FOUND"
-if bHaveQwen cStatusQwen = "READY" ok
-cStatusDeepSeek = "NOT FOUND"
-if bHaveDeepSeek cStatusDeepSeek = "READY" ok
-
-? "===================================================================="
-? "  Madar AI - Bilingual 1.5B Flagships Inference Test"
-? "===================================================================="
-? "  Qwen2.5-Coder Model    : " + cModelQwen + " [" + cStatusQwen + "]"
-? "  DeepSeek-R1 Model      : " + cModelDeepSeek + " [" + cStatusDeepSeek + "]"
-? "===================================================================="
-
-if !bHaveQwen and !bHaveDeepSeek
-	? "Notice: Downloaded merged GGUF models not yet detected in 'models/' directory."
-	? "Please move the downloaded GGUF files to 'models/' once downloading finishes."
+if !fexists(cModelPath)
+	? "Error: Target model not found: " + cModelPath
 	bye
 ok
 
-# Test Prompts: Bilingual
+? "===================================================================="
+? "  Madar AI - Single Model Inference Runner"
+? "  Active Model: " + cModelName
+? "  File        : " + cModelPath
+? "===================================================================="
+
+oModel = model_open(cModelPath)
+oModel.setThreads(4)
+oModel.setTemperature(fTemp)
+oModel.setMaxTokens(nMaxTok)
+
 cSystemPrompt = "You are an expert Ring programming language engineer."
 
+# Test 1: Arabic
 cArabicPrompt = "اكتب دالة بلغة رينج لعكس نص والتحقق مما إذا كان palindrome مع مثال تطبيقي."
-cEnglishPrompt = "Write a Ring function that calculates factorial of a number with sample usage."
-
-# Run Qwen Coder evaluation
-if bHaveQwen
-	? ""
-	? ">>> [1/2] Testing Qwen2.5-Coder-1.5B (Fine-Tuned Bilingual)..."
-	oQwen = model_open(cModelQwen)
-	oQwen.setThreads(4)
-	oQwen.setTemperature(0.3)
-	oQwen.setMaxTokens(256)
-
-	? "--- [Prompt: Arabic] ---"
-	? cArabicPrompt
-	? "--- [Response] ---"
-	cResp1 = oQwen.generate(cArabicPrompt, cSystemPrompt)
-	? cResp1
-	? ""
-	? "--- [Prompt: English] ---"
-	? cEnglishPrompt
-	? "--- [Response] ---"
-	cResp2 = oQwen.generate(cEnglishPrompt, cSystemPrompt)
-	? cResp2
-ok
-
-# Run DeepSeek R1 evaluation
-if bHaveDeepSeek
-	? ""
-	? ">>> [2/2] Testing DeepSeek-R1-Distill-1.5B (Fine-Tuned Bilingual)..."
-	oR1 = model_open(cModelDeepSeek)
-	oR1.setThreads(4)
-	oR1.setTemperature(0.6)
-	oR1.setMaxTokens(384)
-
-	? "--- [Prompt: Arabic] ---"
-	? cArabicPrompt
-	? "--- [Response] ---"
-	cResp1 = oR1.generateStream(cArabicPrompt, cSystemPrompt)
-	? cResp1
-	? ""
-	? "--- [Prompt: English] ---"
-	? cEnglishPrompt
-	? "--- [Response] ---"
-	cResp2 = oR1.generateStream(cEnglishPrompt, cSystemPrompt)
-	? cResp2
-ok
-
 ? ""
-? "===================================================================="
-? "  Bilingual Benchmark Completed Successfully!"
-? "===================================================================="
+? "==================== [Arabic Prompt] ===================="
+? cArabicPrompt
+? "-------------------- [Output] --------------------"
+oModel.generateStream(cArabicPrompt, cSystemPrompt)
+? ""
+? "========================================================"
+
+# Test 2: English
+cEnglishPrompt = "Write a Ring function to calculate the factorial of a number with sample usage."
+? ""
+? "==================== [English Prompt] ===================="
+? cEnglishPrompt
+? "-------------------- [Output] --------------------"
+oModel.generateStream(cEnglishPrompt, cSystemPrompt)
+? ""
+? "========================================================"

@@ -60,6 +60,21 @@ class QwenModel
 	func loadLoRA(cDir)
 		return madar_model_load_lora(hModel, cDir)
 
+	func initLoRA(nRank, fAlpha)
+		return madar_lora_init(hModel, nRank, fAlpha)
+
+	func trainToken(nTargetToken)
+		return madar_lora_train_token(hModel, nTargetToken)
+
+	func optimizerStep(fLR, fWD)
+		return madar_lora_optimizer_step(hModel, fLR, fWD)
+
+	func saveLoRA(cDir)
+		return madar_lora_save(hModel, cDir)
+
+	func loadLoRAFolder(cDir)
+		return madar_lora_load(hModel, cDir)
+
 	func enableLoRA(bEnable)
 		madar_model_enable_lora(hModel, bEnable)
 
@@ -328,6 +343,21 @@ class BgeModel
 
 	func loadLoRA(cDir)
 		return madar_model_load_lora(hModel, cDir)
+
+	func initLoRA(nRank, fAlpha)
+		return madar_lora_init(hModel, nRank, fAlpha)
+
+	func trainToken(nTargetToken)
+		return madar_lora_train_token(hModel, nTargetToken)
+
+	func optimizerStep(fLR, fWD)
+		return madar_lora_optimizer_step(hModel, fLR, fWD)
+
+	func saveLoRA(cDir)
+		return madar_lora_save(hModel, cDir)
+
+	func loadLoRAFolder(cDir)
+		return madar_lora_load(hModel, cDir)
 
 	func enableLoRA(bEnable)
 		madar_model_enable_lora(hModel, bEnable)

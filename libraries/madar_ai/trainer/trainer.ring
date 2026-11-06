@@ -41,6 +41,11 @@ class MadarLoRATrainer
 
 		oLoss = new MadarCrossEntropyLoss
 
+		# Initialize native multi-layer LoRA engine if model is loaded
+		if !isnull(oModel) and oModel.hModel != NULL
+			oModel.initLoRA(nRank, fAlpha)
+		ok
+
 		# Initialize default adapter layers for Attention Heads (Q and V projections)
 		initDefaultAdapters()
 		return self
@@ -140,6 +145,10 @@ class MadarLoRATrainer
 
 				# 3. Optimizer Step
 				oOptim.step()
+				fCurLR = oOptim.fCurrentLR
+				if !isnull(oModel) and oModel.hModel != NULL
+					oModel.optimizerStep(fCurLR, 0.01)
+				ok
 
 				# 4. Logging
 				if nCurrentStep % nLogInterval = 0 or nCurrentStep = 1
@@ -179,6 +188,35 @@ class MadarLoRATrainer
 	* Computes forward delta and true semantic token transition gradients on active target tokens
 	*/
 	func executeStep(aTokens, aMask, nSeqLen)
+		# 1. High-Performance Multi-Layer Causal LM Training via Native C Engine
+		if !isnull(oModel) and oModel.hModel != NULL
+			fTotalLoss = 0.0
+			nTargetCount = 0
+			nTokCount = len(aTokens)
+			if nTokCount > nSeqLen nTokCount = nSeqLen ok
+
+			for t = 1 to nTokCount - 1
+				nCurTok = aTokens[t]
+				nNextTok = aTokens[t + 1]
+				nPos = t - 1
+
+				# Forward current token through transformer layers
+				oModel.forward(nCurTok, nPos)
+
+				# If next token is in response (mask == 1), compute cross-entropy & backprop
+				if (t + 1) <= len(aMask) and aMask[t + 1] = 1
+					fTokLoss = oModel.trainToken(nNextTok)
+					fTotalLoss += fTokLoss
+					nTargetCount++
+				ok
+			next
+
+			if nTargetCount > 0
+				return fTotalLoss / nTargetCount
+			ok
+			return 0.0
+		ok
+
 		# Probe dimension
 		nDim = aLayers[1].nInDim
 
@@ -282,9 +320,13 @@ class MadarLoRATrainer
 			system("mkdir -p " + char(34) + cFolder + char(34) + " 2>/dev/null")
 		ok
 
-		for oLayer in aLayers
-			oLayer.saveAdapter(cFolder)
-		next
+		if !isnull(oModel) and oModel.hModel != NULL
+			oModel.saveLoRA(cFolder)
+		else
+			for oLayer in aLayers
+				oLayer.saveAdapter(cFolder)
+			next
+		ok
 
 		# Save configuration metadata
 		cMetaPath = cFolder + "/adapter_config.json"

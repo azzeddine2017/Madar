@@ -2716,6 +2716,56 @@ RING_API void ring_model_free(RingModel *pModel) {
   if (pModel->pLoRA_Scratch)
     free(pModel->pLoRA_Scratch);
 
+  /* Clean up Multi-Layer LoRA memory */
+  if (pModel->aLoRALayers) {
+    RingLoRALayerAdapter *pAdapters =
+        (RingLoRALayerAdapter *)pModel->aLoRALayers;
+    for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
+      if (pAdapters[l].pA_Q)
+        free(pAdapters[l].pA_Q);
+      if (pAdapters[l].pB_Q)
+        free(pAdapters[l].pB_Q);
+      if (pAdapters[l].pA_Out)
+        free(pAdapters[l].pA_Out);
+      if (pAdapters[l].pB_Out)
+        free(pAdapters[l].pB_Out);
+      if (pAdapters[l].pdA_Q)
+        free(pAdapters[l].pdA_Q);
+      if (pAdapters[l].pdB_Q)
+        free(pAdapters[l].pdB_Q);
+      if (pAdapters[l].pdA_Out)
+        free(pAdapters[l].pdA_Out);
+      if (pAdapters[l].pdB_Out)
+        free(pAdapters[l].pdB_Out);
+      if (pAdapters[l].pMA_Q)
+        free(pAdapters[l].pMA_Q);
+      if (pAdapters[l].pVA_Q)
+        free(pAdapters[l].pVA_Q);
+      if (pAdapters[l].pMB_Q)
+        free(pAdapters[l].pMB_Q);
+      if (pAdapters[l].pVB_Q)
+        free(pAdapters[l].pVB_Q);
+      if (pAdapters[l].pMA_Out)
+        free(pAdapters[l].pMA_Out);
+      if (pAdapters[l].pVA_Out)
+        free(pAdapters[l].pVA_Out);
+      if (pAdapters[l].pMB_Out)
+        free(pAdapters[l].pMB_Out);
+      if (pAdapters[l].pVB_Out)
+        free(pAdapters[l].pVB_Out);
+    }
+    free(pModel->aLoRALayers);
+    pModel->aLoRALayers = NULL;
+  }
+  if (pModel->pLayerActIn) {
+    free(pModel->pLayerActIn);
+    pModel->pLayerActIn = NULL;
+  }
+  if (pModel->pGradH) {
+    free(pModel->pGradH);
+    pModel->pGradH = NULL;
+  }
+
   free(pModel);
 }
 
@@ -2744,6 +2794,492 @@ RING_API void ring_model_reset_kv(RingModel *pModel) {
   memset(pModel->pKVCache_V, 0, kvSize * sizeof(ggml_fp16_t));
   if (pModel->pTokenizer)
     pModel->pTokenizer->nUtf8BufLen = 0;
+}
+
+/*
+================================================================================
+  Multi-Layer LoRA Causal Training Engine (Native Madar AI)
+================================================================================
+*/
+
+static float *read_tensor_file_to_f32(const char *cFile, int *pRows,
+                                      int *pCols);
+
+static void get_output_tensor_row_f32(RingModel *pModel, uint32_t row,
+                                      float *dst) {
+  RingGGUFTensorInfo *pInfo = pModel->pOutput;
+  if (!pInfo || !dst)
+    return;
+  const uint8_t *pRaw =
+      (const uint8_t *)ring_gguf_get_tensor_data(pModel->pGGUF, pInfo);
+  if (!pRaw)
+    return;
+  int K = (int)pInfo->aDims[0];
+  if (pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
+    const RingGGUFBlockQ4_0 *pRow =
+        (const RingGGUFBlockQ4_0 *)(pRaw + (size_t)row * (K / 32) *
+                                               sizeof(RingGGUFBlockQ4_0));
+    ring_gguf_dequantize_q4_0(pRow, dst, K);
+  } else if (pInfo->nType == RING_GGUF_TENSOR_Q6_K) {
+    const RingGGUFBlockQ6_K *pRow =
+        (const RingGGUFBlockQ6_K *)(pRaw + (size_t)row * (K / 256) *
+                                               sizeof(RingGGUFBlockQ6_K));
+    ring_gguf_dequantize_q6_k(pRow, dst, K);
+  } else if (pInfo->nType == RING_GGUF_TENSOR_Q8_0) {
+    const RingGGUFBlockQ8_0 *pRow =
+        (const RingGGUFBlockQ8_0 *)(pRaw + (size_t)row * (K / 32) *
+                                               sizeof(RingGGUFBlockQ8_0));
+    ring_gguf_dequantize_q8_0(pRow, dst, K);
+  } else if (pInfo->nType == RING_GGUF_TENSOR_F32) {
+    memcpy(dst, (const float *)pRaw + (size_t)row * K, K * sizeof(float));
+  }
+}
+
+static void save_f32_to_tensor_file(const char *cPath, const float *pData,
+                                    int rows, int cols) {
+  FILE *fp = fopen(cPath, "wb");
+  if (!fp)
+    return;
+  fwrite(&rows, sizeof(int), 1, fp);
+  fwrite(&cols, sizeof(int), 1, fp);
+  size_t count = (size_t)rows * cols;
+  double *pTemp = (double *)malloc(count * sizeof(double));
+  if (pTemp) {
+    for (size_t i = 0; i < count; i++)
+      pTemp[i] = (double)pData[i];
+    fwrite(pTemp, sizeof(double), count, fp);
+    free(pTemp);
+  }
+  fclose(fp);
+}
+
+RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
+  if (!pModel)
+    return 0;
+  uint32_t nLayers = pModel->config.nLayers;
+  int nEmbd = (int)pModel->config.nEmbd;
+  if (nLayers == 0 || nEmbd == 0)
+    return 0;
+
+  if (nRank <= 0)
+    nRank = 16;
+  if (fAlpha <= 0.0f)
+    fAlpha = 32.0f;
+
+  pModel->nLoRARank = nRank;
+  pModel->fLoRAAlpha = fAlpha;
+  pModel->fLoRAScale = fAlpha / (float)nRank;
+
+  /* Allocate scratch for low-rank dot products */
+  if (pModel->pLoRA_Scratch)
+    free(pModel->pLoRA_Scratch);
+  pModel->pLoRA_Scratch = (float *)malloc((size_t)nRank * sizeof(float));
+
+  /* Allocate layer activations buffer (2 slots per layer: x_norm and att_out)
+   */
+  if (pModel->pLayerActIn)
+    free(pModel->pLayerActIn);
+  pModel->pLayerActIn =
+      (float *)calloc((size_t)nLayers * 2 * nEmbd, sizeof(float));
+
+  /* Allocate gradient buffer */
+  if (pModel->pGradH)
+    free(pModel->pGradH);
+  pModel->pGradH = (float *)calloc((size_t)nEmbd, sizeof(float));
+
+  /* Allocate layer adapters */
+  RingLoRALayerAdapter *pAdapters =
+      (RingLoRALayerAdapter *)calloc(nLayers, sizeof(RingLoRALayerAdapter));
+  if (!pAdapters)
+    return 0;
+
+  size_t nSizeA = (size_t)nRank * nEmbd;
+  size_t nSizeB = (size_t)nEmbd * nRank;
+  float fBound = 1.0f / sqrtf((float)nRank);
+
+  for (uint32_t l = 0; l < nLayers; l++) {
+    RingLoRALayerAdapter *pL = &pAdapters[l];
+    pL->bActive = 1;
+
+    pL->pA_Q = (float *)malloc(nSizeA * sizeof(float));
+    pL->pB_Q = (float *)calloc(nSizeB, sizeof(float)); /* zero init */
+    pL->pdA_Q = (float *)calloc(nSizeA, sizeof(float));
+    pL->pdB_Q = (float *)calloc(nSizeB, sizeof(float));
+    pL->pMA_Q = (float *)calloc(nSizeA, sizeof(float));
+    pL->pVA_Q = (float *)calloc(nSizeA, sizeof(float));
+    pL->pMB_Q = (float *)calloc(nSizeB, sizeof(float));
+    pL->pVB_Q = (float *)calloc(nSizeB, sizeof(float));
+
+    pL->pA_Out = (float *)malloc(nSizeA * sizeof(float));
+    pL->pB_Out = (float *)calloc(nSizeB, sizeof(float)); /* zero init */
+    pL->pdA_Out = (float *)calloc(nSizeA, sizeof(float));
+    pL->pdB_Out = (float *)calloc(nSizeB, sizeof(float));
+    pL->pMA_Out = (float *)calloc(nSizeA, sizeof(float));
+    pL->pVA_Out = (float *)calloc(nSizeA, sizeof(float));
+    pL->pMB_Out = (float *)calloc(nSizeB, sizeof(float));
+    pL->pVB_Out = (float *)calloc(nSizeB, sizeof(float));
+
+    /* Initialize A matrices with small uniform random weights */
+    for (size_t i = 0; i < nSizeA; i++) {
+      float r = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+      pL->pA_Q[i] = r * fBound;
+      r = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+      pL->pA_Out[i] = r * fBound;
+    }
+  }
+
+  pModel->aLoRALayers = (void *)pAdapters;
+  pModel->bMultiLayerLoRA = 1;
+  pModel->bLoRAEnabled = 1;
+  pModel->nTrainTokens = 0;
+
+  printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
+         "| Alpha: %.1f | Scale: %.2f\n",
+         nLayers, nRank, fAlpha, pModel->fLoRAScale);
+  return 1;
+}
+
+RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
+  if (!pModel || !pModel->bMultiLayerLoRA || !pModel->aLoRALayers ||
+      !pModel->pLogits)
+    return 0.0f;
+  uint32_t nVocab = pModel->config.nVocab;
+  int nEmbd = (int)pModel->config.nEmbd;
+  int nLayers = (int)pModel->config.nLayers;
+  int r = pModel->nLoRARank;
+  float scale = pModel->fLoRAScale;
+
+  if (nTargetToken < 0 || (uint32_t)nTargetToken >= nVocab)
+    return 0.0f;
+
+  /* 1. Compute Softmax over Logits & Target Cross-Entropy Loss */
+  float maxLogit = pModel->pLogits[0];
+  for (uint32_t i = 1; i < nVocab; i++) {
+    if (pModel->pLogits[i] > maxLogit)
+      maxLogit = pModel->pLogits[i];
+  }
+
+  float sumExp = 0.0f;
+  for (uint32_t i = 0; i < nVocab; i++) {
+    float diff = pModel->pLogits[i] - maxLogit;
+    if (diff > -16.0f) {
+      sumExp += expf(diff);
+    }
+  }
+  float invSum = (sumExp > 0.0f) ? (1.0f / sumExp) : 0.0f;
+
+  float pTarget = expf(pModel->pLogits[nTargetToken] - maxLogit) * invSum;
+  if (pTarget < 1e-9f)
+    pTarget = 1e-9f;
+  float fLoss = -logf(pTarget);
+
+  /* 2. Compute Backpropagated Gradient on Final Hidden State: grad_h = W_out^T
+   * * (P - Target) */
+  if (!pModel->pGradH)
+    pModel->pGradH = (float *)malloc((size_t)nEmbd * sizeof(float));
+  float *pGradH = pModel->pGradH;
+  memset(pGradH, 0, (size_t)nEmbd * sizeof(float));
+
+  float *pRowBuf = (float *)malloc((size_t)nEmbd * sizeof(float));
+  if (!pRowBuf)
+    return fLoss;
+
+  /* Target token component: grad_z[y] = pTarget - 1.0f (Negative pull) */
+  float gradTarget = pTarget - 1.0f;
+  get_output_tensor_row_f32(pModel, (uint32_t)nTargetToken, pRowBuf);
+  for (int d = 0; d < nEmbd; d++) {
+    pGradH[d] += gradTarget * pRowBuf[d];
+  }
+
+  /* Candidate false-positive tokens (top logits where diff > -6.0f) */
+  for (uint32_t i = 0; i < nVocab; i++) {
+    if (i == (uint32_t)nTargetToken)
+      continue;
+    float diff = pModel->pLogits[i] - maxLogit;
+    if (diff > -6.0f) {
+      float pFalse = expf(diff) * invSum;
+      if (pFalse > 0.001f) {
+        get_output_tensor_row_f32(pModel, i, pRowBuf);
+        for (int d = 0; d < nEmbd; d++) {
+          pGradH[d] += pFalse * pRowBuf[d];
+        }
+      }
+    }
+  }
+
+  free(pRowBuf);
+
+  /* Gradient clipping on grad_h to prevent exploding gradients */
+  float gradNormSq = 0.0f;
+  for (int d = 0; d < nEmbd; d++)
+    gradNormSq += pGradH[d] * pGradH[d];
+  float gradNorm = sqrtf(gradNormSq);
+  if (gradNorm > 1.0f) {
+    float clipScale = 1.0f / gradNorm;
+    for (int d = 0; d < nEmbd; d++)
+      pGradH[d] *= clipScale;
+  }
+
+  /* 3. Backpropagate into All Layer LoRA Adapters */
+  RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
+  float *pU = pModel->pLoRA_Scratch; /* [r] */
+  float *pGu = (float *)malloc((size_t)r * sizeof(float));
+  if (!pGu)
+    return fLoss;
+
+  for (int l = 0; l < nLayers; l++) {
+    RingLoRALayerAdapter *pLayer = &pAdapters[l];
+    if (!pLayer->bActive)
+      continue;
+
+    const float *x_norm = pModel->pLayerActIn + ((size_t)l * 2) * nEmbd;
+    const float *att_out = pModel->pLayerActIn + ((size_t)l * 2 + 1) * nEmbd;
+
+    /* --- Adapter Q --- */
+    /* Forward u = A_Q * x_norm */
+    for (int i = 0; i < r; i++) {
+      const float *pRowA = pLayer->pA_Q + (size_t)i * nEmbd;
+      float sum = 0.0f;
+      for (int j = 0; j < nEmbd; j++)
+        sum += pRowA[j] * x_norm[j];
+      pU[i] = sum;
+    }
+    /* pdB_Q += scale * (pGradH * u^T) */
+    for (int i = 0; i < nEmbd; i++) {
+      float gi = pGradH[i] * scale;
+      float *pRowdB = pLayer->pdB_Q + (size_t)i * r;
+      for (int k = 0; k < r; k++) {
+        pRowdB[k] += gi * pU[k];
+      }
+    }
+    /* Backprop through B: g_u = scale * (B_Q^T * pGradH) */
+    for (int k = 0; k < r; k++) {
+      float sum = 0.0f;
+      for (int i = 0; i < nEmbd; i++) {
+        sum += pLayer->pB_Q[(size_t)i * r + k] * pGradH[i];
+      }
+      pGu[k] = sum * scale;
+    }
+    /* pdA_Q += g_u * x_norm^T */
+    for (int k = 0; k < r; k++) {
+      float gk = pGu[k];
+      float *pRowdA = pLayer->pdA_Q + (size_t)k * nEmbd;
+      for (int j = 0; j < nEmbd; j++) {
+        pRowdA[j] += gk * x_norm[j];
+      }
+    }
+
+    /* --- Adapter Out --- */
+    /* Forward u = A_Out * att_out */
+    for (int i = 0; i < r; i++) {
+      const float *pRowA = pLayer->pA_Out + (size_t)i * nEmbd;
+      float sum = 0.0f;
+      for (int j = 0; j < nEmbd; j++)
+        sum += pRowA[j] * att_out[j];
+      pU[i] = sum;
+    }
+    /* pdB_Out += scale * (pGradH * u^T) */
+    for (int i = 0; i < nEmbd; i++) {
+      float gi = pGradH[i] * scale;
+      float *pRowdB = pLayer->pdB_Out + (size_t)i * r;
+      for (int k = 0; k < r; k++) {
+        pRowdB[k] += gi * pU[k];
+      }
+    }
+    /* Backprop through B: g_u = scale * (B_Out^T * pGradH) */
+    for (int k = 0; k < r; k++) {
+      float sum = 0.0f;
+      for (int i = 0; i < nEmbd; i++) {
+        sum += pLayer->pB_Out[(size_t)i * r + k] * pGradH[i];
+      }
+      pGu[k] = sum * scale;
+    }
+    /* pdA_Out += g_u * att_out^T */
+    for (int k = 0; k < r; k++) {
+      float gk = pGu[k];
+      float *pRowdA = pLayer->pdA_Out + (size_t)k * nEmbd;
+      for (int j = 0; j < nEmbd; j++) {
+        pRowdA[j] += gk * att_out[j];
+      }
+    }
+  }
+
+  free(pGu);
+  pModel->nTrainTokens++;
+  return fLoss;
+}
+
+RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
+                                        float fWeightDecay) {
+  if (!pModel || !pModel->bMultiLayerLoRA || !pModel->aLoRALayers)
+    return;
+  int nLayers = (int)pModel->config.nLayers;
+  int nEmbd = (int)pModel->config.nEmbd;
+  int r = pModel->nLoRARank;
+  size_t nSizeA = (size_t)r * nEmbd;
+  size_t nSizeB = (size_t)nEmbd * r;
+  float beta1 = 0.9f;
+  float beta2 = 0.999f;
+  float eps = 1e-8f;
+
+  RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
+
+  for (int l = 0; l < nLayers; l++) {
+    RingLoRALayerAdapter *pLayer = &pAdapters[l];
+    if (!pLayer->bActive)
+      continue;
+
+#define UPDATE_TENSOR(W, dW, M, V, count)                                      \
+  for (size_t i = 0; i < (count); i++) {                                       \
+    float g = dW[i];                                                           \
+    M[i] = beta1 * M[i] + (1.0f - beta1) * g;                                  \
+    V[i] = beta2 * V[i] + (1.0f - beta2) * (g * g);                            \
+    float mHat =                                                               \
+        M[i] / (1.0f - powf(beta1, (float)pModel->nTrainTokens + 1.0f));       \
+    float vHat =                                                               \
+        V[i] / (1.0f - powf(beta2, (float)pModel->nTrainTokens + 1.0f));       \
+    float step = mHat / (sqrtf(vHat) + eps);                                   \
+    W[i] -= fLR * (step + fWeightDecay * W[i]);                                \
+    dW[i] = 0.0f;                                                              \
+  }
+
+    UPDATE_TENSOR(pLayer->pA_Q, pLayer->pdA_Q, pLayer->pMA_Q, pLayer->pVA_Q,
+                  nSizeA);
+    UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
+                  nSizeB);
+    UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
+                  pLayer->pVA_Out, nSizeA);
+    UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
+                  pLayer->pVB_Out, nSizeB);
+
+#undef UPDATE_TENSOR
+  }
+}
+
+RING_API int ring_model_save_lora(RingModel *pModel, const char *cFolder) {
+  if (!pModel || !pModel->bMultiLayerLoRA || !pModel->aLoRALayers || !cFolder)
+    return 0;
+  char path[1024];
+
+#ifdef _WIN32
+  char winCmd[1024];
+  snprintf(winCmd, sizeof(winCmd), "if not exist \"%s\" mkdir \"%s\" 2>nul",
+           cFolder, cFolder);
+  system(winCmd);
+#else
+  char linCmd[1024];
+  snprintf(linCmd, sizeof(linCmd), "mkdir -p \"%s\" 2>/dev/null", cFolder);
+  system(linCmd);
+#endif
+
+  int nLayers = (int)pModel->config.nLayers;
+  int nEmbd = (int)pModel->config.nEmbd;
+  int r = pModel->nLoRARank;
+  RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
+
+  /* Save JSON metadata */
+  snprintf(path, sizeof(path), "%s/adapter_config.json", cFolder);
+  FILE *fp = fopen(path, "w");
+  if (fp) {
+    fprintf(fp,
+            "{\n  \"layers\": %d,\n  \"lora_rank\": %d,\n  \"lora_alpha\": "
+            "%.1f,\n  \"dim\": %d\n}\n",
+            nLayers, r, pModel->fLoRAAlpha, nEmbd);
+    fclose(fp);
+  }
+
+  for (int l = 0; l < nLayers; l++) {
+    RingLoRALayerAdapter *pL = &pAdapters[l];
+    if (!pL->bActive)
+      continue;
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_q_lora_a.tensor", cFolder, l);
+    save_f32_to_tensor_file(path, pL->pA_Q, r, nEmbd);
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_q_lora_b.tensor", cFolder, l);
+    save_f32_to_tensor_file(path, pL->pB_Q, nEmbd, r);
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_out_lora_a.tensor", cFolder,
+             l);
+    save_f32_to_tensor_file(path, pL->pA_Out, r, nEmbd);
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_out_lora_b.tensor", cFolder,
+             l);
+    save_f32_to_tensor_file(path, pL->pB_Out, nEmbd, r);
+  }
+
+  printf("[MADAR AI] Multi-Layer LoRA Adapters saved to: %s (%d layers)\n",
+         cFolder, nLayers);
+  return 1;
+}
+
+RING_API int ring_model_load_lora_folder(RingModel *pModel,
+                                         const char *cFolder) {
+  if (!pModel || !cFolder)
+    return 0;
+  char path[1024];
+
+  snprintf(path, sizeof(path), "%s/adapter_config.json", cFolder);
+  FILE *fpConfig = fopen(path, "r");
+  if (!fpConfig)
+    return 0;
+
+  char buf[1024];
+  size_t nr = fread(buf, 1, sizeof(buf) - 1, fpConfig);
+  buf[nr] = '\0';
+  fclose(fpConfig);
+
+  int nRank = 16;
+  float fAlpha = 32.0f;
+  char *pR = strstr(buf, "\"lora_rank\":");
+  if (pR)
+    nRank = atoi(pR + 12);
+  char *pA = strstr(buf, "\"lora_alpha\":");
+  if (pA)
+    fAlpha = (float)atof(pA + 13);
+
+  if (!ring_model_init_lora(pModel, nRank, fAlpha))
+    return 0;
+
+  int nLayers = (int)pModel->config.nLayers;
+  int nEmbd = (int)pModel->config.nEmbd;
+  RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
+
+  int nLoadedCount = 0;
+  for (int l = 0; l < nLayers; l++) {
+    RingLoRALayerAdapter *pL = &pAdapters[l];
+    int rA = 0, cA = 0, rB = 0, cB = 0;
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_q_lora_a.tensor", cFolder, l);
+    float *pAQ = read_tensor_file_to_f32(path, &rA, &cA);
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_q_lora_b.tensor", cFolder, l);
+    float *pBQ = read_tensor_file_to_f32(path, &rB, &cB);
+
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_out_lora_a.tensor", cFolder,
+             l);
+    float *pAOut = read_tensor_file_to_f32(path, &rA, &cA);
+    snprintf(path, sizeof(path), "%s/blk.%d.attn_out_lora_b.tensor", cFolder,
+             l);
+    float *pBOut = read_tensor_file_to_f32(path, &rB, &cB);
+
+    if (pAQ && pBQ) {
+      memcpy(pL->pA_Q, pAQ, (size_t)nRank * nEmbd * sizeof(float));
+      memcpy(pL->pB_Q, pBQ, (size_t)nEmbd * nRank * sizeof(float));
+      free(pAQ);
+      free(pBQ);
+      nLoadedCount++;
+    }
+    if (pAOut && pBOut) {
+      memcpy(pL->pA_Out, pAOut, (size_t)nRank * nEmbd * sizeof(float));
+      memcpy(pL->pB_Out, pBOut, (size_t)nEmbd * nRank * sizeof(float));
+      free(pAOut);
+      free(pBOut);
+    }
+  }
+
+  printf("[MADAR AI] Multi-Layer LoRA Loaded: %d/%d layers active from: %s\n",
+         nLoadedCount, nLayers, cFolder);
+  return 1;
 }
 
 /*
@@ -2968,17 +3504,43 @@ RING_API int ring_model_export_merged_gguf(RingModel *pModel,
       return 0;
     }
 
-    int bMergeQ =
-        (pModel->bLoRAEnabled && pModel->pLoRA_A_Q && pModel->pLoRA_B_Q &&
-         (strstr(pName, "attn_q") || strstr(pName, "q_proj")));
-    int bMergeOut =
-        (pModel->bLoRAEnabled && pModel->pLoRA_A_Out && pModel->pLoRA_B_Out &&
-         (strstr(pName, "attn_output") || strstr(pName, "attn_out") ||
-          strstr(pName, "out_proj")));
+    int layerIdx = -1;
+    const char *pBlk = strstr(pName, "blk.");
+    if (pBlk) {
+      layerIdx = atoi(pBlk + 4);
+    }
 
-    if ((bMergeQ || bMergeOut) && pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
-      const float *pA = bMergeQ ? pModel->pLoRA_A_Q : pModel->pLoRA_A_Out;
-      const float *pB = bMergeQ ? pModel->pLoRA_B_Q : pModel->pLoRA_B_Out;
+    int bMergeQ = (strstr(pName, "attn_q") || strstr(pName, "q_proj"));
+    int bMergeOut = (strstr(pName, "attn_output") ||
+                     strstr(pName, "attn_out") || strstr(pName, "out_proj"));
+
+    const float *pA = NULL;
+    const float *pB = NULL;
+
+    if (pModel->bMultiLayerLoRA && pModel->aLoRALayers && layerIdx >= 0 &&
+        layerIdx < (int)pModel->config.nLayers) {
+      RingLoRALayerAdapter *pAdapter =
+          ((RingLoRALayerAdapter *)pModel->aLoRALayers) + layerIdx;
+      if (pAdapter->bActive) {
+        if (bMergeQ) {
+          pA = pAdapter->pA_Q;
+          pB = pAdapter->pB_Q;
+        } else if (bMergeOut) {
+          pA = pAdapter->pA_Out;
+          pB = pAdapter->pB_Out;
+        }
+      }
+    } else if (pModel->bLoRAEnabled) {
+      if (bMergeQ) {
+        pA = pModel->pLoRA_A_Q;
+        pB = pModel->pLoRA_B_Q;
+      } else if (bMergeOut) {
+        pA = pModel->pLoRA_A_Out;
+        pB = pModel->pLoRA_B_Out;
+      }
+    }
+
+    if ((pA && pB) && pInfo->nType == RING_GGUF_TENSOR_Q4_0) {
       int r = pModel->nLoRARank;
       int inDim = (int)pInfo->aDims[0];
       int outDim = (int)pInfo->aDims[1];
@@ -3173,9 +3735,41 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos,
                                                          layer->pAttnNorm);
     rmsnorm(pModel->pActXB, pModel->pActX, attnNormW, nEmbd, eps);
 
+    /* Save layer input activation for Multi-Layer LoRA backward pass */
+    if (pModel->pLayerActIn) {
+      memcpy(pModel->pLayerActIn + ((size_t)l * 2) * nEmbd, pModel->pActXB,
+             (size_t)nEmbd * sizeof(float));
+    }
+
     /* Compute Q, K, V */
     matvec_multiply(pModel, layer->pAttnQ, pModel->pActXB, pModel->pActQ,
                     layer->pAttnQ_Bias);
+
+    /* Multi-Layer LoRA injection into Q */
+    if (pModel->bMultiLayerLoRA && pModel->aLoRALayers) {
+      RingLoRALayerAdapter *pLAdapt =
+          ((RingLoRALayerAdapter *)pModel->aLoRALayers) + l;
+      if (pLAdapt->bActive && pLAdapt->pA_Q && pLAdapt->pB_Q) {
+        int r = pModel->nLoRARank;
+        float scale = pModel->fLoRAScale;
+        float *h = pModel->pLoRA_Scratch;
+        for (int i = 0; i < r; i++) {
+          const float *pRowA = pLAdapt->pA_Q + (size_t)i * nEmbd;
+          float sum = 0.0f;
+          for (int j = 0; j < nEmbd; j++)
+            sum += pRowA[j] * pModel->pActXB[j];
+          h[i] = sum;
+        }
+        for (int i = 0; i < (int)(nHeads * nHeadDim); i++) {
+          const float *pRowB = pLAdapt->pB_Q + (size_t)i * r;
+          float sum = 0.0f;
+          for (int j = 0; j < r; j++)
+            sum += pRowB[j] * h[j];
+          pModel->pActQ[i] += scale * sum;
+        }
+      }
+    }
+
     matvec_multiply(pModel, layer->pAttnK, pModel->pActXB, pModel->pActK,
                     layer->pAttnK_Bias);
     matvec_multiply(pModel, layer->pAttnV, pModel->pActXB, pModel->pActV,
@@ -3234,6 +3828,37 @@ RING_API void ring_model_forward_ex(RingModel *pModel, int nToken, int nPos,
       }
     }
     matvec_multiply(pModel, layer->pAttnOut, pModel->pActAttOut, attnOut, NULL);
+
+    /* Save attention output activation for Multi-Layer LoRA backward pass */
+    if (pModel->pLayerActIn) {
+      memcpy(pModel->pLayerActIn + ((size_t)l * 2 + 1) * nEmbd,
+             pModel->pActAttOut, (size_t)nEmbd * sizeof(float));
+    }
+
+    /* Multi-Layer LoRA injection into Attention Output */
+    if (pModel->bMultiLayerLoRA && pModel->aLoRALayers) {
+      RingLoRALayerAdapter *pLAdapt =
+          ((RingLoRALayerAdapter *)pModel->aLoRALayers) + l;
+      if (pLAdapt->bActive && pLAdapt->pA_Out && pLAdapt->pB_Out) {
+        int r = pModel->nLoRARank;
+        float scale = pModel->fLoRAScale;
+        float *h = pModel->pLoRA_Scratch;
+        for (int i = 0; i < r; i++) {
+          const float *pRowA = pLAdapt->pA_Out + (size_t)i * nEmbd;
+          float sum = 0.0f;
+          for (int j = 0; j < nEmbd; j++)
+            sum += pRowA[j] * pModel->pActAttOut[j];
+          h[i] = sum;
+        }
+        for (int i = 0; i < nEmbd; i++) {
+          const float *pRowB = pLAdapt->pB_Out + (size_t)i * r;
+          float sum = 0.0f;
+          for (int j = 0; j < r; j++)
+            sum += pRowB[j] * h[j];
+          attnOut[i] += scale * sum;
+        }
+      }
+    }
 
     /* Residual Addition: x = x + attnOut */
     i = 0;
@@ -4849,6 +5474,90 @@ RING_FUNC(ring_model_api_get_dim) {
   RING_API_RETNUMBER((double)pModel->config.nEmbd);
 }
 
+RING_FUNC(ring_model_api_init_lora) {
+  RingModel *pModel;
+  int nRank;
+  float fAlpha;
+  if (RING_API_PARACOUNT < 1 || !RING_API_ISPOINTER(1)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  nRank = (RING_API_PARACOUNT >= 2 && RING_API_ISNUMBER(2))
+              ? (int)RING_API_GETNUMBER(2)
+              : 16;
+  fAlpha = (RING_API_PARACOUNT >= 3 && RING_API_ISNUMBER(3))
+               ? (float)RING_API_GETNUMBER(3)
+               : 32.0f;
+  int res = ring_model_init_lora(pModel, nRank, fAlpha);
+  RING_API_RETNUMBER(res);
+}
+
+RING_FUNC(ring_model_api_train_token) {
+  RingModel *pModel;
+  int nTargetToken;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISNUMBER(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  nTargetToken = (int)RING_API_GETNUMBER(2);
+  float loss = ring_model_train_token(pModel, nTargetToken);
+  RING_API_RETNUMBER((double)loss);
+}
+
+RING_FUNC(ring_model_api_optimizer_step) {
+  RingModel *pModel;
+  float fLR, fWeightDecay;
+  if (RING_API_PARACOUNT < 1 || !RING_API_ISPOINTER(1)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  fLR = (RING_API_PARACOUNT >= 2 && RING_API_ISNUMBER(2))
+            ? (float)RING_API_GETNUMBER(2)
+            : 0.0003f;
+  fWeightDecay = (RING_API_PARACOUNT >= 3 && RING_API_ISNUMBER(3))
+                     ? (float)RING_API_GETNUMBER(3)
+                     : 0.01f;
+  ring_model_optimizer_step(pModel, fLR, fWeightDecay);
+  RING_API_RETNUMBER(1);
+}
+
+RING_FUNC(ring_model_api_save_lora) {
+  RingModel *pModel;
+  const char *cFolder;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISSTRING(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  cFolder = RING_API_GETSTRING(2);
+  int res = ring_model_save_lora(pModel, cFolder);
+  RING_API_RETNUMBER(res);
+}
+
+RING_FUNC(ring_model_api_load_lora_folder) {
+  RingModel *pModel;
+  const char *cFolder;
+  if (RING_API_PARACOUNT != 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISSTRING(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+  cFolder = RING_API_GETSTRING(2);
+  int res = ring_model_load_lora_folder(pModel, cFolder);
+  RING_API_RETNUMBER(res);
+}
+
 RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_open", ring_model_api_open);
   RING_API_REGISTER("madar_model_close", ring_model_api_close);
@@ -4861,6 +5570,11 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
                     ring_model_api_set_lora_scale);
   RING_API_REGISTER("madar_model_export_merged_gguf",
                     ring_model_api_export_merged_gguf);
+  RING_API_REGISTER("madar_lora_init", ring_model_api_init_lora);
+  RING_API_REGISTER("madar_lora_train_token", ring_model_api_train_token);
+  RING_API_REGISTER("madar_lora_optimizer_step", ring_model_api_optimizer_step);
+  RING_API_REGISTER("madar_lora_save", ring_model_api_save_lora);
+  RING_API_REGISTER("madar_lora_load", ring_model_api_load_lora_folder);
   RING_API_REGISTER("madar_model_tokenize", ring_model_api_tokenize);
   RING_API_REGISTER("madar_model_detokenize", ring_model_api_detokenize);
   RING_API_REGISTER("madar_model_generate", ring_model_api_generate);
