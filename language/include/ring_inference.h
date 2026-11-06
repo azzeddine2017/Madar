@@ -179,6 +179,7 @@ typedef struct RingModel {
 	float *pLayerActIn;                /* [nLayers * nEmbd] */
 	float *pGradH;                     /* [nEmbd] */
 	uint64_t nTrainTokens;
+	uint32_t nStepAccumTokens;
 } RingModel;
 
 /* Inference Engine Lifecycle */

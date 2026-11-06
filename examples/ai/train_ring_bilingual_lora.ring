@@ -19,8 +19,8 @@ func main()
 	cDataPath  = "data/ring_instruct_bilingual.jsonl"
 	nEpochs    = 3
 	nRank      = 16
-	fAlpha     = 32.0
-	fLR        = 0.0003
+	fAlpha     = 16.0
+	fLR        = 0.00005
 
 	aArgs = sysargv
 	nScriptArgIdx = 0

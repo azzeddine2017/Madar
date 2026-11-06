@@ -2932,6 +2932,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->bMultiLayerLoRA = 1;
   pModel->bLoRAEnabled = 1;
   pModel->nTrainTokens = 0;
+  pModel->nStepAccumTokens = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
          "| Alpha: %.1f | Scale: %.2f\n",
@@ -3116,6 +3117,7 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   if (pGu != guStack)
     free(pGu);
   pModel->nTrainTokens++;
+  pModel->nStepAccumTokens++;
   return fLoss;
 }
 
@@ -3132,6 +3134,11 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
   float beta2 = 0.999f;
   float eps = 1e-8f;
 
+  float invAccum = (pModel->nStepAccumTokens > 0)
+                       ? (1.0f / (float)pModel->nStepAccumTokens)
+                       : 1.0f;
+  pModel->nStepAccumTokens = 0;
+
   RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
 
   for (int l = 0; l < nLayers; l++) {
@@ -3141,7 +3148,7 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
 
 #define UPDATE_TENSOR(W, dW, M, V, count)                                      \
   for (size_t i = 0; i < (count); i++) {                                       \
-    float g = dW[i];                                                           \
+    float g = dW[i] * invAccum;                                                \
     M[i] = beta1 * M[i] + (1.0f - beta1) * g;                                  \
     V[i] = beta2 * V[i] + (1.0f - beta2) * (g * g);                            \
     float mHat =                                                               \
