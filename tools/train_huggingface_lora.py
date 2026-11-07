@@ -12,10 +12,11 @@ from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig
+    BitsAndBytesConfig,
+    TrainingArguments
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer, SFTConfig
+from trl import SFTTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Hugging Face LoRA Training for Madar Ring AI")
@@ -119,7 +120,7 @@ def main():
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    training_args = SFTConfig(
+    training_args = TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
@@ -133,8 +134,7 @@ def main():
         save_total_limit=3,
         fp16=True,
         optim="paged_adamw_8bit",
-        report_to="none",
-        max_seq_length=args.max_seq_len
+        report_to="none"
     )
 
     trainer = SFTTrainer(
@@ -142,6 +142,7 @@ def main():
         train_dataset=dataset,
         args=training_args,
         peft_config=peft_config,
+        max_seq_length=args.max_seq_len
     )
 
     print("\n>>> [5/5] Starting Hugging Face Training Loop...")
