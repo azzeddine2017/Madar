@@ -3173,10 +3173,9 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
                   nSizeA, 0.35f);
     UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
                   nSizeB, 0.08f);
-                  UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out,
-                                pLayer->pMA_Out, pLayer->pVA_Out, nSizeA,
-                                0.35f);
-                  UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out,
+    UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
+                  pLayer->pVA_Out, nSizeA, 0.35f);
+    UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
                   pLayer->pVB_Out, nSizeB, 0.08f);
 
 #undef UPDATE_TENSOR
