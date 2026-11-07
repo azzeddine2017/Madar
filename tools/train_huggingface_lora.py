@@ -12,11 +12,10 @@ from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig,
-    TrainingArguments
+    BitsAndBytesConfig
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import SFTTrainer, SFTConfig
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Hugging Face LoRA Training for Madar Ring AI")
@@ -60,8 +59,7 @@ def load_ring_dataset(cPath, oTokenizer):
             {"role": "assistant", "content": cOutput}
         ]
         
-        cText = oTokenizer.apply_chat_template(messages, tokenize=False)
-        formatted_data.append({"text": cText})
+        formatted_data.append({"messages": messages})
         
     return Dataset.from_list(formatted_data)
 
@@ -121,14 +119,7 @@ def main():
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    # Mask prompts so loss is computed exclusively on the assistant response
-    response_template = "<|im_start|>assistant\n"
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template=response_template,
-        tokenizer=tokenizer
-    )
-
-    training_args = TrainingArguments(
+    training_args = SFTConfig(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
@@ -142,15 +133,13 @@ def main():
         save_total_limit=3,
         fp16=True,
         optim="paged_adamw_8bit",
-        report_to="none"
+        report_to="none",
+        max_seq_length=args.max_seq_len
     )
 
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
-        dataset_text_field="text",
-        max_seq_length=args.max_seq_len,
-        data_collator=collator,
         args=training_args,
         peft_config=peft_config,
     )
