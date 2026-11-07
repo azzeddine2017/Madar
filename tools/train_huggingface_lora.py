@@ -103,7 +103,7 @@ def main():
         quantization_config=bnb_config,
         device_map=device_map,
         trust_remote_code=True,
-        torch_dtype=torch.float16
+        dtype=torch.float16
     )
     model = prepare_model_for_kbit_training(model)
 
@@ -118,6 +118,12 @@ def main():
         task_type="CAUSAL_LM"
     )
     model = get_peft_model(model, peft_config)
+
+    # Purge any residual bfloat16 tensors for Tesla T4 GPU compatibility
+    for param in model.parameters():
+        if param.dtype == torch.bfloat16:
+            param.data = param.data.to(torch.float32 if param.requires_grad else torch.float16)
+
     model.print_trainable_parameters()
 
     training_args = SFTConfig(
@@ -134,6 +140,7 @@ def main():
         save_steps=200,
         save_total_limit=3,
         fp16=True,
+        bf16=False,
         optim="paged_adamw_8bit",
         report_to="none"
     )
