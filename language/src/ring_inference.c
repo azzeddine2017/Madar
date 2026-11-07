@@ -2935,8 +2935,8 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->nStepAccumTokens = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
-         "| Alpha: %.1f | Scale: %.2f\n", nLayers, nRank, fAlpha,
-         pModel->fLoRAScale);
+         "| Alpha: %.1f | Scale: %.2f\n",
+         nLayers, nRank, fAlpha, pModel->fLoRAScale);
   return 1;
 }
 
