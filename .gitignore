@@ -56,6 +56,10 @@ dist/
 *.bak
 *.orig
 
+# Python artifacts
+__pycache__/
+*.pyc
+
 # OS Generated Files
 Thumbs.db
 Desktop.ini
