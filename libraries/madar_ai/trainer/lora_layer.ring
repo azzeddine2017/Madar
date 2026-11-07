@@ -39,10 +39,20 @@ class MadarLoRALinear
 		fScale  = fAlpha / nRank
 
 		# 1. Allocate LoRA A: (r x d_in)
-		# Initialized with small Gaussian noise
+		# Initialized with zero-mean uniform random weights in [-fBound, fBound]
 		pA = tensor_init(nRank, nInDim)
 		fBound = 1.0 / sqrt(nRank)
-		tensor_random(pA, -fBound, fBound)
+		try
+			tensor_random(pA, -fBound, fBound)
+		catch
+		done
+		# Guaranteed zero-mean symmetric initialization
+		for r = 1 to nRank
+			for c = 1 to nInDim
+				fRand = ((random(20000) / 10000.0) - 1.0) * fBound
+				tensor_set(pA, r, c, fRand)
+			next
+		next
 
 		# 2. Allocate LoRA B: (d_out x r)
 		# Initialized strictly to ZERO so initial Delta Y == 0
@@ -115,11 +125,16 @@ class MadarLoRALinear
 		nBatch = tensor_get_rows(pdY)
 
 		# Scale upstream gradient: pdY_scaled = pdY * fScale
-		pdYScaled = tensor_init(nBatch, nOutDim)
-		tensor_add(pdYScaled, pdY)
 		try
+			pdYScaled = tensor_copy(pdY)
 			tensor_scalar_mul(pdYScaled, fScale)
 		catch
+			pdYScaled = tensor_init(nBatch, nOutDim)
+			tensor_add(pdYScaled, pdY)
+			try
+				tensor_scalar_mul(pdYScaled, fScale)
+			catch
+			done
 		done
 
 		# 1. Gradient for B: pdB = pdYScaled^T * H -> (OutDim x Batch) * (Batch x Rank) = (OutDim x Rank)
@@ -150,22 +165,24 @@ class MadarLoRALinear
 
 	/*
 	* Function: updateAdam
-	* Executes C kernel Adam update on matrices A and B with fallback
+	* Executes C kernel Adam update on matrices A and B with proper parameters and safety bounds
 	*/
-	func updateAdam(fLR, nStep, fBeta1 = 0.9, fBeta2 = 0.999, fEps = 0.00000001)
+	func updateAdam(fLR, nStep, fBeta1 = 0.9, fBeta2 = 0.999, fEps = 0.00000001, fWD = 0.01)
 		bUpdated = false
 		try
-			tensor_update_adam(pA, pdA, pMA, pVA, fLR, fBeta1, fBeta2, fEps, nStep)
-			tensor_update_adam(pB, pdB, pMB, pVB, fLR, fBeta1, fBeta2, fEps, nStep)
+			# Pass all parameters: W, G, M, V, lr, b1, b2, eps, step, weight_decay, max_val
+			tensor_update_adam(pA, pdA, pMA, pVA, fLR, fBeta1, fBeta2, fEps, nStep, fWD, 0.35)
+			tensor_update_adam(pB, pdB, pMB, pVB, fLR, fBeta1, fBeta2, fEps, nStep, fWD, 0.05)
 			bUpdated = true
 		catch
 			bUpdated = false
 		done
 
+		# Safe SGD fallback with LR (NEVER subtract raw gradient without LR!)
 		if !bUpdated
 			try
-				tensor_sub(pA, pdA)
-				tensor_sub(pB, pdB)
+				tensor_update_sgd(pA, pdA, fLR)
+				tensor_update_sgd(pB, pdB, fLR)
 			catch
 			done
 		ok

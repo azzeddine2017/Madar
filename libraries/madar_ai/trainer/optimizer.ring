@@ -78,15 +78,7 @@ class MadarAdamW
 
 		# 2. Execute Adam update per layer with decoupled weight decay
 		for oLayer in aLoRALayers
-			# Weight decay on Matrix A (Matrix B is zero-initialized and regularized)
-			if fWeightDecay > 0.0
-				try
-					tensor_scalar_mul(oLayer.pA, 1.0 - (fCurrentLR * fWeightDecay))
-				catch
-				done
-			ok
-
-			oLayer.updateAdam(fCurrentLR, nCurrentStep, fBeta1, fBeta2, fEps)
+			oLayer.updateAdam(fCurrentLR, nCurrentStep, fBeta1, fBeta2, fEps, fWeightDecay)
 		next
 
 	/*
