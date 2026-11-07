@@ -18,6 +18,7 @@ func main()
 	cModelPath = "models/qwen2.5-coder-1.5b-instruct-q4_0.gguf"
 	cDataPath  = "data/ring_instruct_bilingual.jsonl"
 	nEpochs    = 3
+	nTokensPerSample = 6
 	nRank      = 16
 	fAlpha     = 16.0
 	fLR        = 0.0002
@@ -40,6 +41,9 @@ func main()
 		ok
 		if len(aArgs) >= nScriptArgIdx + 3 and aArgs[nScriptArgIdx + 3] != ""
 			nEpochs = 0 + aArgs[nScriptArgIdx + 3]
+		ok
+		if len(aArgs) >= nScriptArgIdx + 4 and aArgs[nScriptArgIdx + 4] != ""
+			nTokensPerSample = 0 + aArgs[nScriptArgIdx + 4]
 		ok
 	ok
 
@@ -67,10 +71,11 @@ func main()
 	# 3. Setup Multi-Layer LoRA Trainer
 	? ">>> [3/4] Initializing Multi-Layer LoRA Trainer across all layers..."
 	oTrainer = new MadarLoRATrainer(oModel, oDataset, nRank, fAlpha, fLR)
-	oTrainer.nEpochs       = nEpochs
-	oTrainer.nMaxSeqLen    = 384
-	oTrainer.nLogInterval  = 10
-	oTrainer.nSaveInterval = 200
+	oTrainer.nEpochs         = nEpochs
+	oTrainer.nMaxSeqLen      = 384
+	oTrainer.nMaxRespTokens  = nTokensPerSample
+	oTrainer.nLogInterval    = 10
+	oTrainer.nSaveInterval   = 200
 
 	cModelBase = "qwen2.5-coder-1.5b"
 	if substr(lower(cModelPath), "deepseek") > 0

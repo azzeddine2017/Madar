@@ -20,6 +20,7 @@ class MadarLoRATrainer
 	nBatchSize    = 1
 	nGradAccum    = 1
 	nMaxSeqLen    = 512
+	nMaxRespTokens = 6
 	nLogInterval  = 10
 	nSaveInterval = 100
 	cOutputDir    = "adapters/ring_lora"
@@ -117,6 +118,7 @@ class MadarLoRATrainer
 		? "  LoRA Rank (r)       : " + nRank
 		? "  LoRA Alpha (alpha)  : " + fAlpha
 		? "  Base Learning Rate  : " + round(fBaseLR, 6)
+		? "  Tokens Per Sample   : " + nMaxRespTokens
 		? "  Attached Adapters   : " + len(aLayers)
 		? "===================================================================="
 		? ""
@@ -240,8 +242,7 @@ class MadarLoRATrainer
 			ok
 
 			# 2. Sequential Response Training (bComputeLogits = 1: with full prompt context)
-			# Train on up to 16 response tokens sequentially for high throughput & stable gradients
-			nMaxRespTokens = 16
+			# Train on up to nMaxRespTokens sequentially for high throughput & stable gradients
 			nTrainEnd = nTokCount - 1
 			if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
 				nTrainEnd = nRespStart + nMaxRespTokens - 2
