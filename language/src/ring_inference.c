@@ -2868,7 +2868,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
 
   pModel->nLoRARank = nRank;
   pModel->fLoRAAlpha = fAlpha;
-  pModel->fLoRAScale = fAlpha / (float)nRank;
+  pModel->fLoRAScale = (fAlpha / (float)nRank) / sqrtf((float)nLayers);
 
   /* Allocate scratch for low-rank dot products */
   if (pModel->pLoRA_Scratch)
@@ -2895,7 +2895,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
 
   size_t nSizeA = (size_t)nRank * nEmbd;
   size_t nSizeB = (size_t)nEmbd * nRank;
-  float fBound = 1.0f / sqrtf((float)nRank);
+  float fBound = 0.05f;
 
   for (uint32_t l = 0; l < nLayers; l++) {
     RingLoRALayerAdapter *pL = &pAdapters[l];
@@ -2935,7 +2935,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->nStepAccumTokens = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
-         "| Alpha: %.1f | Scale: %.2f\n",
+         "| Alpha: %.1f | Scale: %.4f (Depth-Scaled)\n",
          nLayers, nRank, fAlpha, pModel->fLoRAScale);
   return 1;
 }
@@ -3160,6 +3160,10 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
     float vHat =                                                               \
         V[i] / (1.0f - powf(beta2, (float)pModel->nTrainTokens + 1.0f));       \
     float step = mHat / (sqrtf(vHat) + eps);                                   \
+    if (step > 2.0f)                                                           \
+      step = 2.0f;                                                             \
+    else if (step < -2.0f)                                                     \
+      step = -2.0f;                                                            \
     float newW = W[i] - fLR * (step + fWeightDecay * W[i]);                    \
     if (newW > (maxVal))                                                       \
       newW = (maxVal);                                                         \
@@ -3170,13 +3174,13 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
   }
 
     UPDATE_TENSOR(pLayer->pA_Q, pLayer->pdA_Q, pLayer->pMA_Q, pLayer->pVA_Q,
-                  nSizeA, 0.35f);
+                  nSizeA, 0.10f);
     UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
-                  nSizeB, 0.08f);
+                  nSizeB, 0.02f);
     UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
-                  pLayer->pVA_Out, nSizeA, 0.35f);
+                  pLayer->pVA_Out, nSizeA, 0.10f);
     UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
-                  pLayer->pVB_Out, nSizeB, 0.08f);
+                  pLayer->pVB_Out, nSizeB, 0.02f);
 
 #undef UPDATE_TENSOR
   }
