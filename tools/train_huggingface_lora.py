@@ -141,8 +141,7 @@ def main():
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
-        args=training_args,
-        peft_config=peft_config
+        args=training_args
     )
 
     print("\n>>> [5/5] Starting Hugging Face Training Loop...")
