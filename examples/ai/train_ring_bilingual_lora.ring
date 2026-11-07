@@ -20,7 +20,7 @@ func main()
 	nEpochs    = 3
 	nRank      = 16
 	fAlpha     = 16.0
-	fLR        = 0.00005
+	fLR        = 0.0002
 
 	aArgs = sysargv
 	nScriptArgIdx = 0

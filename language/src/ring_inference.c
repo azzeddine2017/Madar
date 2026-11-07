@@ -2868,8 +2868,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
 
   pModel->nLoRARank = nRank;
   pModel->fLoRAAlpha = fAlpha;
-  float depthScale = (nLayers > 1) ? (1.0f / sqrtf((float)nLayers)) : 1.0f;
-  pModel->fLoRAScale = (fAlpha / (float)nRank) * depthScale;
+  pModel->fLoRAScale = fAlpha / (float)nRank;
 
   /* Allocate scratch for low-rank dot products */
   if (pModel->pLoRA_Scratch)
@@ -2936,8 +2935,8 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->nStepAccumTokens = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
-         "| Alpha: %.1f | Scale: %.4f (Depth-Scaled)\n",
-         nLayers, nRank, fAlpha, pModel->fLoRAScale);
+         "| Alpha: %.1f | Scale: %.2f\n", nLayers, nRank, fAlpha,
+         pModel->fLoRAScale);
   return 1;
 }
 
@@ -3173,11 +3172,12 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
     UPDATE_TENSOR(pLayer->pA_Q, pLayer->pdA_Q, pLayer->pMA_Q, pLayer->pVA_Q,
                   nSizeA, 0.35f);
     UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
-                  nSizeB, 0.05f);
-    UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
-                  pLayer->pVA_Out, nSizeA, 0.35f);
-    UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
-                  pLayer->pVB_Out, nSizeB, 0.05f);
+                  nSizeB, 0.08f);
+                  UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out,
+                                pLayer->pMA_Out, pLayer->pVA_Out, nSizeA,
+                                0.35f);
+                  UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out,
+                  pLayer->pVB_Out, nSizeB, 0.08f);
 
 #undef UPDATE_TENSOR
   }

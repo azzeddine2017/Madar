@@ -102,8 +102,8 @@ class MadarLoRATrainer
 		ok
 
 		nTotalSteps = nEpochs * nNumSamples
-		nWarmup = ceil(nTotalSteps * 0.05) # 5% warmup
-		if nWarmup < 5 nWarmup = 5 ok
+		nWarmup = 50
+		if nTotalSteps < 100 nWarmup = 10 ok
 
 		oOptim = new MadarAdamW(aLayers, fBaseLR, nTotalSteps, nWarmup)
 
