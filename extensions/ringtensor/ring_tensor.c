@@ -37,7 +37,7 @@ static int arena_active = 0;      /* 1 when graph owns the arena       */
 #endif
 
 #ifdef USE_OPENCL
-#include "opencl_stub.h"
+#include "include/opencl_stub.h"
 
 // Default threshold: 5 Million operations
 // If matrix ops > this, use GPU. Else use CPU.
@@ -1868,12 +1868,6 @@ RING_FUNC(ring_tensor_update_adam) {
   tensor_t *M = (tensor_t *)RING_API_GETCPOINTER(3, RING_VM_POINTER_TENSOR);
   tensor_t *V = (tensor_t *)RING_API_GETCPOINTER(4, RING_VM_POINTER_TENSOR);
 
-  double lr = RING_API_GETNUMBER(5);
-  double b1 = RING_API_GETNUMBER(6);
-  double b2 = RING_API_GETNUMBER(7);
-  double eps = RING_API_GETNUMBER(8);
-  int t = (int)RING_API_GETNUMBER(9);
-  double weight_decay = RING_API_GETNUMBER(10);
   double lr = (RING_API_PARACOUNT >= 5) ? RING_API_GETNUMBER(5) : 0.0001;
   double b1 = (RING_API_PARACOUNT >= 6) ? RING_API_GETNUMBER(6) : 0.9;
   double b2 = (RING_API_PARACOUNT >= 7) ? RING_API_GETNUMBER(7) : 0.999;

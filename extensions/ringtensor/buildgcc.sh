@@ -16,6 +16,7 @@ cd "$SCRIPT_DIR"
 # 1. Try compilation with OpenCL GPU acceleration
 if gcc -shared -o "$LIB_DIR/libring_tensor.so" -O3 -fPIC -fopenmp \
     ring_tensor.c \
+    -I . \
     -I include \
     -I "$INCLUDE_DIR" \
     -L "$LIB_DIR" -Wl,-rpath,'$ORIGIN':-Wl,-rpath,'$ORIGIN/../lib' -lring -lOpenCL 2>/dev/null; then
@@ -24,6 +25,7 @@ else
     echo "  [INFO] OpenCL development libraries not found. Building RingTensor in High-Performance CPU Mode..."
     gcc -shared -o "$LIB_DIR/libring_tensor.so" -O3 -fPIC -fopenmp -DUSE_OPENCL=0 \
         ring_tensor.c \
+        -I . \
         -I include \
         -I "$INCLUDE_DIR" \
         -L "$LIB_DIR" -Wl,-rpath,'$ORIGIN':-Wl,-rpath,'$ORIGIN/../lib' -lring
