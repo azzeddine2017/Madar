@@ -5250,6 +5250,48 @@ RING_FUNC(ring_model_api_forward) {
   ring_model_forward_ex(pModel, nToken, nPos, bComputeLogits);
 }
 
+RING_FUNC(ring_model_api_forward_batch) {
+  RingModel *pModel;
+  List *pList;
+  int nStartPos = 0;
+  int nTokens, i, start, chunkSize;
+  int *pTokens;
+
+  if (RING_API_PARACOUNT < 2 || !RING_API_ISPOINTER(1) ||
+      !RING_API_ISLIST(2)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+
+  pList = RING_API_GETLIST(2);
+  nTokens = ring_list_getsize(pList);
+  if (nTokens <= 0)
+    return;
+
+  if (RING_API_PARACOUNT >= 3 && RING_API_ISNUMBER(3)) {
+    nStartPos = (int)RING_API_GETNUMBER(3);
+  }
+
+  pTokens = (int *)malloc((size_t)nTokens * sizeof(int));
+  if (!pTokens)
+    return;
+
+  for (i = 0; i < nTokens; i++) {
+    pTokens[i] = (int)ring_list_getdouble(pList, i + 1);
+  }
+
+  for (start = 0; start < nTokens; start += chunkSize) {
+    chunkSize = (nTokens - start > 32) ? 32 : (nTokens - start);
+    ring_model_forward_chunk(pModel, pTokens + start, nStartPos + start, chunkSize,
+                             0);
+  }
+
+  pModel->nCurPos = nStartPos + nTokens;
+  free(pTokens);
+}
+
 RING_FUNC(ring_trainer_api_fill_batch) {
   RingModel *pModel;
   MadarTensorBridge *pX;
@@ -5619,5 +5661,7 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_get_token_embeddings",
                     ring_model_api_get_token_embeddings);
   RING_API_REGISTER("madar_model_forward", ring_model_api_forward);
+  RING_API_REGISTER("madar_model_forward_batch",
+                    ring_model_api_forward_batch);
   RING_API_REGISTER("madar_trainer_fill_batch", ring_trainer_api_fill_batch);
 }

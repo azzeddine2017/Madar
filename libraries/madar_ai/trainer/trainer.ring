@@ -29,6 +29,7 @@ class MadarLoRATrainer
 	nTotalSteps   = 0
 	nCurrentStep  = 0
 	fBestLoss     = 999999.0
+	fEmaLoss      = 0.0
 	aLossHistory  = []
 
 	func init oBaseModel, oTrainDataset, nR, fAlp, fLR
@@ -121,8 +122,10 @@ class MadarLoRATrainer
 		? ""
 
 		nStartTime = clock()
+		nIntervalStartTime = nStartTime
 		nCurrentStep = 0
 		fRunningLoss = 0.0
+		fEmaLoss = 0.0
 
 		for nEp = 1 to nEpochs
 			? ">>> Starting Epoch [" + nEp + " / " + nEpochs + "]..."
@@ -150,20 +153,33 @@ class MadarLoRATrainer
 					oModel.optimizerStep(fCurLR, 0.01)
 				ok
 
-				# 4. Logging
+				# 4. Logging with Exponential Moving Average (EMA) & Throughput Metrics
 				if nCurrentStep % nLogInterval = 0 or nCurrentStep = 1
 					fAvgLoss = fRunningLoss / nLogInterval
 					if nCurrentStep = 1 fAvgLoss = fStepLoss ok
-					fPerplexity = exp(fAvgLoss)
+
+					if fEmaLoss = 0.0
+						fEmaLoss = fAvgLoss
+					else
+						fEmaLoss = 0.85 * fEmaLoss + 0.15 * fAvgLoss
+					ok
+
+					fPerplexity = exp(fEmaLoss)
 					if fPerplexity > 9999.0 fPerplexity = 9999.0 ok
 					fCurLR = oOptim.fCurrentLR
-					fElapsedSec = (clock() - nStartTime) / clockspersecond()
+
+					nNow = clock()
+					fElapsedSec = (nNow - nStartTime) / clockspersecond()
+					fIntervalSec = (nNow - nIntervalStartTime) / clockspersecond()
+					fSecPerStep = fIntervalSec / nLogInterval
+					if nCurrentStep = 1 fSecPerStep = fElapsedSec ok
+					nIntervalStartTime = nNow
 
 					? "  [Step " + nCurrentStep + "/" + nTotalSteps + "] " +
-					  "Loss: " + round(fAvgLoss, 6) + " | " +
-					  "PPL: " + round(fPerplexity, 4) + " | " +
+					  "Loss: " + round(fAvgLoss, 4) + " (EMA: " + round(fEmaLoss, 4) + ") | " +
+					  "PPL: " + round(fPerplexity, 2) + " | " +
 					  "LR: " + round(fCurLR, 6) + " | " +
-					  "Time: " + round(fElapsedSec, 1) + "s"
+					  round(fSecPerStep, 2) + "s/step"
 
 					fRunningLoss = 0.0
 				ok
@@ -207,16 +223,25 @@ class MadarLoRATrainer
 				ok
 			next
 
-			# 1. Sequential Prompt Prefill (bComputeLogits = 0: fast, populates KV cache)
-			for t = 1 to nRespStart - 2
-				nTok = aTokens[t]
-				nPos = t - 1
-				oModel.forward(nTok, nPos, 0)
-			next
+			# 1. High-Speed Batched Prompt Prefill (Populates KV Cache via GPU Chunks)
+			nPrefillTokens = nRespStart - 2
+			if nPrefillTokens > 0
+				aPromptTokens = []
+				for pt = 1 to nPrefillTokens
+					aPromptTokens + aTokens[pt]
+				next
+				try
+					oModel.forwardBatch(aPromptTokens, 0)
+				catch
+					for pt = 1 to nPrefillTokens
+						oModel.forward(aPromptTokens[pt], pt - 1, 0)
+					next
+				done
+			ok
 
 			# 2. Sequential Response Training (bComputeLogits = 1: with full prompt context)
-			# Train on up to 32 response tokens sequentially
-			nMaxRespTokens = 32
+			# Train on up to 16 response tokens sequentially for high throughput & stable gradients
+			nMaxRespTokens = 16
 			nTrainEnd = nTokCount - 1
 			if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
 				nTrainEnd = nRespStart + nMaxRespTokens - 2
