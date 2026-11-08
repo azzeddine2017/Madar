@@ -3211,8 +3211,9 @@ RING_API int ring_model_save_lora(RingModel *pModel, const char *cFolder) {
   if (fp) {
     fprintf(fp,
             "{\n  \"layers\": %d,\n  \"lora_rank\": %d,\n  \"lora_alpha\": "
-            "%.1f,\n  \"dim\": %d\n}\n",
-            nLayers, r, pModel->fLoRAAlpha, nEmbd);
+            "%.1f,\n  \"dim\": %d,\n  \"optimizer_steps\": %llu\n}\n",
+            nLayers, r, pModel->fLoRAAlpha, nEmbd,
+            (unsigned long long)pModel->nOptimizerSteps);
     fclose(fp);
   }
 
@@ -3265,6 +3266,9 @@ RING_API int ring_model_load_lora_folder(RingModel *pModel,
   char *pA = strstr(buf, "\"lora_alpha\":");
   if (pA)
     fAlpha = (float)atof(pA + 13);
+  char *pOpt = strstr(buf, "\"optimizer_steps\":");
+  if (pOpt)
+    pModel->nOptimizerSteps = (uint64_t)strtoull(pOpt + 18, NULL, 10);
 
   if (!ring_model_init_lora(pModel, nRank, fAlpha))
     return 0;

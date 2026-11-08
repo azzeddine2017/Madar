@@ -22,13 +22,14 @@ class MadarLoRATrainer
 	nMaxSeqLen    = 512
 	nMaxRespTokens = 0
 	nLogInterval  = 10
-	nSaveInterval = 100
+	nSaveInterval = 50
 	cOutputDir    = "adapters/ring_lora"
 
 	# Internal state
 	aLayers       = []
 	nTotalSteps   = 0
 	nCurrentStep  = 0
+	nResumeStep   = 0
 	fBestLoss     = 999999.0
 	fEmaLoss      = 0.0
 	aLossHistory  = []
@@ -108,6 +109,11 @@ class MadarLoRATrainer
 		if nTotalSteps < 100 nWarmup = 10 ok
 
 		oOptim = new MadarAdamW(aLayers, fBaseLR, nTotalSteps, nWarmup)
+		if nResumeStep > 0
+			oOptim.nCurrentStep = floor(nResumeStep / nGradAccum)
+			nOptSteps = oOptim.nCurrentStep
+			? "  [Trainer] Resumed state at step " + nResumeStep + " / " + nTotalSteps + " (Optimizer Step " + nOptSteps + ")"
+		ok
 
 		? "===================================================================="
 		? "  Madar AI - LoRA Fine-Tuning Engine Active"
@@ -130,17 +136,26 @@ class MadarLoRATrainer
 
 		nStartTime = clock()
 		nIntervalStartTime = nStartTime
-		nCurrentStep = 0
-		nOptSteps = 0
+		if nResumeStep = 0
+			nCurrentStep = 0
+			nOptSteps = 0
+		else
+			nCurrentStep = nResumeStep
+		ok
 		fRunningLoss = 0.0
 		fAccumLoss = 0.0
 		nAccumCount = 0
 		fEmaLoss = 0.0
 
+		nStepCounter = 0
 		for nEp = 1 to nEpochs
 			? ">>> Starting Epoch [" + nEp + " / " + nEpochs + "]..."
 			for nIdx = 1 to nNumSamples
-				nCurrentStep++
+				nStepCounter++
+				if nStepCounter <= nResumeStep
+					loop
+				ok
+				nCurrentStep = nStepCounter
 
 				# 1. Prepare sample with token mask
 				oData = oDataset.tokenizeSample(oModel, nIdx)
@@ -402,12 +417,24 @@ class MadarLoRATrainer
 		ok
 
 		# Save configuration metadata
+		nDim = 1536
+		nLayers = 28
+		try
+			if !isnull(oModel)
+				nDim = oModel.dim()
+			ok
+		catch
+			nDim = 1536
+		done
+
 		cMetaPath = cFolder + "/adapter_config.json"
 		fp = fopen(cMetaPath, "w")
 		if fp != NULL
 			fputs(fp, "{" + nl)
+			fputs(fp, '  "layers": ' + nLayers + "," + nl)
 			fputs(fp, '  "lora_rank": ' + nRank + "," + nl)
 			fputs(fp, '  "lora_alpha": ' + fAlpha + "," + nl)
+			fputs(fp, '  "dim": ' + nDim + "," + nl)
 			fputs(fp, '  "base_lr": ' + fBaseLR + "," + nl)
 			fputs(fp, '  "steps": ' + nCurrentStep + nl)
 			fputs(fp, "}" + nl)
@@ -427,3 +454,60 @@ class MadarLoRATrainer
 			ok
 		ok
 		? "  [Checkpoint] Saved LoRA adapters to: " + cFolder
+
+		# Also mirror to latest checkpoint if not already latest
+		if not (substr(cFolder, "latest") > 0)
+			saveCheckpoint(cOutputDir + "/latest")
+		ok
+
+	/*
+	* Function: loadCheckpoint
+	* Restores LoRA adapter weights and step counter from a checkpoint directory
+	*/
+	func loadCheckpoint(cFolder)
+		if !isnull(oModel) and oModel.hModel != NULL
+			nRes = oModel.loadLoRAFolder(cFolder)
+			if !nRes
+				? "  [Checkpoint] Warning: Could not load adapters from " + cFolder
+				return false
+			ok
+		else
+			for oLayer in aLayers
+				oLayer.loadAdapter(cFolder)
+			next
+		ok
+
+		# Restore step counter from adapter_config.json
+		cMetaPath = cFolder + "/adapter_config.json"
+		fp = fopen(cMetaPath, "r")
+		if fp != NULL
+			cBuf = ""
+			while not feof(fp)
+				cChar = fgetc(fp)
+				if cChar != NULL cBuf += cChar ok
+			end
+			fclose(fp)
+
+			nPos = substr(cBuf, '"steps":')
+			if nPos > 0
+				cSub = substr(cBuf, nPos + 8)
+				nEnd = substr(cSub, ",")
+				if nEnd = 0 nEnd = substr(cSub, "}") ok
+				if nEnd = 0 nEnd = substr(cSub, nl) ok
+				if nEnd > 0
+					cStepsStr = trim(substr(cSub, 1, nEnd - 1))
+					nSavedSteps = 0 + cStepsStr
+					if nSavedSteps > 0
+						nCurrentStep = nSavedSteps
+						nResumeStep  = nSavedSteps
+					ok
+				ok
+			ok
+		ok
+
+		if !isnull(oOptim)
+			oOptim.nCurrentStep = floor(nResumeStep / nGradAccum)
+		ok
+
+		? "  [Checkpoint] Successfully resumed LoRA weights from: " + cFolder + " (Step: " + nCurrentStep + ")"
+		return true
