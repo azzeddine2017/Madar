@@ -46,9 +46,9 @@ def load_ring_dataset(cPath, oTokenizer):
     # Convert to standard ChatML format
     formatted_data = []
     for item in aRecords:
-        cInstruction = item.get("instruction", "")
+        cInstruction = item.get("instruction", "") or item.get("prompt", "")
         cInput = item.get("input", "")
-        cOutput = item.get("output", "")
+        cOutput = item.get("output", "") or item.get("completion", "")
         
         cUserContent = cInstruction
         if cInput and cInput.strip():
