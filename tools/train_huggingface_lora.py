@@ -103,8 +103,9 @@ def main():
         quantization_config=bnb_config,
         device_map=device_map,
         trust_remote_code=True,
-        dtype=torch.float16
+        torch_dtype=torch.float16
     )
+    model.config.torch_dtype = torch.float16
     model = prepare_model_for_kbit_training(model)
 
     # 4. LoRA Configuration
@@ -119,10 +120,13 @@ def main():
     )
     model = get_peft_model(model, peft_config)
 
-    # Purge any residual bfloat16 tensors for Tesla T4 GPU compatibility
+    # Ensure all LoRA layers and trainable parameters are float32 (fixes Tesla T4 GradScaler error)
+    for name, module in model.named_modules():
+        if "lora" in name.lower():
+            module.to(torch.float32)
     for param in model.parameters():
-        if param.dtype == torch.bfloat16:
-            param.data = param.data.to(torch.float32 if param.requires_grad else torch.float16)
+        if param.requires_grad:
+            param.data = param.data.float()
 
     model.print_trainable_parameters()
 
