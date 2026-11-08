@@ -18,9 +18,9 @@ class MadarLoRATrainer
 	fBaseLR       = 0.0002
 	nEpochs       = 3
 	nBatchSize    = 1
-	nGradAccum    = 1
+	nGradAccum    = 4
 	nMaxSeqLen    = 512
-	nMaxRespTokens = 6
+	nMaxRespTokens = 0
 	nLogInterval  = 10
 	nSaveInterval = 100
 	cOutputDir    = "adapters/ring_lora"
@@ -118,7 +118,12 @@ class MadarLoRATrainer
 		? "  LoRA Rank (r)       : " + nRank
 		? "  LoRA Alpha (alpha)  : " + fAlpha
 		? "  Base Learning Rate  : " + round(fBaseLR, 6)
-		? "  Tokens Per Sample   : " + nMaxRespTokens
+		if nMaxRespTokens = 0 or nMaxRespTokens = NULL
+			? "  Tokens Per Sample   : Full Response Sequence (Uncapped)"
+		else
+			? "  Tokens Per Sample   : " + nMaxRespTokens
+		ok
+		? "  Gradient Accumulation: " + nGradAccum + " Samples"
 		? "  Attached Adapters   : " + len(aLayers)
 		? "===================================================================="
 		? ""
@@ -126,7 +131,10 @@ class MadarLoRATrainer
 		nStartTime = clock()
 		nIntervalStartTime = nStartTime
 		nCurrentStep = 0
+		nOptSteps = 0
 		fRunningLoss = 0.0
+		fAccumLoss = 0.0
+		nAccumCount = 0
 		fEmaLoss = 0.0
 
 		for nEp = 1 to nEpochs
@@ -143,16 +151,25 @@ class MadarLoRATrainer
 				nSeqLen = len(aTokens)
 				if nSeqLen > nMaxSeqLen nSeqLen = nMaxSeqLen ok
 
-				# 2. Forward-backward pass through LoRA layers
+				# 2. Forward-backward pass through LoRA layers (Full response sequence)
 				fStepLoss = executeStep(aTokens, aMask, nSeqLen)
 				fRunningLoss += fStepLoss
-				aLossHistory + fStepLoss
+				fAccumLoss += fStepLoss
+				nAccumCount++
 
-				# 3. Optimizer Step
-				oOptim.step()
-				fCurLR = oOptim.fCurrentLR
-				if !isnull(oModel) and oModel.hModel != NULL
-					oModel.optimizerStep(fCurLR, 0.01)
+				# 3. Gradient Accumulation & Optimizer Step
+				bShouldStep = (nAccumCount >= nGradAccum) or (nIdx = nNumSamples)
+				if bShouldStep
+					nOptSteps++
+					oOptim.step()
+					fCurLR = oOptim.fCurrentLR
+					if !isnull(oModel) and oModel.hModel != NULL
+						oModel.optimizerStep(fCurLR, 0.01)
+					ok
+					fBatchLoss = fAccumLoss / nAccumCount
+					aLossHistory + fBatchLoss
+					fAccumLoss = 0.0
+					nAccumCount = 0
 				ok
 
 				# 4. Logging with Exponential Moving Average (EMA) & Throughput Metrics
@@ -177,11 +194,11 @@ class MadarLoRATrainer
 					if nCurrentStep = 1 fSecPerStep = fElapsedSec ok
 					nIntervalStartTime = nNow
 
-					? "  [Step " + nCurrentStep + "/" + nTotalSteps + "] " +
+					? "  [Sample " + nCurrentStep + "/" + nTotalSteps + "] " +
 					  "Loss: " + round(fAvgLoss, 4) + " (EMA: " + round(fEmaLoss, 4) + ") | " +
 					  "PPL: " + round(fPerplexity, 2) + " | " +
 					  "LR: " + round(fCurLR, 6) + " | " +
-					  round(fSecPerStep, 2) + "s/step"
+					  round(fSecPerStep, 2) + "s/sample"
 
 					fRunningLoss = 0.0
 				ok
@@ -242,10 +259,12 @@ class MadarLoRATrainer
 			ok
 
 			# 2. Sequential Response Training (bComputeLogits = 1: with full prompt context)
-			# Train on up to nMaxRespTokens sequentially for high throughput & stable gradients
+			# Full sequence response training across all tokens down to the end of the code
 			nTrainEnd = nTokCount - 1
-			if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
-				nTrainEnd = nRespStart + nMaxRespTokens - 2
+			if nMaxRespTokens != NULL and nMaxRespTokens > 0
+				if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
+					nTrainEnd = nRespStart + nMaxRespTokens - 2
+				ok
 			ok
 
 			for t = (nRespStart - 1) to nTrainEnd

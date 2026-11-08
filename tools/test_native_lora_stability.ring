@@ -28,23 +28,25 @@ oModel.setThreads(4)
 oDataset = new MadarInstructDataset(cDataPath, "chatml")
 ? "   Total Available Samples: " + oDataset.size()
 
-# Subsample 15 samples for quick diagnostic test
+# Subsample 8 samples for full-sequence, gradient-accumulated verification
 aAll = oDataset.aSamples
 aSubset = []
-nLimit = 15
+nLimit = 8
 for i = 1 to nLimit
 	aSubset + aAll[i]
 next
 oDataset.aSamples = aSubset
 
-? "3. Initializing LoRA Trainer (Rank=16, Alpha=32.0, LR=0.0002)..."
+? "3. Initializing LoRA Trainer with Full Sequence & Gradient Accumulation..."
 oTrainer = new MadarLoRATrainer(oModel, oDataset, 16, 32.0, 0.0002) {
-	nLogInterval  = 1
-	nSaveInterval = 10
-	cOutputDir    = "adapters/test_stability"
+	nGradAccum     = 4  # Accumulate over 4 samples (2 English + 2 Arabic)
+	nMaxRespTokens = 0  # 0 = Train full response sequence (all code tokens)
+	nLogInterval   = 4  # Log every batch of 4 samples
+	nSaveInterval  = 8
+	cOutputDir     = "adapters/test_stability"
 }
 
-? "4. Running 1 Epoch (15 Steps with LogInterval=1)..."
+? "4. Running Full-Sequence Training (8 Samples = 2 Batches of 4)..."
 oTrainer.train(1)
 
 ? "===================================================================="
