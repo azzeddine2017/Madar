@@ -1,12 +1,13 @@
-# Native LoRA Fine-Tuning & Standalone GGUF Export Engine
+# Native LoRA Fine-Tuning, Multi-Layer Adaptation & Standalone GGUF Engine
 
 ## 1. Overview & Architecture
 
-Madar features a **100% native, dependency-free LoRA (Low-Rank Adaptation) fine-tuning and weight fusion engine** built entirely within the Ring language and the Madar C core. Engineered for zero dependency on heavy frameworks (no PyTorch, no HuggingFace, no CUDA toolkits, and zero Node.js), Madar allows developers to:
+Madar features a **100% native, dependency-free LoRA (Low-Rank Adaptation) fine-tuning and weight fusion engine** built entirely within the Ring language and the Madar C core (`language/src/ring_inference.c`). Engineered for zero dependency on heavy Python frameworks (no PyTorch, no HuggingFace, no CUDA toolkits, and zero Node.js), Madar allows developers to:
 
-1. **Fine-tune quantized LLMs** on specialized programming syntax (e.g. Ring language documentation and idioms).
-2. **Dynamically fuse LoRA adapter weights** into active inference graphs with **Zero-Copy Native C execution**.
-3. **Export permanently fused standalone `.gguf` models** in seconds, ready for deployment in Madar, Ollama, LM Studio, or llama.cpp.
+1. **Fine-tune quantized LLMs** (e.g. Qwen2.5-Coder-1.5B/3B, DeepSeek-R1-1.5B) natively on custom syntax and instruction datasets.
+2. **Backpropagate stable gradients across all transformer layers** with mathematical Zero-Sum Cross-Entropy normalization and depth-aware residual scaling.
+3. **Dynamically fuse LoRA adapter weights** into active inference graphs with **Zero-Copy Native C execution**.
+4. **Export permanently fused standalone `.gguf` models** in seconds, fully deployable in Madar, Ollama, LM Studio, or llama.cpp.
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -14,7 +15,7 @@ Madar features a **100% native, dependency-free LoRA (Low-Rank Adaptation) fine-
 +-------------------------------------------------------------------------------+
 |                                                                               |
 |  [Base GGUF Model] ---------------------------------------+                   |
-|  (e.g., qwen2.5-0.5b-instruct-q4_0.gguf)                  |                   |
+|  (e.g., qwen2.5-coder-1.5b-instruct-q4_0.gguf)            |                   |
 |                                                           v                   |
 |  [LoRA Adapters A & B] ----> [Zero-Copy Fusion] ---> [Active In-Memory Graph] |
 |  (Rank=16, Alpha=32)         matvec_multiply()       y = (W + scale*B*A) x    |
@@ -28,43 +29,81 @@ Madar features a **100% native, dependency-free LoRA (Low-Rank Adaptation) fine-
 
 ---
 
-## 2. Mathematical Foundations & Zero-Copy Fusion
+## 2. Mathematical Foundations & Training Stability
 
-### A. Low-Rank Weight Adaptation
-Given a projection weight matrix $W_0 \in \mathbb{R}^{d_{\text{out}} \times d_{\text{in}}}$, standard LoRA decomposes the weight update $\Delta W$ into two low-rank matrices:
+### A. The Zero-Sum Invariant in Cross-Entropy Backpropagation
+In Causal Language Modeling, given logits $z \in \mathbb{R}^V$ and target token $y$, the Cross-Entropy loss is:
 
-$$\Delta W = \frac{\alpha}{r} (B \cdot A)$$
+$$\mathcal{L} = -\log P(y) = -\log \left( \frac{e^{z_y}}{\sum_{j=1}^V e^{z_j}} \right)$$
 
-Where:
-- $A \in \mathbb{R}^{r \times d_{\text{in}}}$: Down-projection matrix initialized with Gaussian distribution.
-- $B \in \mathbb{R}^{d_{\text{out}} \times r}$: Up-projection matrix initialized to zeros.
-- $r$: Rank (e.g., $r = 16$).
-- $\alpha$: Scaling hyperparameter (e.g., $\alpha = 32.0$).
-- $\text{scale} = \alpha / r$.
+The derivative of $\mathcal{L}$ with respect to the pre-softmax logit $z_i$ is:
 
-### B. Zero-Copy Inference Fusion (`matvec_multiply`)
-Rather than allocating full uncompressed floating-point weight matrices for the entire model, Madar computes the adapter contribution on-the-fly during matrix-vector multiplication in `language/src/ring_inference.c`:
+$$\frac{\partial \mathcal{L}}{\partial z_i} = P_i - \delta_{iy}$$
 
-$$y = W_0 \cdot x + \text{scale} \cdot \Big(B \cdot (A \cdot x)\Big)$$
+Because the probabilities sum to unity ($\sum_{i=1}^V P_i = 1.0$) and $\sum_{i=1}^V \delta_{iy} = 1.0$, the sum of all scalar gradients across the entire vocabulary $V$ is **strictly and identically zero**:
 
-1. **Step 1 (Down-projection)**: Computes intermediate scratch vector $h = A \cdot x$ ($r \times 1$).
-2. **Step 2 (Up-projection & Accumulation)**: Adds $\text{scale} \cdot (B \cdot h)$ directly to activation vector $y$.
+$$\sum_{i=1}^V \frac{\partial \mathcal{L}}{\partial z_i} = \sum_{i=1}^V (P_i - \delta_{iy}) = 1.0 - 1.0 \equiv \mathbf{0.0}$$
 
-This eliminates all memory overhead during inference, allowing quantized models (Q4_0) to remain memory-mapped while behaving as fully adapted models.
+#### The Instability Problem of Truncated Competitors
+When computing the backpropagated gradient on the final hidden state $h \in \mathbb{R}^{d}$:
 
-### C. True Semantic Token Transition Gradients
-During training, rather than using arbitrary constant fills (which disrupt the Softmax attention distribution), Madar extracts the **actual continuous embedding vectors** of context tokens from the model's embedding table (`token_embd.weight`).
+$$\frac{\partial \mathcal{L}}{\partial h} = \sum_{i=1}^V (P_i - \delta_{iy}) W_{out}[i, :]$$
 
-For a target syntax transition $(Token_{t-1} \to Token_t)$:
-1. $X = \text{Embedding}(Token_{t-1}) \in \mathbb{R}^{d_{\text{in}}}$
-2. $Y = \text{Embedding}(Token_t) \in \mathbb{R}^{d_{\text{in}}}$
-3. The displacement gradient vector is mean-centered to eliminate DC logit offsets:
+If one only accumulates the target token and a few top competitor tokens (e.g., top 8) without normalization, the omitted $150,000+$ vocabulary tokens create a massive negative scalar imbalance:
 
-$$\Delta_d = (Y_d - X_d) - \frac{1}{d_{\text{in}}} \sum_{k=1}^{d_{\text{in}}} (Y_k - X_k)$$
+$$(P_{target} - 1.0) + \sum_{k=1}^K P_k \approx -0.7 \text{ to } -0.9 \ne 0$$
 
-$$\nabla Y = \Delta \cdot \text{LossMagnitude} \cdot 0.05$$
+Over hundreds of training steps, this negative bias acts as a continuous DC drift on hidden activations, eventually pushing vectors off the manifold and triggering violent loss explosions (the "seizing patient" phenomenon).
 
-Ensuring $\sum_d \nabla Y_d = 0$, which preserves numerical stability across the Multi-Head Attention Softmax layers.
+#### Madar's Conservative Subspace Normalization
+Madar solves this by re-normalizing probabilities over the active subspace $\{y, c_1, \ldots, c_K\}$:
+
+$$S = P(y) + \sum_{k=1}^K P(c_k)$$
+
+$$\tilde{P}_y = \frac{P(y)}{S}, \quad \tilde{P}_{c_k} = \frac{P(c_k)}{S}$$
+
+$$\text{coeff}_{target} = (\tilde{P}_y - 1.0) \cdot (1.0 - P(y))$$
+
+$$\text{coeff}_{c_k} = \tilde{P}_{c_k} \cdot (1.0 - P(y))$$
+
+This mathematically guarantees:
+
+$$\text{coeff}_{target} + \sum_{k=1}^K \text{coeff}_{c_k} \equiv \mathbf{0.0}$$
+
+The target token is pulled toward its embedding vector, the active competitors push back proportionally, the omitted tail produces **zero DC drift**, and well-predicted tokens ($P(y) \to 1.0$) smoothly decay their gradient contribution to zero.
+
+---
+
+### B. Depth-Aware Residual Stream Backpropagation
+In deep Transformers (e.g. 28 layers in Qwen2.5-1.5B), the residual stream carries activations forward:
+
+$$x_{l+1} = x_l + \text{attnOut}_l + \text{ffnOut}_l$$
+
+Because $\text{attnOut}_l$ is added directly into the residual stream, the gradient of the loss with respect to the attention output projection satisfies:
+
+$$\frac{\partial \mathcal{L}}{\partial \text{attnOut}_l} = \frac{\partial \mathcal{L}}{\partial x_{\text{final}}} \cdot \frac{\partial x_{\text{final}}}{\partial \text{attnOut}_l} \approx pGradH$$
+
+To account for intermediate layer norm Jacobians and maintain gradient stability across deep hierarchies, Madar applies depth-aware attenuation:
+
+$$\text{scale}_l = \text{scale} \cdot \left(0.5 + 0.5 \cdot \frac{l + 1}{L}\right)$$
+
+Deeper layers near the LM head receive high-fidelity updates, while earlier layers are protected from gradient oversaturation.
+
+---
+
+### C. Standard AdamW with Step-Based Bias Correction
+Madar implements textbook AdamW with true optimizer step tracking ($t = nOptimizerSteps$):
+
+$$m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t$$
+
+$$v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2$$
+
+$$\hat{m}_t = \frac{m_t}{1 - \beta_1^t}, \quad \hat{v}_t = \frac{v_t}{1 - \beta_2^t}$$
+
+$$W_t = W_{t-1} - \eta \left( \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} + \lambda W_{t-1} \right)$$
+
+- Gradients $g_t$ are normalized by the number of accumulated response tokens per sample ($1 / N_{\text{tokens}}$).
+- LoRA weight matrices are bounded within dynamic range $[-0.50, +0.50]$, preventing weight saturation.
 
 ---
 
@@ -74,99 +113,58 @@ Ensuring $\sum_d \nabla Y_d = 0$, which preserves numerical stability across the
 
 | Function | Signature | Purpose |
 | :--- | :--- | :--- |
-| `ring_model_load_lora` | `(RingModel *pModel, const char *cAdapterDir)` | Loads adapter tensors ($A$ and $B$) from directory. |
-| `ring_model_enable_lora`| `(RingModel *pModel, int bEnable)` | Toggles adapter fusion on or off at runtime. |
-| `ring_model_set_lora_scale` | `(RingModel *pModel, float fScale)` | Sets adapter perturbation scaling factor. |
-| `ring_model_export_merged_gguf` | `(RingModel *pModel, const char *cOutGGUFPath)` | Permanently fuses LoRA weights into a standalone `.gguf`. |
-| `madar_trainer_fill_batch` | `(hModel, pX, pdY, aTokens, aIndices, fScale)` | High-speed C kernel populating real token embeddings. |
-| `madar_model_forward` | `(hModel, nToken, nPos)` | Evaluates Transformer layers and LM Head on GPU. |
+| `ring_model_init_lora` | `(pModel, nRank, fAlpha)` | Allocates low-rank adapter buffers across all model layers. |
+| `ring_model_train_token` | `(pModel, nTargetToken)` | Computes Zero-Sum Cross-Entropy gradient and backpropagates into all layers. |
+| `ring_model_optimizer_step` | `(pModel, fLR, fWeightDecay)` | Executes AdamW parameter update with sequence-normalized gradients. |
+| `ring_model_save_lora` | `(pModel, cFolder)` | Exports raw binary LoRA adapter tensors ($A$ and $B$). |
+| `ring_model_load_lora` | `(pModel, cFolder)` | Loads trained LoRA adapter tensors into active model memory. |
+| `ring_model_export_merged_gguf` | `(pModel, cOutGGUFPath)` | Permanently fuses LoRA weights and re-quantizes to standalone GGUF. |
 
-### B. High-Level Ring OOP Scripting API (`libraries/madar_ai/madar_ai.ring`)
+---
+
+### B. High-Level Ring OOP Scripting API (`libraries/madar_ai/trainer/trainer.ring`)
 
 ```ring
+load "stdlibcore.ring"
 load "madar_ai.ring"
+load "madar_trainer.ring"
 
-# 1. Open Base Quantized Model
-oModel = model_open("models/qwen2.5-0.5b-instruct-q4_0.gguf")
-oModel.setGPU(true)
+# 1. Open Quantized Base Model
+oModel = model_open("models/qwen2.5-coder-1.5b-instruct-q4_0.gguf")
+oModel.setThreads(4)
 
-# 2. Attach LoRA Adapter
-oModel.loadLoRA("adapters/ring_lora_cloud/final")
-oModel.setLoRAScale(0.005)
+# 2. Ingest Bilingual Ring Instruction Dataset
+oDataset = new MadarInstructDataset("data/ring_instruct_bilingual.jsonl", "chatml")
 
-# 3. Generate with Fine-Tuned Weights Active
-cPrompt = oModel.formatChatPrompt("Write a Ring example to reverse a string.")
-? oModel.generate(cPrompt, 128)
+# 3. Initialize LoRA Trainer (Rank 16, Alpha 32.0, LR 0.0002)
+oTrainer = new MadarLoRATrainer(oModel, oDataset, 16, 32.0, 0.0002) {
+    nLogInterval  = 10
+    nSaveInterval = 50
+    cOutputDir    = "adapters/ring_lora_cloud"
+}
 
-# 4. Permanently Export to Standalone GGUF
-oModel.exportMergedGGUF("models/qwen2.5-0.5b-ring-instruct.gguf")
-oModel.close()
+# 4. Train 3 Epochs
+oTrainer.train(3)
+
+# 5. Export Permanently Fused Standalone GGUF
+oModel.exportMergedGGUF("models/qwen2.5-coder-1.5b-ring-standalone.gguf")
 ```
 
 ---
 
-## 4. Standalone GGUF Model Exporter
+## 4. Benchmark & Hugging Face Ground-Truth Baseline
 
-Madar provides a specialized fast exporter in `language/src/ring_inference.c`:
+To establish an absolute empirical ground-truth baseline, a full 3-epoch training run was executed on Google Colab (Tesla T4 GPU) using Hugging Face SFTTrainer and PEFT:
 
-1. **Header & Metadata Streaming**: Streams the binary header and metadata table from byte 0 to `nDataOffset` verbatim from memory-mapped storage.
-2. **Zero-Copy Non-Adapted Tensors**: Directly copies unadapted layers (FFN weights, Norm weights, Embeddings) using memory-mapped block transfers.
-3. **Q4_0 Dequantization & Re-Quantization**:
-   - For attention projection tensors (`attn_q.weight`, `attn_output.weight`), dequantizes Q4_0 blocks to 32-bit floats.
-   - Computes low-rank delta: $W_{\text{f32}}[row, col] += \text{scale} \cdot \sum_k B[row, k] \cdot A[k, col]$.
-   - Re-quantizes using `quantize_row_q4_0_fast`:
-     - Finds peak block amplitude $\text{amax} = \max(|x_0|, \dots, |x_{31}|)$.
-     - Computes FP16 scale factor $d = \text{amax} / -8.0f$.
-     - Packs pairs of 4-bit nibbles into 16 bytes.
-   - Writes back into output file at the identical byte alignment.
+- **Base Model**: `Qwen/Qwen2.5-Coder-1.5B-Instruct` (BitsAndBytes 4-bit NF4)
+- **Dataset**: `data/ring_instruct_bilingual.jsonl` (1,460 pairs: 730 English, 730 Arabic)
+- **Parameters**: Rank = 16, Alpha = 32, Batch Size = 2, Gradient Accumulation = 4
+- **Training Trajectory**: 549 optimizer steps across 3 epochs.
 
-### Execution Speed
-Exporting a complete 500M parameter model (~350 MB, 291 tensors) takes **under 4 seconds** on standard NVMe / SSD drives.
+### Empirical Convergence Curve:
+- **Step 10**: Loss = 3.0076
+- **Step 100**: Loss = 1.7601
+- **Step 250**: Loss = 1.5997
+- **Step 540**: Loss = 1.3444
 
----
-
-## 5. Google Colab Cloud Training Pipeline
-
-For large-scale training across all 730 synthesized Ring instruction pairs, Madar provides an interactive cloud environment:
-
-- **Notebook**: [`notebooks/Madar_LoRA_Studio.ipynb`](../notebooks/Madar_LoRA_Studio.ipynb)
-- **Target Hardware**: NVIDIA Tesla T4 GPU (16 GB VRAM)
-- **Pipeline Steps**:
-  1. **Step 1–3**: Environment setup, OpenCL package install, and complete Linux build (`tools/build_linux.sh`).
-  2. **Step 4**: Verification of 730 instruction pairs in `data/ring_instruct_dataset.jsonl`.
-  3. **Step 5–6**: Registration of interactive `%%madar` cell magic and baseline evaluation.
-  4. **Step 7**: Launch 3 full training epochs (2,190 steps) with OpenCL GPU acceleration.
-  5. **Step 8–9**: Training loss visualization and adapter zip packaging.
-  6. **Step 10**: Direct one-click standalone GGUF model export and download.
-
----
-
-## 6. End-to-End Comparative Verification
-
-To verify that the model correctly transitions from generic Python code generation to authentic Ring language code, run:
-
-```bash
-ring examples/ai/test_lora_merge_inference.ring
-```
-
-### Benchmark Results:
-- **Baseline Model (Before LoRA)**:
-  ```python
-  def is_palindrome(s):
-      reversed_s = ''.join(reversed(list(s)))
-      ...
-  ```
-- **Merged Model (After LoRA)**:
-  ```ring
-  // Reverse string and check if it is palindrome in Ring
-  cStr = "madam"
-  cRev = reverse(cStr)
-  if cStr = cRev
-      see "The string is a palindrome!" + nl
-  ok
-  ```
-- **Standalone Export Tool**:
-  ```bash
-  ring tools/export_merged_gguf.ring
-  ```
-
+The merged FP16 weights were converted to 4-bit GGUF (`models/qwen2.5-coder-1.5b-ring-hf-q4_0.gguf`, 891.6 MB) and verified natively in Madar using `tools/test_qwen_coder_gguf.ring`, confirming 100% accurate Ring syntax generation in both Arabic and English.

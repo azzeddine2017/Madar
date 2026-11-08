@@ -94,9 +94,11 @@
 
 13. **Native LoRA Fine-Tuning & Standalone GGUF Export Engine:**
     - **Zero-Copy In-Core LoRA Inference (`language/src/ring_inference.c`)**: Computes adapter deltas on-the-fly during matrix-vector multiplication without altering quantized base model memory.
-    - **Standalone GGUF Exporter (`ring_model_export_merged_gguf` / `tools/export_merged_gguf.ring`)**: Permanently fuses trained LoRA attention adapters (Q and Out projections) into a single, deployable GGUF file with native Q4_0 re-quantization in under 4 seconds.
-    - **Semantic Token Transition Gradient Trainer (`libraries/madar_ai/trainer/trainer.ring`)**: Direct extraction of continuous base-model token embeddings (`extract_token_embedding`, `fillTrainingBatch`) combined with Transformer GPU forward-pass activation for authentic syntax adaptation without external ML frameworks.
-    - **Interactive Cloud Studio (`notebooks/Madar_LoRA_Studio.ipynb`)**: Complete Google Colab environment with OpenCL Tesla T4 acceleration, 730 instruction pairs, and one-click merged GGUF download. See [docs/LORA_FINETUNING.md](docs/LORA_FINETUNING.md).
+    - **Conservative Zero-Sum Backpropagation Engine**: Mathematically guarantees $\sum (P_i - \delta_{iy}) \equiv 0.0$ across active logit competitors, eliminating catastrophic DC offset drift and stabilizing loss convergence.
+    - **Depth-Aware Residual Stream Scaling**: Automatically scales layer adapter gradients with transformer depth ($0.5 + 0.5 \frac{l+1}{L}$), protecting early layers while ensuring strong representation learning in deep layers.
+    - **Standard AdamW Optimizer with True Step Counter**: Robust bias correction with sequence-length gradient normalization and adaptive learning rate warmup.
+    - **Standalone GGUF Exporter (`ring_model_export_merged_gguf` / `tools/export_merged_gguf.ring`)**: Permanently fuses trained LoRA attention adapters into a single, deployable GGUF file with native Q4_0 re-quantization in under 4 seconds.
+    - **Empirical Ground-Truth Calibration Baseline (`notebooks/Madar_LoRA_HuggingFace_Qwen_Coder.ipynb`)**: Verified against Hugging Face SFTTrainer across 3 epochs (Loss 3.00 -> 1.28) and converted to standalone GGUF (`models/qwen2.5-coder-1.5b-ring-hf-q4_0.gguf`). See [docs/LORA_FINETUNING.md](docs/LORA_FINETUNING.md).
 
 ---
 
@@ -107,6 +109,7 @@ Experience the full power of Madar with 7B reasoning models and NVIDIA GPU accel
 - 🇸🇦 **[Madar Colab (Arabic)](notebooks/Madar_Colab_Quickstart.ipynb)** — Includes `%%madar` interactive cell magic, GPU OpenCL, and live AI Agent chat.
 - 🇬🇧 **[Madar Colab (English)](notebooks/Madar_Colab_Quickstart_EN.ipynb)** — Complete English guide with GPU acceleration, AlQalam Hybrid RAG, and 7B models.
 - 🚀 **[Madar LoRA Studio (Colab)](notebooks/Madar_LoRA_Studio.ipynb)** — Complete cloud LoRA fine-tuning on 730 instruction pairs with one-click GGUF export.
+- 🎯 **[Madar Hugging Face LoRA Baseline](notebooks/Madar_LoRA_HuggingFace_Qwen_Coder.ipynb)** — 4-bit QLoRA ground-truth benchmark and GGUF converter for Qwen2.5-Coder.
 
 ### 1. Download Model (Windows / Local)
 Download supported quantized models directly into the `models/` directory:

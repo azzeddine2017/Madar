@@ -2933,6 +2933,7 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   pModel->bLoRAEnabled = 1;
   pModel->nTrainTokens = 0;
   pModel->nStepAccumTokens = 0;
+  pModel->nOptimizerSteps = 0;
 
   printf("[MADAR AI] Multi-Layer LoRA Engine Initialized: %d Layers | Rank: %d "
          "| Alpha: %.1f | Scale: %.4f (Depth-Scaled)\n",
@@ -2974,8 +2975,7 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     pTarget = 1e-9f;
   float fLoss = -logf(pTarget);
 
-  /* 2. Compute Backpropagated Gradient on Final Hidden State: grad_h = W_out^T
-   * * (P - Target) */
+  /* 2. Compute Backpropagated Gradient on Final Hidden State: grad_h = W_out^T * (P - Target) */
   if (!pModel->pGradH)
     pModel->pGradH = (float *)malloc((size_t)nEmbd * sizeof(float));
   float *pGradH = pModel->pGradH;
@@ -2988,31 +2988,54 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   if (!pRowBuf)
     return fLoss;
 
-  /* Target token component: grad_z[y] = pTarget - 1.0f (Negative pull) */
-  float gradTarget = pTarget - 1.0f;
-  get_output_tensor_row_f32(pModel, (uint32_t)nTargetToken, pRowBuf);
-  for (int d = 0; d < nEmbd; d++) {
-    pGradH[d] += gradTarget * pRowBuf[d];
-  }
+  /* Gather candidate false-positive tokens (top competitors with significant probability mass) */
+#define MADAR_MAX_COMPETITORS 16
+  uint32_t aCompTokens[MADAR_MAX_COMPETITORS];
+  float aCompProb[MADAR_MAX_COMPETITORS];
+  int nCompCount = 0;
 
-  /* Candidate false-positive tokens (top competitors with significant
-   * probability mass, max 8) */
-  int nFalseCount = 0;
-  for (uint32_t i = 0; i < nVocab && nFalseCount < 8; i++) {
+  for (uint32_t i = 0; i < nVocab && nCompCount < MADAR_MAX_COMPETITORS; i++) {
     if (i == (uint32_t)nTargetToken)
       continue;
     float diff = pModel->pLogits[i] - maxLogit;
-    if (diff > -4.0f) {
+    if (diff > -6.0f) {
       float pFalse = expf(diff) * invSum;
-      if (pFalse > 0.015f) {
-        get_output_tensor_row_f32(pModel, i, pRowBuf);
-        for (int d = 0; d < nEmbd; d++) {
-          pGradH[d] += pFalse * pRowBuf[d];
-        }
-        nFalseCount++;
+      if (pFalse > 0.005f) {
+        aCompTokens[nCompCount] = i;
+        aCompProb[nCompCount] = pFalse;
+        nCompCount++;
       }
     }
   }
+
+  /* Conservative Zero-Sum Gradient Normalization:
+   * Re-normalize probabilities across the active subspace so that:
+   * coeffTarget + sum(coeffComp) == 0.0f EXACTLY.
+   * This completely prevents DC drift and activation explosion. */
+  float sumSubspace = pTarget;
+  for (int k = 0; k < nCompCount; k++) {
+    sumSubspace += aCompProb[k];
+  }
+  float invSubspace = (sumSubspace > 0.0f) ? (1.0f / sumSubspace) : 1.0f;
+  float pTargetNorm = pTarget * invSubspace;
+  float errorFactor = 1.0f - pTarget; /* Smoothly drops to 0 as target probability approaches 1 */
+
+  /* Target pull: (pTargetNorm - 1.0f) * errorFactor (negative pull) */
+  float coeffTarget = (pTargetNorm - 1.0f) * errorFactor;
+  get_output_tensor_row_f32(pModel, (uint32_t)nTargetToken, pRowBuf);
+  for (int d = 0; d < nEmbd; d++) {
+    pGradH[d] += coeffTarget * pRowBuf[d];
+  }
+
+  /* Competitor push: pCompNorm * errorFactor (positive push) */
+  for (int k = 0; k < nCompCount; k++) {
+    float coeffComp = (aCompProb[k] * invSubspace) * errorFactor;
+    get_output_tensor_row_f32(pModel, aCompTokens[k], pRowBuf);
+    for (int d = 0; d < nEmbd; d++) {
+      pGradH[d] += coeffComp * pRowBuf[d];
+    }
+  }
+#undef MADAR_MAX_COMPETITORS
 
   if (pRowBuf != rowBufStack)
     free(pRowBuf);
@@ -3028,7 +3051,7 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
       pGradH[d] *= clipScale;
   }
 
-  /* 3. Backpropagate into All Layer LoRA Adapters */
+  /* 3. Backpropagate into Residual Attention Output LoRA Adapters */
   RingLoRALayerAdapter *pAdapters = (RingLoRALayerAdapter *)pModel->aLoRALayers;
   float *pU = pModel->pLoRA_Scratch; /* [r] */
   float guStack[128];
@@ -3042,44 +3065,13 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     if (!pLayer->bActive)
       continue;
 
-    const float *x_norm = pModel->pLayerActIn + ((size_t)l * 2) * nEmbd;
+    /* Depth-aware attenuation: earlier layers receive attenuated gradients through residual stream */
+    float depthFactor = 0.5f + 0.5f * ((float)(l + 1) / (float)nLayers);
+    float lScale = scale * depthFactor;
+
     const float *att_out = pModel->pLayerActIn + ((size_t)l * 2 + 1) * nEmbd;
 
-    /* --- Adapter Q --- */
-    /* Forward u = A_Q * x_norm */
-    for (int i = 0; i < r; i++) {
-      const float *pRowA = pLayer->pA_Q + (size_t)i * nEmbd;
-      float sum = 0.0f;
-      for (int j = 0; j < nEmbd; j++)
-        sum += pRowA[j] * x_norm[j];
-      pU[i] = sum;
-    }
-    /* pdB_Q += scale * (pGradH * u^T) */
-    for (int i = 0; i < nEmbd; i++) {
-      float gi = pGradH[i] * scale;
-      float *pRowdB = pLayer->pdB_Q + (size_t)i * r;
-      for (int k = 0; k < r; k++) {
-        pRowdB[k] += gi * pU[k];
-      }
-    }
-    /* Backprop through B: g_u = scale * (B_Q^T * pGradH) */
-    for (int k = 0; k < r; k++) {
-      float sum = 0.0f;
-      for (int i = 0; i < nEmbd; i++) {
-        sum += pLayer->pB_Q[(size_t)i * r + k] * pGradH[i];
-      }
-      pGu[k] = sum * scale;
-    }
-    /* pdA_Q += g_u * x_norm^T */
-    for (int k = 0; k < r; k++) {
-      float gk = pGu[k];
-      float *pRowdA = pLayer->pdA_Q + (size_t)k * nEmbd;
-      for (int j = 0; j < nEmbd; j++) {
-        pRowdA[j] += gk * x_norm[j];
-      }
-    }
-
-    /* --- Adapter Out --- */
+    /* --- Adapter Out (Direct Residual Connection to x) --- */
     /* Forward u = A_Out * att_out */
     for (int i = 0; i < r; i++) {
       const float *pRowA = pLayer->pA_Out + (size_t)i * nEmbd;
@@ -3088,21 +3080,21 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
         sum += pRowA[j] * att_out[j];
       pU[i] = sum;
     }
-    /* pdB_Out += scale * (pGradH * u^T) */
+    /* pdB_Out += lScale * (pGradH * u^T) */
     for (int i = 0; i < nEmbd; i++) {
-      float gi = pGradH[i] * scale;
+      float gi = pGradH[i] * lScale;
       float *pRowdB = pLayer->pdB_Out + (size_t)i * r;
       for (int k = 0; k < r; k++) {
         pRowdB[k] += gi * pU[k];
       }
     }
-    /* Backprop through B: g_u = scale * (B_Out^T * pGradH) */
+    /* Backprop through B: g_u = lScale * (B_Out^T * pGradH) */
     for (int k = 0; k < r; k++) {
       float sum = 0.0f;
       for (int i = 0; i < nEmbd; i++) {
         sum += pLayer->pB_Out[(size_t)i * r + k] * pGradH[i];
       }
-      pGu[k] = sum * scale;
+      pGu[k] = sum * lScale;
     }
     /* pdA_Out += g_u * att_out^T */
     for (int k = 0; k < r; k++) {
@@ -3134,6 +3126,9 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
   float beta2 = 0.999f;
   float eps = 1e-8f;
 
+  pModel->nOptimizerSteps++;
+  float optStep = (float)pModel->nOptimizerSteps;
+
   float invAccum = (pModel->nStepAccumTokens > 0)
                        ? (1.0f / (float)pModel->nStepAccumTokens)
                        : 1.0f;
@@ -3156,9 +3151,9 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
     M[i] = beta1 * M[i] + (1.0f - beta1) * g;                                  \
     V[i] = beta2 * V[i] + (1.0f - beta2) * (g * g);                            \
     float mHat =                                                               \
-        M[i] / (1.0f - powf(beta1, (float)pModel->nTrainTokens + 1.0f));       \
+        M[i] / (1.0f - powf(beta1, optStep));                                  \
     float vHat =                                                               \
-        V[i] / (1.0f - powf(beta2, (float)pModel->nTrainTokens + 1.0f));       \
+        V[i] / (1.0f - powf(beta2, optStep));                                  \
     float step = mHat / (sqrtf(vHat) + eps);                                   \
     if (step > 2.0f)                                                           \
       step = 2.0f;                                                             \
@@ -3174,13 +3169,13 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
   }
 
     UPDATE_TENSOR(pLayer->pA_Q, pLayer->pdA_Q, pLayer->pMA_Q, pLayer->pVA_Q,
-                  nSizeA, 0.10f);
+                  nSizeA, 0.50f);
     UPDATE_TENSOR(pLayer->pB_Q, pLayer->pdB_Q, pLayer->pMB_Q, pLayer->pVB_Q,
-                  nSizeB, 0.02f);
+                  nSizeB, 0.50f);
     UPDATE_TENSOR(pLayer->pA_Out, pLayer->pdA_Out, pLayer->pMA_Out,
-                  pLayer->pVA_Out, nSizeA, 0.10f);
+                  pLayer->pVA_Out, nSizeA, 0.50f);
     UPDATE_TENSOR(pLayer->pB_Out, pLayer->pdB_Out, pLayer->pMB_Out,
-                  pLayer->pVB_Out, nSizeB, 0.02f);
+                  pLayer->pVB_Out, nSizeB, 0.50f);
 
 #undef UPDATE_TENSOR
   }

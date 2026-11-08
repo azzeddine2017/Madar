@@ -60,6 +60,9 @@ dist/
 __pycache__/
 *.pyc
 
+# Local Test Adapters
+adapters/test_stability/
+
 # OS Generated Files
 Thumbs.db
 Desktop.ini

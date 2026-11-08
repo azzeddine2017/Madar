@@ -180,6 +180,7 @@ typedef struct RingModel {
 	float *pGradH;                     /* [nEmbd] */
 	uint64_t nTrainTokens;
 	uint32_t nStepAccumTokens;
+	uint64_t nOptimizerSteps;
 } RingModel;
 
 /* Inference Engine Lifecycle */
