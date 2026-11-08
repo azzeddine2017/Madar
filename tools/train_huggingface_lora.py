@@ -143,7 +143,7 @@ def main():
         save_strategy="steps",
         save_steps=200,
         save_total_limit=3,
-        fp16=True,
+        fp16=False,
         bf16=False,
         optim="paged_adamw_8bit",
         report_to="none"
