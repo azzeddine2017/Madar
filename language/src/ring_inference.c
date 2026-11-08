@@ -2975,7 +2975,8 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     pTarget = 1e-9f;
   float fLoss = -logf(pTarget);
 
-  /* 2. Compute Backpropagated Gradient on Final Hidden State: grad_h = W_out^T * (P - Target) */
+  /* 2. Compute Backpropagated Gradient on Final Hidden State: grad_h = W_out^T
+   * * (P - Target) */
   if (!pModel->pGradH)
     pModel->pGradH = (float *)malloc((size_t)nEmbd * sizeof(float));
   float *pGradH = pModel->pGradH;
@@ -2988,7 +2989,8 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   if (!pRowBuf)
     return fLoss;
 
-  /* Gather candidate false-positive tokens (top competitors with significant probability mass) */
+  /* Gather candidate false-positive tokens (top competitors with significant
+   * probability mass) */
 #define MADAR_MAX_COMPETITORS 16
   uint32_t aCompTokens[MADAR_MAX_COMPETITORS];
   float aCompProb[MADAR_MAX_COMPETITORS];
@@ -3018,7 +3020,9 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   }
   float invSubspace = (sumSubspace > 0.0f) ? (1.0f / sumSubspace) : 1.0f;
   float pTargetNorm = pTarget * invSubspace;
-  float errorFactor = 1.0f - pTarget; /* Smoothly drops to 0 as target probability approaches 1 */
+  float errorFactor =
+      1.0f -
+      pTarget; /* Smoothly drops to 0 as target probability approaches 1 */
 
   /* Target pull: (pTargetNorm - 1.0f) * errorFactor (negative pull) */
   float coeffTarget = (pTargetNorm - 1.0f) * errorFactor;
@@ -3065,7 +3069,8 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     if (!pLayer->bActive)
       continue;
 
-    /* Depth-aware attenuation: earlier layers receive attenuated gradients through residual stream */
+    /* Depth-aware attenuation: earlier layers receive attenuated gradients
+     * through residual stream */
     float depthFactor = 0.5f + 0.5f * ((float)(l + 1) / (float)nLayers);
     float lScale = scale * depthFactor;
 
@@ -3150,10 +3155,8 @@ RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
       g = -1.0f;                                                               \
     M[i] = beta1 * M[i] + (1.0f - beta1) * g;                                  \
     V[i] = beta2 * V[i] + (1.0f - beta2) * (g * g);                            \
-    float mHat =                                                               \
-        M[i] / (1.0f - powf(beta1, optStep));                                  \
-    float vHat =                                                               \
-        V[i] / (1.0f - powf(beta2, optStep));                                  \
+    float mHat = M[i] / (1.0f - powf(beta1, optStep));                         \
+    float vHat = V[i] / (1.0f - powf(beta2, optStep));                         \
     float step = mHat / (sqrtf(vHat) + eps);                                   \
     if (step > 2.0f)                                                           \
       step = 2.0f;                                                             \
@@ -5256,8 +5259,7 @@ RING_FUNC(ring_model_api_forward_batch) {
   int nTokens, i, start, chunkSize;
   int *pTokens;
 
-  if (RING_API_PARACOUNT < 2 || !RING_API_ISPOINTER(1) ||
-      !RING_API_ISLIST(2)) {
+  if (RING_API_PARACOUNT < 2 || !RING_API_ISPOINTER(1) || !RING_API_ISLIST(2)) {
     RING_API_ERROR(RING_API_BADPARATYPE);
     return;
   }
@@ -5283,8 +5285,8 @@ RING_FUNC(ring_model_api_forward_batch) {
 
   for (start = 0; start < nTokens; start += chunkSize) {
     chunkSize = (nTokens - start > 32) ? 32 : (nTokens - start);
-    ring_model_forward_chunk(pModel, pTokens + start, nStartPos + start, chunkSize,
-                             0);
+    ring_model_forward_chunk(pModel, pTokens + start, nStartPos + start,
+                             chunkSize, 0);
   }
 
   pModel->nCurPos = nStartPos + nTokens;
@@ -5660,7 +5662,6 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
   RING_API_REGISTER("madar_model_get_token_embeddings",
                     ring_model_api_get_token_embeddings);
   RING_API_REGISTER("madar_model_forward", ring_model_api_forward);
-  RING_API_REGISTER("madar_model_forward_batch",
-                    ring_model_api_forward_batch);
+  RING_API_REGISTER("madar_model_forward_batch", ring_model_api_forward_batch);
   RING_API_REGISTER("madar_trainer_fill_batch", ring_trainer_api_fill_batch);
 }
