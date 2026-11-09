@@ -131,6 +131,9 @@ class QwenModel
 	func forwardBatch(aTokens, nStartPos = 0)
 		madar_model_forward_batch(hModel, aTokens, nStartPos)
 
+	func trainSequence(aTokens, aMask, nRespStart = 2, nTrainEnd = 0, bUseBatch = 1)
+		return madar_model_train_sequence(hModel, aTokens, aMask, nRespStart, nTrainEnd, bUseBatch)
+
 	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
 		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)
 
@@ -388,6 +391,9 @@ class BgeModel
 
 	func forwardBatch(aTokens, nStartPos = 0)
 		madar_model_forward_batch(hModel, aTokens, nStartPos)
+
+	func trainSequence(aTokens, aMask, nRespStart = 2, nTrainEnd = 0, bUseBatch = 1)
+		return madar_model_train_sequence(hModel, aTokens, aMask, nRespStart, nTrainEnd, bUseBatch)
 
 	func fillTrainingBatch(pX, pdY, aTokens, aIndices, fScale)
 		return madar_trainer_fill_batch(hModel, pX, pdY, aTokens, aIndices, fScale)

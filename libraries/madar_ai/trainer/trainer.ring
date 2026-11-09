@@ -23,6 +23,7 @@ class MadarLoRATrainer
 	nMaxRespTokens = 0
 	nLogInterval  = 10
 	nSaveInterval = 50
+	bBatchedTraining = true
 	cOutputDir    = "adapters/ring_lora"
 
 	# Internal state
@@ -130,6 +131,11 @@ class MadarLoRATrainer
 			? "  Tokens Per Sample   : " + nMaxRespTokens
 		ok
 		? "  Gradient Accumulation: " + nGradAccum + " Samples"
+		if bBatchedTraining
+			? "  Training Mode       : Native C Batched Engine (High-Throughput with Fallback)"
+		else
+			? "  Training Mode       : Standard Sequential Autoregressive"
+		ok
 		? "  Attached Adapters   : " + len(aLayers)
 		? "===================================================================="
 		? ""
@@ -257,7 +263,27 @@ class MadarLoRATrainer
 				ok
 			next
 
-			# 1. High-Speed Batched Prompt Prefill (Populates KV Cache via GPU Chunks)
+			# Determine training bounds
+			nTrainEnd = nTokCount - 1
+			if nMaxRespTokens != NULL and nMaxRespTokens > 0
+				if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
+					nTrainEnd = nRespStart + nMaxRespTokens - 2
+				ok
+			ok
+
+			# 1. High-Speed Native Batched Sequence Engine (Optional & Fallback-Safe)
+			if bBatchedTraining
+				try
+					fSeqLoss = oModel.trainSequence(aTokens, aMask, nRespStart, nTrainEnd, 1)
+					if fSeqLoss >= 0.0
+						return fSeqLoss
+					ok
+				catch
+					# Graceful fallback to standard sequential mode
+				done
+			ok
+
+			# 2. Standard Mode: Batched Prompt Prefill (Populates KV Cache via GPU Chunks)
 			nPrefillTokens = nRespStart - 2
 			if nPrefillTokens > 0
 				aPromptTokens = []
@@ -273,15 +299,7 @@ class MadarLoRATrainer
 				done
 			ok
 
-			# 2. Sequential Response Training (bComputeLogits = 1: with full prompt context)
-			# Full sequence response training across all tokens down to the end of the code
-			nTrainEnd = nTokCount - 1
-			if nMaxRespTokens != NULL and nMaxRespTokens > 0
-				if (nTrainEnd - nRespStart + 2) > nMaxRespTokens
-					nTrainEnd = nRespStart + nMaxRespTokens - 2
-				ok
-			ok
-
+			# 3. Standard Mode: Sequential Response Training (Fallback)
 			for t = (nRespStart - 1) to nTrainEnd
 				if t < 1 loop ok
 				nCurTok  = aTokens[t]

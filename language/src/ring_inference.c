@@ -5297,6 +5297,132 @@ RING_FUNC(ring_model_api_forward_batch) {
   free(pTokens);
 }
 
+RING_API float ring_model_train_sequence(RingModel *pModel, const int *tokens,
+                                         const int *mask, int nSeqLen,
+                                         int nRespStart, int nTrainEnd,
+                                         int bUseBatch) {
+  if (!pModel || !tokens || !mask || nSeqLen <= 1)
+    return 0.0f;
+
+  int nTokCount = nSeqLen;
+  if (nTrainEnd <= 0 || nTrainEnd >= nTokCount)
+    nTrainEnd = nTokCount - 1;
+  if (nRespStart < 2)
+    nRespStart = 2;
+  if (nTrainEnd < nRespStart - 1)
+    return 0.0f;
+
+  /* Reset KV cache position to start fresh */
+  pModel->nCurPos = 0;
+
+  /* 1. Prompt Prefill (Populates KV Cache via GPU Chunks) */
+  int nPrefillTokens = nRespStart - 2;
+  if (nPrefillTokens > 0) {
+    int start, chunkSize;
+    for (start = 0; start < nPrefillTokens; start += chunkSize) {
+      chunkSize = (nPrefillTokens - start > 32) ? 32 : (nPrefillTokens - start);
+      ring_model_forward_chunk(pModel, tokens + start, start, chunkSize, 0);
+    }
+    pModel->nCurPos = nPrefillTokens;
+  }
+
+  /* 2. Response Training */
+  float fTotalLoss = 0.0f;
+  int nTargetCount = 0;
+
+  for (int t = (nRespStart - 1); t <= nTrainEnd; t++) {
+    int curTokIdx = t - 1; /* 0-based token index for current input token */
+    int nextTokIdx = t;    /* 0-based token index for target token */
+    int nPos = curTokIdx;  /* sequence position */
+
+    if (curTokIdx < 0 || nextTokIdx >= nTokCount)
+      continue;
+
+    int nCurTok = tokens[curTokIdx];
+    int nNextTok = tokens[nextTokIdx];
+
+    /* Only compute logits if target token is active (mask == 1) */
+    int bComputeLogits = (mask[nextTokIdx] == 1) ? 1 : 0;
+
+    /* Forward current token */
+    ring_model_forward_ex(pModel, nCurTok, nPos, bComputeLogits);
+
+    /* Train token if masked */
+    if (bComputeLogits) {
+      float fTokLoss = ring_model_train_token(pModel, nNextTok);
+      fTotalLoss += fTokLoss;
+      nTargetCount++;
+    }
+  }
+
+  if (nTargetCount > 0)
+    return fTotalLoss / (float)nTargetCount;
+
+  return 0.0f;
+}
+
+RING_FUNC(ring_model_api_train_sequence) {
+  RingModel *pModel;
+  List *pTokensList, *pMaskList;
+  int nRespStart = 2, nTrainEnd = 0, bUseBatch = 1;
+  int nTokens, nMask, i;
+  int *pTokens, *pMask;
+  float fLoss;
+
+  if (RING_API_PARACOUNT < 3 || !RING_API_ISPOINTER(1) || !RING_API_ISLIST(2) ||
+      !RING_API_ISLIST(3)) {
+    RING_API_ERROR(RING_API_BADPARATYPE);
+    return;
+  }
+  pModel = (RingModel *)RING_API_GETCPOINTER(1, "MADAR_MODEL");
+  RING_API_CHECKNULLPOINTER(pModel);
+
+  pTokensList = RING_API_GETLIST(2);
+  pMaskList = RING_API_GETLIST(3);
+
+  nTokens = ring_list_getsize(pTokensList);
+  nMask = ring_list_getsize(pMaskList);
+  if (nTokens <= 1) {
+    RING_API_RETNUMBER(0.0);
+    return;
+  }
+
+  if (RING_API_PARACOUNT >= 4 && RING_API_ISNUMBER(4))
+    nRespStart = (int)RING_API_GETNUMBER(4);
+  if (RING_API_PARACOUNT >= 5 && RING_API_ISNUMBER(5))
+    nTrainEnd = (int)RING_API_GETNUMBER(5);
+  else
+    nTrainEnd = nTokens - 1;
+  if (RING_API_PARACOUNT >= 6 && RING_API_ISNUMBER(6))
+    bUseBatch = (int)RING_API_GETNUMBER(6);
+
+  pTokens = (int *)malloc((size_t)nTokens * sizeof(int));
+  pMask = (int *)calloc((size_t)nTokens, sizeof(int));
+  if (!pTokens || !pMask) {
+    if (pTokens)
+      free(pTokens);
+    if (pMask)
+      free(pMask);
+    RING_API_RETNUMBER(0.0);
+    return;
+  }
+
+  for (i = 0; i < nTokens; i++) {
+    pTokens[i] = (int)ring_list_getdouble(pTokensList, i + 1);
+  }
+  for (i = 0; i < nTokens && i < nMask; i++) {
+    pMask[i] = (int)ring_list_getdouble(pMaskList, i + 1);
+  }
+
+  fLoss = ring_model_train_sequence(pModel, pTokens, pMask, nTokens, nRespStart,
+                                    nTrainEnd, bUseBatch);
+
+  free(pTokens);
+  free(pMask);
+
+  RING_API_RETNUMBER((double)fLoss);
+}
+
 RING_FUNC(ring_trainer_api_fill_batch) {
   RingModel *pModel;
   MadarTensorBridge *pX;
@@ -5667,5 +5793,6 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
                     ring_model_api_get_token_embeddings);
   RING_API_REGISTER("madar_model_forward", ring_model_api_forward);
   RING_API_REGISTER("madar_model_forward_batch", ring_model_api_forward_batch);
+  RING_API_REGISTER("madar_model_train_sequence", ring_model_api_train_sequence);
   RING_API_REGISTER("madar_trainer_fill_batch", ring_trainer_api_fill_batch);
 }

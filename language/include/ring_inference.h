@@ -199,6 +199,7 @@ RING_API int ring_model_export_merged_gguf(RingModel *pModel, const char *cOutGG
 /* Native Multi-Layer LoRA Causal Training */
 RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha);
 RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken);
+RING_API float ring_model_train_sequence(RingModel *pModel, const int *tokens, const int *mask, int nSeqLen, int nRespStart, int nTrainEnd, int bUseBatch);
 RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR, float fWeightDecay);
 RING_API int ring_model_save_lora(RingModel *pModel, const char *cFolder);
 RING_API int ring_model_load_lora_folder(RingModel *pModel, const char *cFolder);
