@@ -2956,7 +2956,21 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
 
   /* 1. Compute Softmax over Logits & Target Cross-Entropy Loss */
   float maxLogit = pModel->pLogits[0];
-  for (uint32_t i = 1; i < nVocab; i++) {
+  uint32_t i = 0;
+#if defined(MADAR_AVX2)
+  __m256 vMax = _mm256_set1_ps(-1e30f);
+  for (; i + 7 < nVocab; i += 8) {
+    __m256 vL = _mm256_loadu_ps(pModel->pLogits + i);
+    vMax = _mm256_max_ps(vMax, vL);
+  }
+  float maxBuf[8];
+  _mm256_storeu_ps(maxBuf, vMax);
+  for (int k = 0; k < 8; k++) {
+    if (maxBuf[k] > maxLogit)
+      maxLogit = maxBuf[k];
+  }
+#endif
+  for (; i < nVocab; i++) {
     if (pModel->pLogits[i] > maxLogit)
       maxLogit = pModel->pLogits[i];
   }
@@ -3081,10 +3095,24 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     for (int i = 0; i < r; i++) {
       const float *pRowA = pLayer->pA_Out + (size_t)i * nEmbd;
       float sum = 0.0f;
-      for (int j = 0; j < nEmbd; j++)
+      int j = 0;
+#if defined(MADAR_AVX2)
+      __m256 vSum = _mm256_setzero_ps();
+      for (; j + 7 < nEmbd; j += 8) {
+        __m256 va = _mm256_loadu_ps(pRowA + j);
+        __m256 vb = _mm256_loadu_ps(att_out + j);
+        vSum = _mm256_add_ps(vSum, _mm256_mul_ps(va, vb));
+      }
+      float sumBuf[8];
+      _mm256_storeu_ps(sumBuf, vSum);
+      for (int k = 0; k < 8; k++)
+        sum += sumBuf[k];
+#endif
+      for (; j < nEmbd; j++)
         sum += pRowA[j] * att_out[j];
       pU[i] = sum;
     }
+
     /* pdB_Out += lScale * (pGradH * u^T) */
     for (int i = 0; i < nEmbd; i++) {
       float gi = pGradH[i] * lScale;
@@ -3093,19 +3121,35 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
         pRowdB[k] += gi * pU[k];
       }
     }
-    /* Backprop through B: g_u = lScale * (B_Out^T * pGradH) */
-    for (int k = 0; k < r; k++) {
-      float sum = 0.0f;
-      for (int i = 0; i < nEmbd; i++) {
-        sum += pLayer->pB_Out[(size_t)i * r + k] * pGradH[i];
+
+    /* Backprop through B: g_u = lScale * (B_Out^T * pGradH) - Cache-Conscious L1 Loop */
+    memset(pGu, 0, (size_t)r * sizeof(float));
+    for (int i = 0; i < nEmbd; i++) {
+      float gh = pGradH[i];
+      const float *pRowB = pLayer->pB_Out + (size_t)i * r;
+      for (int k = 0; k < r; k++) {
+        pGu[k] += pRowB[k] * gh;
       }
-      pGu[k] = sum * lScale;
     }
-    /* pdA_Out += g_u * att_out^T */
+    for (int k = 0; k < r; k++) {
+      pGu[k] *= lScale;
+    }
+
+    /* pdA_Out += g_u * att_out^T with AVX2 */
     for (int k = 0; k < r; k++) {
       float gk = pGu[k];
       float *pRowdA = pLayer->pdA_Out + (size_t)k * nEmbd;
-      for (int j = 0; j < nEmbd; j++) {
+      int j = 0;
+#if defined(MADAR_AVX2)
+      __m256 vGk = _mm256_set1_ps(gk);
+      for (; j + 7 < nEmbd; j += 8) {
+        __m256 vAtt = _mm256_loadu_ps(att_out + j);
+        __m256 vCur = _mm256_loadu_ps(pRowdA + j);
+        _mm256_storeu_ps(pRowdA + j,
+                         _mm256_add_ps(vCur, _mm256_mul_ps(vGk, vAtt)));
+      }
+#endif
+      for (; j < nEmbd; j++) {
         pRowdA[j] += gk * att_out[j];
       }
     }
