@@ -99,6 +99,7 @@ typedef struct RingGGUFTensorInfo {
 	uint64_t nOffset;     /* Byte offset relative to data section */
 	uint64_t nSize;       /* Total byte size of tensor raw data */
 	uint64_t nElements;   /* Total number of elements */
+	void *pGPUBuf;        /* Pre-mapped GPU buffer (cl_mem) */
 } RingGGUFTensorInfo;
 
 /* GGUF Context */

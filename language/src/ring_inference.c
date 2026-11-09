@@ -1213,6 +1213,28 @@ static const char *s_madar_cl_source =
     "    y[(size_t)t * N + r] = sum;\n"
     "}\n";
 
+static void madar_gpu_map_tensor(cl_context ctx, RingGGUF *pGGUF,
+                                 RingGGUFTensorInfo *pInfo) {
+  if (!ctx || !pGGUF || !pInfo || pInfo->pGPUBuf || pInfo->nSize == 0)
+    return;
+  if (pInfo->nType != RING_GGUF_TENSOR_Q4_0 &&
+      pInfo->nType != RING_GGUF_TENSOR_Q6_K &&
+      pInfo->nType != RING_GGUF_TENSOR_Q8_0 &&
+      pInfo->nType != RING_GGUF_TENSOR_Q4_1 &&
+      pInfo->nType != RING_GGUF_TENSOR_I2_S) {
+    return;
+  }
+  const void *pData = ring_gguf_get_tensor_data(pGGUF, pInfo);
+  if (pData) {
+    cl_int ret = 0;
+    cl_mem buf = p_clCreateBuffer(ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+                                  (size_t)pInfo->nSize, (void *)pData, &ret);
+    if (ret == CL_SUCCESS && buf) {
+      pInfo->pGPUBuf = (void *)buf;
+    }
+  }
+}
+
 static int madar_gpu_init(RingModel *pModel) {
   cl_platform_id platform = NULL;
   cl_device_id device = NULL;
@@ -1306,7 +1328,7 @@ static int madar_gpu_init(RingModel *pModel) {
 
   p_clReleaseProgram(prog);
 
-  size_t maxBatch = 32;
+  size_t maxBatch = 64;
   size_t maxK = (pModel->config.nFF > pModel->config.nEmbd)
                     ? pModel->config.nFF
                     : pModel->config.nEmbd;
@@ -1383,67 +1405,39 @@ static int madar_gpu_init(RingModel *pModel) {
   pModel->nGPUBufYSize = maxBatch * maxN;
   pModel->nGPUBufFFNSize = ffnElements;
 
-  /* Pre-map the huge Output (LM Head) weight tensor to zero-copy GPU memory */
+  /* Pre-map Output (LM Head) weight tensor to zero-copy GPU memory */
   if (pModel->pOutput) {
-    const void *pOutData =
-        ring_gguf_get_tensor_data(pModel->pGGUF, pModel->pOutput);
-    if (pOutData && pModel->pOutput->nSize > 0) {
-      cl_mem bufOut = p_clCreateBuffer(
-          ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-          (size_t)pModel->pOutput->nSize, (void *)pOutData, &ret);
-      if (ret == CL_SUCCESS && bufOut) {
-        pModel->pGPUBufOutputWeight = bufOut;
-      }
-    }
+    madar_gpu_map_tensor(ctx, pModel->pGGUF, pModel->pOutput);
+    pModel->pGPUBufOutputWeight = pModel->pOutput->pGPUBuf;
   }
 
-  /* Pre-map FFN weights (Gate, Up, Down) for all layers to zero-copy GPU memory
-   * (Q4_0 models) */
+  /* Pre-map Attention & FFN weights for all layers to zero-copy GPU memory */
   if (pModel->aLayers) {
     for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
       RingLayerWeights *layer = &pModel->aLayers[l];
-      if (layer->pFFNGate && layer->pFFNGate->nType == RING_GGUF_TENSOR_Q4_0 &&
-          layer->pFFNGate->nSize > 0) {
-        const void *pData =
-            ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNGate);
-        if (pData) {
-          layer->pGPUBufGate = (void *)p_clCreateBuffer(
-              ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-              (size_t)layer->pFFNGate->nSize, (void *)pData, &ret);
-          if (ret != CL_SUCCESS)
-            layer->pGPUBufGate = NULL;
-        }
-      }
-      if (layer->pFFNUp && layer->pFFNUp->nType == RING_GGUF_TENSOR_Q4_0 &&
-          layer->pFFNUp->nSize > 0) {
-        const void *pData =
-            ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNUp);
-        if (pData) {
-          layer->pGPUBufUp = (void *)p_clCreateBuffer(
-              ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-              (size_t)layer->pFFNUp->nSize, (void *)pData, &ret);
-          if (ret != CL_SUCCESS)
-            layer->pGPUBufUp = NULL;
-        }
-      }
-      if (layer->pFFNDown && layer->pFFNDown->nType == RING_GGUF_TENSOR_Q4_0 &&
-          layer->pFFNDown->nSize > 0) {
-        const void *pData =
-            ring_gguf_get_tensor_data(pModel->pGGUF, layer->pFFNDown);
-        if (pData) {
-          layer->pGPUBufDown = (void *)p_clCreateBuffer(
-              ctx, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-              (size_t)layer->pFFNDown->nSize, (void *)pData, &ret);
-          if (ret != CL_SUCCESS)
-            layer->pGPUBufDown = NULL;
-        }
-      }
+
+      /* Attention Projections */
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pAttnQ);
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pAttnK);
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pAttnV);
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pAttnOut);
+      layer->pGPUBufQ = layer->pAttnQ ? layer->pAttnQ->pGPUBuf : NULL;
+      layer->pGPUBufK = layer->pAttnK ? layer->pAttnK->pGPUBuf : NULL;
+      layer->pGPUBufV = layer->pAttnV ? layer->pAttnV->pGPUBuf : NULL;
+      layer->pGPUBufAttnOut = layer->pAttnOut ? layer->pAttnOut->pGPUBuf : NULL;
+
+      /* FFN Projections */
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pFFNGate);
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pFFNUp);
+      madar_gpu_map_tensor(ctx, pModel->pGGUF, layer->pFFNDown);
+      layer->pGPUBufGate = layer->pFFNGate ? layer->pFFNGate->pGPUBuf : NULL;
+      layer->pGPUBufUp = layer->pFFNUp ? layer->pFFNUp->pGPUBuf : NULL;
+      layer->pGPUBufDown = layer->pFFNDown ? layer->pFFNDown->pGPUBuf : NULL;
     }
   }
 
   pModel->bGPUEnabled = 1;
-  printf("  [Madar GPU] Acceleration Active: %s (Zero-Copy LM Head + %u FFN "
-         "Layers)\n",
+  printf("  [Madar GPU] Full-Acceleration Active: %s (Zero-Copy LM Head + %u Layers: FFN + Q/K/V/Out Projections)\n",
          devName, pModel->config.nLayers);
   return 1;
 }
@@ -1541,28 +1535,30 @@ static void madar_gpu_cleanup(RingModel *pModel) {
   if (!pModel || !pModel->bGPUEnabled)
     return;
 
-  if (pModel->aLayers) {
-    for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
-      RingLayerWeights *layer = &pModel->aLayers[l];
-      if (layer->pGPUBufGate) {
-        p_clReleaseMemObject((cl_mem)layer->pGPUBufGate);
-        layer->pGPUBufGate = NULL;
-      }
-      if (layer->pGPUBufUp) {
-        p_clReleaseMemObject((cl_mem)layer->pGPUBufUp);
-        layer->pGPUBufUp = NULL;
-      }
-      if (layer->pGPUBufDown) {
-        p_clReleaseMemObject((cl_mem)layer->pGPUBufDown);
-        layer->pGPUBufDown = NULL;
+  /* Release all tensor GPU buffers mapped in the GGUF container */
+  if (pModel->pGGUF && pModel->pGGUF->aTensors) {
+    for (uint64_t i = 0; i < pModel->pGGUF->nTensors; i++) {
+      if (pModel->pGGUF->aTensors[i].pGPUBuf) {
+        p_clReleaseMemObject((cl_mem)pModel->pGGUF->aTensors[i].pGPUBuf);
+        pModel->pGGUF->aTensors[i].pGPUBuf = NULL;
       }
     }
   }
 
-  if (pModel->pGPUBufOutputWeight) {
-    p_clReleaseMemObject((cl_mem)pModel->pGPUBufOutputWeight);
-    pModel->pGPUBufOutputWeight = NULL;
+  if (pModel->aLayers) {
+    for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
+      RingLayerWeights *layer = &pModel->aLayers[l];
+      layer->pGPUBufGate = NULL;
+      layer->pGPUBufUp = NULL;
+      layer->pGPUBufDown = NULL;
+      layer->pGPUBufQ = NULL;
+      layer->pGPUBufK = NULL;
+      layer->pGPUBufV = NULL;
+      layer->pGPUBufAttnOut = NULL;
+    }
   }
+
+  pModel->pGPUBufOutputWeight = NULL;
   if (pModel->pGPUBufX) {
     p_clReleaseMemObject((cl_mem)pModel->pGPUBufX);
     pModel->pGPUBufX = NULL;
@@ -1768,6 +1764,9 @@ static void matvec_multiply_gpu(RingModel *pModel, RingGGUFTensorInfo *pInfo,
   /* GPU Offload: Check if pre-mapped GPU buffer is available */
   if (pModel->bGPUEnabled) {
     cl_mem bufW = (cl_mem)pGPUBuf;
+    if (!bufW && pInfo) {
+      bufW = (cl_mem)pInfo->pGPUBuf;
+    }
     if (!bufW && pInfo == pModel->pOutput) {
       bufW = (cl_mem)pModel->pGPUBufOutputWeight;
     }
@@ -2941,7 +2940,8 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   return 1;
 }
 
-RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
+static float ring_model_train_token_internal(RingModel *pModel, int nTargetToken,
+                                             const float *pAttOutMatrix, int nTokIdx, int nChunkSize) {
   if (!pModel || !pModel->bMultiLayerLoRA || !pModel->aLoRALayers ||
       !pModel->pLogits)
     return 0.0f;
@@ -3088,7 +3088,10 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
     float depthFactor = 0.5f + 0.5f * ((float)(l + 1) / (float)nLayers);
     float lScale = scale * depthFactor;
 
-    const float *att_out = pModel->pLayerActIn + ((size_t)l * 2 + 1) * nEmbd;
+    const float *att_out =
+        (pAttOutMatrix != NULL)
+            ? (pAttOutMatrix + ((size_t)l * nChunkSize + nTokIdx) * nEmbd)
+            : (pModel->pLayerActIn + ((size_t)l * 2 + 1) * nEmbd);
 
     /* --- Adapter Out (Direct Residual Connection to x) --- */
     /* Forward u = A_Out * att_out */
@@ -3160,6 +3163,10 @@ RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
   pModel->nTrainTokens++;
   pModel->nStepAccumTokens++;
   return fLoss;
+}
+
+RING_API float ring_model_train_token(RingModel *pModel, int nTargetToken) {
+  return ring_model_train_token_internal(pModel, nTargetToken, NULL, 0, 1);
 }
 
 RING_API void ring_model_optimizer_step(RingModel *pModel, float fLR,
@@ -5341,6 +5348,292 @@ RING_FUNC(ring_model_api_forward_batch) {
   free(pTokens);
 }
 
+static void ring_model_train_chunk(RingModel *pModel, const int *tokens,
+                                   const int *mask, int nSeqLen,
+                                   int nStartPos, int nChunkSize,
+                                   float *pfTotalLoss, int *pnTargetCount) {
+  if (!pModel || !tokens || !mask || nChunkSize <= 0)
+    return;
+
+  int nEmbd = (int)pModel->config.nEmbd;
+  int nFF = (int)pModel->config.nFF;
+  int nLayers = (int)pModel->config.nLayers;
+  int nHeads = (int)pModel->config.nHeads;
+  int nHeadsKV = (int)pModel->config.nHeadsKV;
+  int nHeadDim = (int)pModel->config.nHeadDim;
+  int nKVDim = (int)pModel->nKVDim;
+  int groupSize = (nHeadsKV > 0) ? (nHeads / nHeadsKV) : 1;
+  if (groupSize <= 0)
+    groupSize = 1;
+  float eps = pModel->config.fNormEps;
+  float freqBase = pModel->config.fRopeFreqBase;
+  float scale = 1.0f / sqrtf((float)nHeadDim);
+
+  /* Allocate chunk working buffers */
+  float *actBatchX =
+      (float *)malloc((size_t)nChunkSize * nEmbd * sizeof(float));
+  float *actBatchFFNIn =
+      (float *)malloc((size_t)nChunkSize * nEmbd * sizeof(float));
+  float *actBatchFFNOut =
+      (float *)malloc((size_t)nChunkSize * nEmbd * sizeof(float));
+  float *actBatchAttOut =
+      (float *)malloc((size_t)nLayers * nChunkSize * nEmbd * sizeof(float));
+
+  if (!actBatchX || !actBatchFFNIn || !actBatchFFNOut || !actBatchAttOut) {
+    if (actBatchX)
+      free(actBatchX);
+    if (actBatchFFNIn)
+      free(actBatchFFNIn);
+    if (actBatchFFNOut)
+      free(actBatchFFNOut);
+    if (actBatchAttOut)
+      free(actBatchAttOut);
+    /* Fallback: run sequential token-by-token if malloc fails */
+    for (int t = 0; t < nChunkSize; t++) {
+      int curTokIdx = nStartPos + t;
+      int nextTokIdx = curTokIdx + 1;
+      int bComputeLogits = (nextTokIdx < nSeqLen && mask[nextTokIdx] == 1);
+      ring_model_forward_ex(pModel, tokens[curTokIdx], curTokIdx,
+                            bComputeLogits);
+      if (bComputeLogits) {
+        float fLoss = ring_model_train_token(pModel, tokens[nextTokIdx]);
+        *pfTotalLoss += fLoss;
+        (*pnTargetCount)++;
+      }
+    }
+    return;
+  }
+
+  /* 1. Embedding Lookup for all tokens in chunk */
+  const uint8_t *pRawEmbd = (const uint8_t *)ring_gguf_get_tensor_data(
+      pModel->pGGUF, pModel->pTokenEmbd);
+  for (int t = 0; t < nChunkSize; t++) {
+    int nToken = tokens[nStartPos + t];
+    float *tokX = actBatchX + (size_t)t * nEmbd;
+    if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
+      const RingGGUFBlockQ4_0 *b4 =
+          (const RingGGUFBlockQ4_0 *)(pRawEmbd +
+                                      (size_t)nToken * (nEmbd / 32) *
+                                          sizeof(RingGGUFBlockQ4_0));
+      ring_gguf_dequantize_q4_0(b4, tokX, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1) {
+      const RingGGUFBlockQ4_1 *b4_1 =
+          (const RingGGUFBlockQ4_1 *)(pRawEmbd +
+                                      (size_t)nToken * (nEmbd / 32) *
+                                          sizeof(RingGGUFBlockQ4_1));
+      ring_gguf_dequantize_q4_1(b4_1, tokX, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
+      const RingGGUFBlockQ8_0 *b8 =
+          (const RingGGUFBlockQ8_0 *)(pRawEmbd +
+                                      (size_t)nToken * (nEmbd / 32) *
+                                          sizeof(RingGGUFBlockQ8_0));
+      ring_gguf_dequantize_q8_0(b8, tokX, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K) {
+      const RingGGUFBlockQ6_K *b6 =
+          (const RingGGUFBlockQ6_K *)(pRawEmbd +
+                                      (size_t)nToken * (nEmbd / 256) *
+                                          sizeof(RingGGUFBlockQ6_K));
+      ring_gguf_dequantize_q6_k(b6, tokX, nEmbd);
+    } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
+      const ggml_fp16_t *f16 =
+          (const ggml_fp16_t *)(pRawEmbd +
+                                (size_t)nToken * nEmbd * sizeof(ggml_fp16_t));
+      ring_gguf_dequantize_f16(f16, tokX, nEmbd);
+    } else {
+      const float *f32 =
+          (const float *)(pRawEmbd + (size_t)nToken * nEmbd * sizeof(float));
+      memcpy(tokX, f32, nEmbd * sizeof(float));
+    }
+  }
+
+  /* 2. Process Layer-by-Layer across all tokens in chunk */
+  for (uint32_t l = 0; l < pModel->config.nLayers; l++) {
+    RingLayerWeights *layer = &pModel->aLayers[l];
+    const float *attnNormW = (const float *)ring_gguf_get_tensor_data(
+        pModel->pGGUF, layer->pAttnNorm);
+    const float *ffnNormW = (const float *)ring_gguf_get_tensor_data(
+        pModel->pGGUF, layer->pFFNNorm);
+
+    /* Phase A: Multi-head Attention across all tokens in chunk */
+    for (int t = 0; t < nChunkSize; t++) {
+      int pos = nStartPos + t;
+      float *tokX = actBatchX + (size_t)t * nEmbd;
+
+      rmsnorm(pModel->pActXB, tokX, attnNormW, nEmbd, eps);
+
+      matvec_multiply(pModel, layer->pAttnQ, pModel->pActXB, pModel->pActQ,
+                      layer->pAttnQ_Bias);
+      matvec_multiply(pModel, layer->pAttnK, pModel->pActXB, pModel->pActK,
+                      layer->pAttnK_Bias);
+      matvec_multiply(pModel, layer->pAttnV, pModel->pActXB, pModel->pActV,
+                      layer->pAttnV_Bias);
+
+      apply_rope(pModel->pActQ, nHeads, nHeadDim, pos, freqBase);
+      apply_rope(pModel->pActK, nHeadsKV, nHeadDim, pos, freqBase);
+
+      int seqIdx = pos % pModel->nMaxSeq;
+      size_t kvOffset = ((size_t)l * pModel->nMaxSeq + seqIdx) * nKVDim;
+      for (int i = 0; i < nKVDim; i++) {
+        pModel->pKVCache_K[kvOffset + i] = ggml_fp32_to_fp16(pModel->pActK[i]);
+        pModel->pKVCache_V[kvOffset + i] = ggml_fp32_to_fp16(pModel->pActV[i]);
+      }
+
+      int validTokens =
+          (pos < (int)pModel->nMaxSeq) ? (pos + 1) : (int)pModel->nMaxSeq;
+
+      for (int h = 0; h < nHeads; h++) {
+        int kvH = h / groupSize;
+        if (kvH >= nHeadsKV)
+          kvH = nHeadsKV - 1;
+
+        float *qHead = pModel->pActQ + h * nHeadDim;
+        float *outHead = pModel->pActAttOut + h * nHeadDim;
+
+        for (int ti = 0; ti < validTokens; ti++) {
+          size_t tOffset = ((size_t)l * pModel->nMaxSeq + ti) * nKVDim +
+                           (size_t)kvH * nHeadDim;
+          const ggml_fp16_t *kHead = pModel->pKVCache_K + tOffset;
+          float score = dot_fp32_fp16(qHead, kHead, nHeadDim);
+          pModel->pAttScores[ti] = score * scale;
+        }
+
+        softmax(pModel->pAttScores, validTokens);
+
+        memset(outHead, 0, nHeadDim * sizeof(float));
+        for (int ti = 0; ti < validTokens; ti++) {
+          size_t tOffset = ((size_t)l * pModel->nMaxSeq + ti) * nKVDim +
+                           (size_t)kvH * nHeadDim;
+          const ggml_fp16_t *vHead = pModel->pKVCache_V + tOffset;
+          add_scaled_fp16(outHead, pModel->pAttScores[ti], vHead, nHeadDim);
+        }
+      }
+
+      if (layer->pAttnSubNorm) {
+        const float *subNormW = (const float *)ring_gguf_get_tensor_data(
+            pModel->pGGUF, layer->pAttnSubNorm);
+        if (subNormW) {
+          rmsnorm(pModel->pActAttOut, pModel->pActAttOut, subNormW, nEmbd, eps);
+        }
+      }
+
+      /* Save pActAttOut for LoRA backward pass */
+      memcpy(actBatchAttOut + ((size_t)l * nChunkSize + t) * nEmbd,
+             pModel->pActAttOut, (size_t)nEmbd * sizeof(float));
+
+      matvec_multiply(pModel, layer->pAttnOut, pModel->pActAttOut,
+                      pModel->pActAttnProj, NULL);
+
+      /* LoRA injection into Attention Output if adapter is active */
+      if (pModel->bMultiLayerLoRA && pModel->aLoRALayers) {
+        RingLoRALayerAdapter *pLAdapt =
+            ((RingLoRALayerAdapter *)pModel->aLoRALayers) + l;
+        if (pLAdapt->bActive && pLAdapt->pA_Out && pLAdapt->pB_Out) {
+          int r = pModel->nLoRARank;
+          float fLoRAScale = pModel->fLoRAScale;
+          float *h = pModel->pLoRA_Scratch;
+          for (int i = 0; i < r; i++) {
+            const float *pRowA = pLAdapt->pA_Out + (size_t)i * nEmbd;
+            float sum = 0.0f;
+            for (int j = 0; j < nEmbd; j++)
+              sum += pRowA[j] * pModel->pActAttOut[j];
+            h[i] = sum;
+          }
+          for (int i = 0; i < nEmbd; i++) {
+            const float *pRowB = pLAdapt->pB_Out + (size_t)i * r;
+            float sum = 0.0f;
+            for (int j = 0; j < r; j++)
+              sum += pRowB[j] * h[j];
+            pModel->pActAttnProj[i] += fLoRAScale * sum;
+          }
+        }
+      }
+
+      /* Residual Addition */
+      int i = 0;
+#if defined(MADAR_AVX2)
+      for (; i + 7 < nEmbd; i += 8) {
+        _mm256_storeu_ps(
+            tokX + i, _mm256_add_ps(_mm256_loadu_ps(tokX + i),
+                                    _mm256_loadu_ps(pModel->pActAttnProj + i)));
+      }
+#endif
+      for (; i < nEmbd; i++)
+        tokX[i] += pModel->pActAttnProj[i];
+
+      /* Pre-FFN RMSNorm */
+      rmsnorm(actBatchFFNIn + (size_t)t * nEmbd, tokX, ffnNormW, nEmbd, eps);
+    }
+
+    /* Phase B: Fused FFN on GPU for ALL tokens in chunk */
+    if (!madar_gpu_ffn_fused_batch(pModel, layer, actBatchFFNIn, actBatchFFNOut,
+                                   nChunkSize)) {
+      /* CPU Fallback */
+      for (int t = 0; t < nChunkSize; t++) {
+        const float *inXB = actBatchFFNIn + (size_t)t * nEmbd;
+        float *outFFN = actBatchFFNOut + (size_t)t * nEmbd;
+        matvec_multiply(pModel, layer->pFFNGate, inXB, pModel->pActHB, NULL);
+        matvec_multiply(pModel, layer->pFFNUp, inXB, pModel->pActHB2,
+                        layer->pFFNUp_Bias);
+        for (int i = 0; i < nFF; i++) {
+          float g = pModel->pActHB[i];
+          pModel->pActHB[i] = (g / (1.0f + expf(-g))) * pModel->pActHB2[i];
+        }
+        matvec_multiply(pModel, layer->pFFNDown, pModel->pActHB, outFFN,
+                        layer->pFFNDown_Bias);
+      }
+    }
+
+    /* Phase C: Residual Addition of FFN output */
+    for (int t = 0; t < nChunkSize; t++) {
+      float *tokX = actBatchX + (size_t)t * nEmbd;
+      float *outFFN = actBatchFFNOut + (size_t)t * nEmbd;
+      int i = 0;
+#if defined(MADAR_AVX2)
+      for (; i + 7 < nEmbd; i += 8) {
+        _mm256_storeu_ps(
+            tokX + i, _mm256_add_ps(_mm256_loadu_ps(tokX + i),
+                                    _mm256_loadu_ps(outFFN + i)));
+      }
+#endif
+      for (; i < nEmbd; i++)
+        tokX[i] += outFFN[i];
+    }
+  }
+
+  /* 3. Output Projection & LoRA Loss Computation for Masked Tokens in Chunk */
+  const float *outNormW = (const float *)ring_gguf_get_tensor_data(
+      pModel->pGGUF, pModel->pOutputNorm);
+
+  for (int t = 0; t < nChunkSize; t++) {
+    int curTokIdx = nStartPos + t;
+    int nextTokIdx = curTokIdx + 1;
+    if (nextTokIdx >= nSeqLen || mask[nextTokIdx] != 1)
+      continue;
+
+    int nTargetToken = tokens[nextTokIdx];
+    float *tokX = actBatchX + (size_t)t * nEmbd;
+
+    /* Final RMSNorm */
+    rmsnorm(pModel->pActXB, tokX, outNormW, nEmbd, eps);
+
+    /* Compute Logits (GPU Accelerated LM Head) */
+    matvec_multiply_gpu(pModel, pModel->pOutput,
+                        pModel->pOutput ? pModel->pOutput->pGPUBuf : NULL,
+                        pModel->pActXB, pModel->pLogits, NULL);
+
+    /* Softmax, Cross-Entropy Loss & Vectorized LoRA Backward Update */
+    float fLoss = ring_model_train_token_internal(
+        pModel, nTargetToken, actBatchAttOut, t, nChunkSize);
+    *pfTotalLoss += fLoss;
+    (*pnTargetCount)++;
+  }
+
+  free(actBatchX);
+  free(actBatchFFNIn);
+  free(actBatchFFNOut);
+  free(actBatchAttOut);
+}
+
 RING_API float ring_model_train_sequence(RingModel *pModel, const int *tokens,
                                          const int *mask, int nSeqLen,
                                          int nRespStart, int nTrainEnd,
@@ -5359,43 +5652,46 @@ RING_API float ring_model_train_sequence(RingModel *pModel, const int *tokens,
   /* Reset KV cache position to start fresh */
   pModel->nCurPos = 0;
 
-  /* 1. Prompt Prefill (Populates KV Cache via GPU Chunks) */
+  /* 1. Prompt Prefill in High-Throughput 64-token Chunks */
   int nPrefillTokens = nRespStart - 2;
   if (nPrefillTokens > 0) {
     int start, chunkSize;
     for (start = 0; start < nPrefillTokens; start += chunkSize) {
-      chunkSize = (nPrefillTokens - start > 32) ? 32 : (nPrefillTokens - start);
+      chunkSize = (nPrefillTokens - start > 64) ? 64 : (nPrefillTokens - start);
       ring_model_forward_chunk(pModel, tokens + start, start, chunkSize, 0);
     }
     pModel->nCurPos = nPrefillTokens;
   }
 
-  /* 2. Response Training */
+  /* 2. Response Training via High-Speed Teacher Forcing Chunks */
   float fTotalLoss = 0.0f;
   int nTargetCount = 0;
+  int respStartPos = nRespStart - 1;
 
-  for (int t = (nRespStart - 1); t <= nTrainEnd; t++) {
-    int curTokIdx = t - 1; /* 0-based token index for current input token */
-    int nextTokIdx = t;    /* 0-based token index for target token */
-    int nPos = curTokIdx;  /* sequence position */
-
-    if (curTokIdx < 0 || nextTokIdx >= nTokCount)
-      continue;
-
-    int nCurTok = tokens[curTokIdx];
-    int nNextTok = tokens[nextTokIdx];
-
-    /* Only compute logits if target token is active (mask == 1) */
-    int bComputeLogits = (mask[nextTokIdx] == 1) ? 1 : 0;
-
-    /* Forward current token */
-    ring_model_forward_ex(pModel, nCurTok, nPos, bComputeLogits);
-
-    /* Train token if masked */
-    if (bComputeLogits) {
-      float fTokLoss = ring_model_train_token(pModel, nNextTok);
-      fTotalLoss += fTokLoss;
-      nTargetCount++;
+  if (bUseBatch) {
+    int start, chunkSize;
+    for (start = respStartPos; start <= nTrainEnd; start += chunkSize) {
+      chunkSize = (nTrainEnd - start + 1 > 64) ? 64 : (nTrainEnd - start + 1);
+      ring_model_train_chunk(pModel, tokens, mask, nSeqLen, start - 1, chunkSize,
+                             &fTotalLoss, &nTargetCount);
+      pModel->nCurPos = start + chunkSize - 1;
+    }
+  } else {
+    /* Fallback token-by-token loop if requested */
+    for (int t = (nRespStart - 1); t <= nTrainEnd; t++) {
+      int curTokIdx = t - 1;
+      int nextTokIdx = t;
+      if (curTokIdx < 0 || nextTokIdx >= nTokCount)
+        continue;
+      int nCurTok = tokens[curTokIdx];
+      int nNextTok = tokens[nextTokIdx];
+      int bComputeLogits = (mask[nextTokIdx] == 1) ? 1 : 0;
+      ring_model_forward_ex(pModel, nCurTok, curTokIdx, bComputeLogits);
+      if (bComputeLogits) {
+        float fTokLoss = ring_model_train_token(pModel, nNextTok);
+        fTotalLoss += fTokLoss;
+        nTargetCount++;
+      }
     }
   }
 

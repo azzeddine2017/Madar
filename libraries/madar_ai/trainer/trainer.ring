@@ -156,6 +156,9 @@ class MadarLoRATrainer
 		nStepCounter = 0
 		for nEp = 1 to nEpochs
 			? ">>> Starting Epoch [" + nEp + " / " + nEpochs + "]..."
+			if !isnull(oDataset)
+				oDataset.shuffle()
+			ok
 			for nIdx = 1 to nNumSamples
 				nStepCounter++
 				if nStepCounter <= nResumeStep

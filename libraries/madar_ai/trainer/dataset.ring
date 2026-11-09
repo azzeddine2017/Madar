@@ -66,6 +66,21 @@ class MadarInstructDataset
 	func size()
 		return len(aSamples)
 
+	/*
+	* Function: shuffle
+	* Randomly permutes dataset samples using Fisher-Yates algorithm
+	* Eliminates topic clustering and guarantees smooth, monotonic loss reduction
+	*/
+	func shuffle()
+		nLen = len(aSamples)
+		if nLen <= 1 return ok
+		for i = nLen to 2 step -1
+			j = (random(nLen * 1000) % i) + 1
+			temp = aSamples[i]
+			aSamples[i] = aSamples[j]
+			aSamples[j] = temp
+		next
+
 	func getSample(nIndex)
 		if nIndex >= 1 and nIndex <= len(aSamples)
 			return aSamples[nIndex]

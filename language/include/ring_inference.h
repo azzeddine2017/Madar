@@ -62,6 +62,10 @@ typedef struct RingLayerWeights {
 	void *pGPUBufGate;
 	void *pGPUBufUp;
 	void *pGPUBufDown;
+	void *pGPUBufQ;
+	void *pGPUBufK;
+	void *pGPUBufV;
+	void *pGPUBufAttnOut;
 } RingLayerWeights;
 
 typedef struct RingLoRALayerAdapter {
