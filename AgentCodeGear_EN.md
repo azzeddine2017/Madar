@@ -184,3 +184,15 @@ Adhere to the following conventions when writing modern Ring/Madar code:
 2. **Respect Existing Code Patterns:** Blend seamlessly with existing formatting, indentation, and architectural conventions in the codebase.
 3. **Dependency Management:** Use `ringpm` exclusively for external Ring packages; check project configuration files before introducing third-party packages.
 4. **Focused Diffs:** Keep edits granular, readable, and directly mapped to the current task.
+
+## 🧠 4. Persistent Project Memory Protocol (Zero-Forget Protocol)
+1. **Context Bootstrapping (On New Sessions):**
+   - At the beginning of any major refactor, architectural change, or feature implementation, read `docs/PROJECT_MEMORY.md` (or recent entries in `CHANGELOG.md`) to align with past decisions and verified milestones.
+   - Run `git status` and inspect recent commits (`git log -n 5 --oneline`) when resuming previous tasks.
+2. **Memory Persistence (On Milestone Completion):**
+   - Whenever an architectural decision, tensor engine update, or compiler enhancement is completed and verified:
+     - Record the decision, constraints, and new API rules in `docs/PROJECT_MEMORY.md`.
+     - Update `CHANGELOG.md` with granular technical notes.
+   - Keep this memory file modular, human-readable, and free of redundant prose.
+3. **Fallback Retrieval (Self-Diagnostics):**
+   - If an architectural question arises regarding past conversations or why a specific design was chosen, the agent is authorized to inspect local repository git logs or previous session artifacts in the workspace before asking the user.
