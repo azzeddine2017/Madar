@@ -38,38 +38,42 @@ Madar includes a full OpenCL GPU acceleration pipeline for LLM inference on **In
 GPU support is loaded at runtime using Win32 `LoadLibraryA("OpenCL.dll")` and `GetProcAddress` — the binary links to no OpenCL import library. All function pointers (`p_clCreateBuffer`, `p_clEnqueueNDRangeKernel`, etc.) are resolved from the OS-installed driver. If no OpenCL driver is present, Madar silently falls back to the full AVX2 CPU path.
 
 ### B. Zero-Copy Weight Pre-Mapping
-At model initialization, Madar binds all static weight tensors to GPU memory using `CL_MEM_USE_HOST_PTR`:
+At model initialization, Madar binds all static weight tensors to GPU memory using `CL_MEM_USE_HOST_PTR` directly via `RingGGUFTensorInfo.pGPUBuf`:
 
 ```text
 model weights (GGUF mmap region)
         |
-        +----> cl_mem [layer_0.ffn_gate]  (zero-copy, no data moved)
+        +----> cl_mem [layer_0.attn_q]     (zero-copy, resident in VRAM)
+        +----> cl_mem [layer_0.attn_k]
+        +----> cl_mem [layer_0.attn_v]
+        +----> cl_mem [layer_0.attn_output]
+        +----> cl_mem [layer_0.ffn_gate]
         +----> cl_mem [layer_0.ffn_up]
         +----> cl_mem [layer_0.ffn_down]
         ...
-        +----> cl_mem [layer_N.ffn_gate]
-        +----> cl_mem [output.weight]     (up to 151,936 rows)
+        +----> cl_mem [layer_N.*]
+        +----> cl_mem [output.weight]      (up to 151,936 rows)
 ```
 
-This means **zero `clCreateBuffer` / `clReleaseMemObject` calls occur during token generation**. The GPU driver maintains these pinned host-memory mappings persistently.
+This means **zero `clCreateBuffer` / `clReleaseMemObject` calls occur during token generation or training**. The GPU driver maintains these pinned host-memory mappings persistently across the entire session.
 
-### C. Hybrid CPU+GPU Pipeline
+### C. Full Hardware Acceleration Pipeline
 
 Each forward pass token is computed as follows:
 
 ```text
 [Embedding Lookup]               CPU (table dereference)
 [RMSNorm]                        CPU (AVX2 vectorized)
-[Q, K, V Projections (Attn)]     CPU (AVX2, small matrices ≤ 1536×896)
+[Q, K, V Projections (Attn)] -----> GPU (OpenCL, pre-mapped zero-copy)
 [RoPE]                           CPU (trigonometric, cache-friendly)
 [Scaled Dot-Product Attention]   CPU (GQA, FP16 KV-Cache)
-[Attn Output Projection]         CPU (AVX2)
-[FFN Gate Projection]     -----> GPU (OpenCL, pre-mapped zero-copy)
-[FFN Up Projection]       -----> GPU (OpenCL, pre-mapped zero-copy)
-[SiLU Activation]                CPU (scalar, negligible cost)
-[FFN Down Projection]     -----> GPU (OpenCL, pre-mapped zero-copy)
+[Attn Output Projection]     -----> GPU (OpenCL, pre-mapped zero-copy)
+[FFN Gate Projection]        -----> GPU (OpenCL, pre-mapped zero-copy)
+[FFN Up Projection]          -----> GPU (OpenCL, pre-mapped zero-copy)
+[SiLU Activation]            -----> GPU (OpenCL on-device fused SwiGLU)
+[FFN Down Projection]        -----> GPU (OpenCL, pre-mapped zero-copy)
 [Final RMSNorm]                  CPU (AVX2 vectorized)
-[Output / LM Head Logits] -----> GPU (OpenCL, pre-mapped zero-copy)
+[Output / LM Head Logits]    -----> GPU (OpenCL, pre-mapped zero-copy)
 [Sampling (Top-K)]               CPU (short 151k-element argmax)
 ```
 
