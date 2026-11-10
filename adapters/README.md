@@ -21,3 +21,4 @@ load "madar_ai.ring"
 oModel = new RingModel("models/qwen2.5-coder-1.5b-instruct-q4_0.gguf", 1)
 oModel.load_lora("adapters/qwen_coder_lora/final")
 ```
+
