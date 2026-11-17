@@ -1054,5 +1054,77 @@ aPackagesRegistry = [
 	[ :name = "mario3d_sample",
 	  :description = "Nostalgic 3D Third-Person Platformer built using RingRayLib",
 	  :ProviderUserName = "azzeddine2017"
+	],
+	[ :name = "claudelib",
+	  :description = "Ring programming language library for the Anthropic Claude Messages API",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "xmllib",
+	  :description = "XML library for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "zipstorelib",
+	  :description = "A pure Ring library for merging files into ZIP archives without compression",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "htmllib",
+	  :description = "HTML/CSS3 generation with JavaScript, Bootstrap and Three.js support",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "raylibgui",
+	  :description = "GUI widgets library written in Ring on top of RayLib and Supports Arabic",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringlua",
+	  :description = "Embeds the Lua 5.5 scripting engine in Ring programs",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "tuilib",
+	  :description = "TUI Framework for Windows/Linux/macOS based on RingRogueUtil extension",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringrogueutil",
+	  :description = "RingRogueUtil extension for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringutf8proc",
+	  :description = "Unicode text processing for the Ring programming language using utf8proc library",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringnappgui",
+	  :description = "RingNAPPGUI extension for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "winutf8path",
+	  :description = "A Ring library to process files that uses UTF8 filename/path on Windows",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "wincom",
+	  :description = "A Ring library for Windows that supports COM (Component Object Model)",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "qt612runtime",
+	  :description = "Qt612Runtime package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "qt612qmlruntime",
+	  :description = "Qt612QMLRuntime package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringqt6runtime",
+	  :description = "RingQt6Runtime package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "ringqt6",
+	  :description = "RingQt6 package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "androidringqt6",
+	  :description = "AndroidRingQt6 package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
+	],
+	[ :name = "webassemblyringqt6",
+	  :description = "WebAssemblyRingQt6 package for the Ring programming language",
+	  :ProviderUserName = "ringpackages"
 	]
 ]
