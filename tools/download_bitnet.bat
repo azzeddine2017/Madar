@@ -25,7 +25,10 @@ curl -L --progress-bar -o "%MODEL_FILE%" "%MODEL_URL%"
 
 if exist "%MODEL_FILE%" (
     echo.
-    echo [SUCCESS] BitNet model downloaded successfully to: %MODEL_FILE%
+    echo ====================================================================
+    echo   [SUCCESS] BitNet model downloaded successfully to: %MODEL_FILE%
+    echo   You can now run: ring examples\ai\chat.ring
+    echo ====================================================================
 ) else (
     echo.
     echo [ERROR] Download failed. Please check internet connection.
