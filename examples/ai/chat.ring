@@ -23,7 +23,7 @@ func main {
 			"deepseek-r1-distill-qwen-7b-q4_0.gguf",
 			"qwen2.5-0.5b-instruct-q4_0.gguf"
 		]
-	} else {
+	else
 		aCandidateNames = [
 			"qwen2.5-0.5b-instruct-q4_0.gguf",
 			"qwen2.5-coder-1.5b-instruct-q4_0.gguf",
@@ -59,7 +59,7 @@ func main {
 
 	if bIsDeepSeek {
 		oModel = new DeepSeekModel(cModelPath)
-	} else {
+	else
 		oModel = new QwenModel(cModelPath)
 	}
 	oModel.setThreads(4)
@@ -73,7 +73,7 @@ func main {
 
 	if bIsDeepSeek {
 		nChatMaxTokens = 2048
-	} else {
+	else
 		nChatMaxTokens = 1024
 	}
 
@@ -107,7 +107,7 @@ func main {
 				if nChatMaxTokens < 16 { nChatMaxTokens = 16 }
 				if nChatMaxTokens > 4096 { nChatMaxTokens = 4096 }
 				? f"  [System] Max tokens set to {nChatMaxTokens}"
-			} else {
+			else
 				? f"  [System] Current max tokens: {nChatMaxTokens}"
 			}
 			loop
@@ -120,11 +120,11 @@ func main {
 				if cMode = "off" or cMode = "0" {
 					oModel.setGPU(0)
 					? "  [System] GPU Acceleration disabled (Running CPU AVX2)."
-				} else {
+				else
 					oModel.setGPU(1)
 					? "  [System] GPU Acceleration enabled."
 				}
-			} else {
+			else
 				? "  [System] Usage: /gpu on | /gpu off"
 			}
 			loop
@@ -136,7 +136,7 @@ func main {
 				fNewTemp = 0.0 + aParts[2]
 				oModel.setTemperature(fNewTemp)
 				? f"  [System] Temperature set to {fNewTemp}"
-			} else {
+			else
 				? f"  [System] Current temperature: {oModel.fTemp}"
 			}
 			loop
