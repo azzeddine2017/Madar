@@ -119,6 +119,7 @@ Download supported quantized models directly into the `models/` directory:
 ```cmd
 tools\download_deepseek.bat   :: DeepSeek-R1-Distill-Qwen-1.5B (Q4_0, ~1.1 GB)
 tools\download_model.bat      :: Qwen2.5-0.5B / 3B-Instruct / 1.5B / Coder (Q4_0, ~350 MB - 1.9 GB)
+tools\download_bitnet.bat     :: BitNet-B1.58-2B-4T-I2_S (Q4_0, ~1.1 GB)
 ```
 
 ### other Model we use them in testing
