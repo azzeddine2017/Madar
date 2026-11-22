@@ -118,7 +118,17 @@ Experience the full power of Madar with 7B reasoning models and NVIDIA GPU accel
 Download supported quantized models directly into the `models/` directory:
 ```cmd
 tools\download_deepseek.bat   :: DeepSeek-R1-Distill-Qwen-1.5B (Q4_0, ~1.1 GB)
-tools\download_model.bat      :: Qwen2.5-0.5B / 3B-Instruct (Q4_0, ~350 MB - 1.9 GB)
+tools\download_model.bat      :: Qwen2.5-0.5B / 3B-Instruct / 1.5B / Coder (Q4_0, ~350 MB - 1.9 GB)
+```
+
+### other Model we use them in testing
+```cmd
+bitnet-b1.58-2b-4t-i2_s.gguf
+qwen2.5-0.5b-instruct-q4_0.gguf
+qwen2.5-1.5b-instruct-q4_0.gguf
+qwen2.5-coder-1.5b-instruct-q4_0.gguf
+qwen2.5-coder-1.5b-ring-hf-q4_0.gguf
+qwen2.5-coder-3b-instruct-q4_0.gguf
 ```
 
 ### 2. Dual-Model RAG with BGE-M3 & Qwen (البحث الدلالي عالي الدقة)
