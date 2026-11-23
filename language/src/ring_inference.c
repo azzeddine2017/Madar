@@ -1437,7 +1437,8 @@ static int madar_gpu_init(RingModel *pModel) {
   }
 
   pModel->bGPUEnabled = 1;
-  printf("  [Madar GPU] Full-Acceleration Active: %s (Zero-Copy LM Head + %u Layers: FFN + Q/K/V/Out Projections)\n",
+  printf("  [Madar GPU] Full-Acceleration Active: %s (Zero-Copy LM Head + %u "
+         "Layers: FFN + Q/K/V/Out Projections)\n",
          devName, pModel->config.nLayers);
   return 1;
 }
@@ -2940,8 +2941,10 @@ RING_API int ring_model_init_lora(RingModel *pModel, int nRank, float fAlpha) {
   return 1;
 }
 
-static float ring_model_train_token_internal(RingModel *pModel, int nTargetToken,
-                                             const float *pAttOutMatrix, int nTokIdx, int nChunkSize) {
+static float ring_model_train_token_internal(RingModel *pModel,
+                                             int nTargetToken,
+                                             const float *pAttOutMatrix,
+                                             int nTokIdx, int nChunkSize) {
   if (!pModel || !pModel->bMultiLayerLoRA || !pModel->aLoRALayers ||
       !pModel->pLogits)
     return 0.0f;
@@ -3125,7 +3128,8 @@ static float ring_model_train_token_internal(RingModel *pModel, int nTargetToken
       }
     }
 
-    /* Backprop through B: g_u = lScale * (B_Out^T * pGradH) - Cache-Conscious L1 Loop */
+    /* Backprop through B: g_u = lScale * (B_Out^T * pGradH) - Cache-Conscious
+     * L1 Loop */
     memset(pGu, 0, (size_t)r * sizeof(float));
     for (int i = 0; i < nEmbd; i++) {
       float gh = pGradH[i];
@@ -5244,7 +5248,7 @@ RING_FUNC(ring_model_api_embedding) {
     return;
   }
 
-  RING_API_RETMANAGEDCPOINTER(pTensor, "tensor_t",
+  RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR",
                               (void (*)(void *, void *))ring_tensor_delete);
 }
 
@@ -5349,9 +5353,9 @@ RING_FUNC(ring_model_api_forward_batch) {
 }
 
 static void ring_model_train_chunk(RingModel *pModel, const int *tokens,
-                                   const int *mask, int nSeqLen,
-                                   int nStartPos, int nChunkSize,
-                                   float *pfTotalLoss, int *pnTargetCount) {
+                                   const int *mask, int nSeqLen, int nStartPos,
+                                   int nChunkSize, float *pfTotalLoss,
+                                   int *pnTargetCount) {
   if (!pModel || !tokens || !mask || nChunkSize <= 0)
     return;
 
@@ -5412,27 +5416,24 @@ static void ring_model_train_chunk(RingModel *pModel, const int *tokens,
     float *tokX = actBatchX + (size_t)t * nEmbd;
     if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_0) {
       const RingGGUFBlockQ4_0 *b4 =
-          (const RingGGUFBlockQ4_0 *)(pRawEmbd +
-                                      (size_t)nToken * (nEmbd / 32) *
-                                          sizeof(RingGGUFBlockQ4_0));
+          (const RingGGUFBlockQ4_0 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) *
+                                                     sizeof(RingGGUFBlockQ4_0));
       ring_gguf_dequantize_q4_0(b4, tokX, nEmbd);
     } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q4_1) {
       const RingGGUFBlockQ4_1 *b4_1 =
-          (const RingGGUFBlockQ4_1 *)(pRawEmbd +
-                                      (size_t)nToken * (nEmbd / 32) *
-                                          sizeof(RingGGUFBlockQ4_1));
+          (const RingGGUFBlockQ4_1 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) *
+                                                     sizeof(RingGGUFBlockQ4_1));
       ring_gguf_dequantize_q4_1(b4_1, tokX, nEmbd);
     } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q8_0) {
       const RingGGUFBlockQ8_0 *b8 =
-          (const RingGGUFBlockQ8_0 *)(pRawEmbd +
-                                      (size_t)nToken * (nEmbd / 32) *
-                                          sizeof(RingGGUFBlockQ8_0));
+          (const RingGGUFBlockQ8_0 *)(pRawEmbd + (size_t)nToken * (nEmbd / 32) *
+                                                     sizeof(RingGGUFBlockQ8_0));
       ring_gguf_dequantize_q8_0(b8, tokX, nEmbd);
     } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_Q6_K) {
       const RingGGUFBlockQ6_K *b6 =
-          (const RingGGUFBlockQ6_K *)(pRawEmbd +
-                                      (size_t)nToken * (nEmbd / 256) *
-                                          sizeof(RingGGUFBlockQ6_K));
+          (const RingGGUFBlockQ6_K *)(pRawEmbd + (size_t)nToken *
+                                                     (nEmbd / 256) *
+                                                     sizeof(RingGGUFBlockQ6_K));
       ring_gguf_dequantize_q6_k(b6, tokX, nEmbd);
     } else if (pModel->pTokenEmbd->nType == RING_GGUF_TENSOR_F16) {
       const ggml_fp16_t *f16 =
@@ -5590,9 +5591,8 @@ static void ring_model_train_chunk(RingModel *pModel, const int *tokens,
       int i = 0;
 #if defined(MADAR_AVX2)
       for (; i + 7 < nEmbd; i += 8) {
-        _mm256_storeu_ps(
-            tokX + i, _mm256_add_ps(_mm256_loadu_ps(tokX + i),
-                                    _mm256_loadu_ps(outFFN + i)));
+        _mm256_storeu_ps(tokX + i, _mm256_add_ps(_mm256_loadu_ps(tokX + i),
+                                                 _mm256_loadu_ps(outFFN + i)));
       }
 #endif
       for (; i < nEmbd; i++)
@@ -5672,8 +5672,8 @@ RING_API float ring_model_train_sequence(RingModel *pModel, const int *tokens,
     int start, chunkSize;
     for (start = respStartPos; start <= nTrainEnd; start += chunkSize) {
       chunkSize = (nTrainEnd - start + 1 > 64) ? 64 : (nTrainEnd - start + 1);
-      ring_model_train_chunk(pModel, tokens, mask, nSeqLen, start - 1, chunkSize,
-                             &fTotalLoss, &nTargetCount);
+      ring_model_train_chunk(pModel, tokens, mask, nSeqLen, start - 1,
+                             chunkSize, &fTotalLoss, &nTargetCount);
       pModel->nCurPos = start + chunkSize - 1;
     }
   } else {
@@ -5871,7 +5871,7 @@ RING_FUNC(ring_model_api_get_token_embeddings) {
     extract_token_embedding(pModel, tok, xt);
   }
 
-  RING_API_RETMANAGEDCPOINTER(pTensor, "tensor_t",
+  RING_API_RETMANAGEDCPOINTER(pTensor, "TENSOR",
                               (void (*)(void *, void *))ring_tensor_delete);
 }
 
@@ -6133,6 +6133,7 @@ RING_API void ring_inference_loadfunctions(void *pRingState) {
                     ring_model_api_get_token_embeddings);
   RING_API_REGISTER("madar_model_forward", ring_model_api_forward);
   RING_API_REGISTER("madar_model_forward_batch", ring_model_api_forward_batch);
-  RING_API_REGISTER("madar_model_train_sequence", ring_model_api_train_sequence);
+  RING_API_REGISTER("madar_model_train_sequence",
+                    ring_model_api_train_sequence);
   RING_API_REGISTER("madar_trainer_fill_batch", ring_trainer_api_fill_batch);
 }

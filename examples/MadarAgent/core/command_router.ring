@@ -7,7 +7,7 @@ class CommandRouter
 	oApp
 
 	func init(oAgentApp)
-		oApp = ref(oAgentApp)
+		oApp = oAgentApp
 		return self
 
 	func isCommand(cInput)

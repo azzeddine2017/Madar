@@ -117,7 +117,11 @@ class QwenModel
 		return madar_is_arabic(cText)
 
 	func embedding(cText)
-		return madar_model_embedding(hModel, cText)
+		pVec = madar_model_embedding(hModel, cText)
+		if islist(pVec) and len(pVec) >= 2
+			pVec[2] = "TENSOR"
+		ok
+		return pVec
 
 	func get_embedding(cText)
 		return embedding(cText)
@@ -378,7 +382,11 @@ class BgeModel
 		return madar_model_tokenize(hModel, cText)
 
 	func embedding(cText)
-		return madar_model_embedding(hModel, cText)
+		pVec = madar_model_embedding(hModel, cText)
+		if islist(pVec) and len(pVec) >= 2
+			pVec[2] = "TENSOR"
+		ok
+		return pVec
 
 	func get_embedding(cText)
 		return embedding(cText)

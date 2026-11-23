@@ -93,6 +93,9 @@ class MadarVectorDB
         fclose(fp)
 
         # 2. Store offset and vector in RAM
+        if islist(oVector) and len(oVector) >= 2
+            oVector[2] = "TENSOR"
+        ok
         aOffsets + nBytePos
         aVectors + oVector
         nCount++
@@ -109,8 +112,14 @@ class MadarVectorDB
 
         # 1. Cosine similarity scoring over dense in-memory vectors
         aScored = []
+        if islist(oQueryVec) and len(oQueryVec) >= 2
+            oQueryVec[2] = "TENSOR"
+        ok
         for i = 1 to nCount
             oDocVec = aVectors[i]
+            if islist(oDocVec) and len(oDocVec) >= 2
+                oDocVec[2] = "TENSOR"
+            ok
             fSim = tensor_cosine_similarity(oQueryVec, oDocVec)
             if fSim >= fMinScore
                 aScored + [fSim, i]
