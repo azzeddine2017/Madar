@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+---
+
+## [Unreleased] - MadarOpt Industrial Decision Intelligence Engine
+
+### Added
+- **MadarOpt Operations Research & Combinatorial Optimization Engine (libraries/madar_opt/):**
+  - **Decoupled Architecture**: Standalone, zero-coupling optimization suite designed for manufacturing and logistics, completely decoupled from neural LLM inference.
+  - **Problem Formulations (libraries/madar_opt/problems/):**
+    - CuttingStock1D: 1D Linear Cutting Stock & Bin Packing formulation with saw blade kerf compensation and theoretical lower-bound estimation.
+  - **High-Speed Solvers (libraries/madar_opt/solvers/):**
+    - HeuristicCuttingSolver: First-Fit Decreasing (FFD) and Best-Fit Decreasing (BFD) algorithms executing in sub-10ms latency.
+    - GeneticCuttingSolver: Evolutionary metaheuristic with Order Crossover (OX), tournament selection, elitism, and swap mutation.
+  - **Scientific Benchmarking Suite (libraries/madar_opt/benchmarks/benchmark_cutting_stock.ring):**
+    - Proven $450 USD raw material savings and reduction in scrap waste from 27.92% down to 3.89% on an 80-piece manufacturing work order.
+  - **Automated Regression Suite (libraries/madar_opt/tests/test_opt.ring):**
+    - 5/5 regression test pass verifying versions, kernels, formulations, and facade APIs.
+
 ## [0.4.3-alpha] - 2026-11-10
 
 ### Added

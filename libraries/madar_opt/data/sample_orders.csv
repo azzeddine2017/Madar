@@ -1,0 +1,8 @@
+# Production Work Order: Aluminum Window & Curtain Wall Factory
+# Format: item_id, length_mm, quantity
+P_FRAME_OUTER, 3100.0, 16
+P_FRAME_HEADER, 2650.0, 16
+P_SASH_VERTICAL, 1950.0, 24
+P_MULLION_MID, 1420.0, 20
+P_TRIM_BOTTOM, 890.0, 30
+
