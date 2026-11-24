@@ -1,0 +1,9 @@
+# MadarOpt 2D Cutting Stock Work Order Sample
+# Standard 8x4 Sheet Metal / Plywood Nesting
+# Format: item_id,width,height,quantity,can_rotate
+PANEL_SIDE,1200.0,600.0,4,1
+PANEL_TOP,800.0,500.0,4,1
+DOOR_FRONT,900.0,400.0,3,1
+SHELF_INT,600.0,350.0,6,1
+BACK_COVER,1100.0,750.0,2,0
+

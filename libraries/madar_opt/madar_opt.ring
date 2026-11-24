@@ -8,7 +8,9 @@ load "core/numerical_kernel.ring"
 load "core/tensor_kernel.ring"
 load "core/scenario_engine.ring"
 load "problems/cutting_stock_1d.ring"
+load "problems/cutting_stock_2d.ring"
 load "solvers/heuristic_solver.ring"
+load "solvers/heuristic_2d_solver.ring"
 load "solvers/genetic_solver.ring"
 load "io/data_loader.ring"
 load "io/plan_exporter.ring"
@@ -42,5 +44,17 @@ func madaropt_solve_cutting_stock(nStockLength, aDemands, nBladeKerf, cMethod) {
         oSolver = new HeuristicCuttingSolver
         return oSolver.solveBFD(oProblem)
     }
+}
+
+/*
+* Function: madaropt_solve_cutting_stock_2d
+* Description: Solves 2D rectangular sheet cutting stock & nesting problems.
+* Inputs: nSheetW, nSheetH, aPieces, nKerf, bRotate
+* Outputs: Structured Solution Evaluation Map
+*/
+func madaropt_solve_cutting_stock_2d(nSheetW, nSheetH, aPieces, nKerf, bRotate) {
+    oProblem = new CuttingStock2D(nSheetW, nSheetH, aPieces, nKerf, bRotate)
+    oSolver = new Heuristic2DCuttingSolver
+    return oSolver.solve(oProblem)
 }
 

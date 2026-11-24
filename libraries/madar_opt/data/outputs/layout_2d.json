@@ -1,0 +1,189 @@
+{
+  "engine": "MadarOpt 0.1.0-alpha",
+  "summary": {
+    "sheets_used": 4,
+    "theoretical_min": 3,
+    "total_stock_area": 11907200,
+    "total_demand_area": 8470000,
+    "total_scrap_area": 3437200,
+    "waste_percentage": 28.87
+  },
+  "sheets": [
+    {
+      "sheet_index": 1,
+      "piece_count": 5,
+      "placements": [
+        {
+          "id": "BACK_COVER",
+          "x": 0,
+          "y": 0,
+          "w": 1100,
+          "h": 750,
+          "rotated": false
+        },
+        {
+          "id": "BACK_COVER",
+          "x": 1104,
+          "y": 0,
+          "w": 1100,
+          "h": 750,
+          "rotated": false
+        },
+        {
+          "id": "DOOR_FRONT",
+          "x": 0,
+          "y": 754,
+          "w": 900,
+          "h": 400,
+          "rotated": false
+        },
+        {
+          "id": "DOOR_FRONT",
+          "x": 904,
+          "y": 754,
+          "w": 900,
+          "h": 400,
+          "rotated": false
+        },
+        {
+          "id": "SHELF_INT",
+          "x": 1808,
+          "y": 754,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "sheet_index": 2,
+      "piece_count": 4,
+      "placements": [
+        {
+          "id": "PANEL_SIDE",
+          "x": 0,
+          "y": 0,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_SIDE",
+          "x": 1204,
+          "y": 0,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_SIDE",
+          "x": 0,
+          "y": 604,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_SIDE",
+          "x": 1204,
+          "y": 604,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "sheet_index": 3,
+      "piece_count": 6,
+      "placements": [
+        {
+          "id": "PANEL_TOP",
+          "x": 0,
+          "y": 0,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_TOP",
+          "x": 804,
+          "y": 0,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_TOP",
+          "x": 1608,
+          "y": 0,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        },
+        {
+          "id": "PANEL_TOP",
+          "x": 0,
+          "y": 504,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        },
+        {
+          "id": "DOOR_FRONT",
+          "x": 804,
+          "y": 504,
+          "w": 900,
+          "h": 400,
+          "rotated": false
+        },
+        {
+          "id": "SHELF_INT",
+          "x": 1708,
+          "y": 504,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "sheet_index": 4,
+      "piece_count": 4,
+      "placements": [
+        {
+          "id": "SHELF_INT",
+          "x": 0,
+          "y": 0,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        },
+        {
+          "id": "SHELF_INT",
+          "x": 604,
+          "y": 0,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        },
+        {
+          "id": "SHELF_INT",
+          "x": 1208,
+          "y": 0,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        },
+        {
+          "id": "SHELF_INT",
+          "x": 1812,
+          "y": 0,
+          "w": 600,
+          "h": 350,
+          "rotated": false
+        }
+      ]
+    }
+  ]
+}

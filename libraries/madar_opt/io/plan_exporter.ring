@@ -113,3 +113,104 @@ class OptPlanExporter
         write(cOutputPath, cJSON)
         return true
     }
+
+    /*
+    * Function: exportLayout2DCSV
+    * Description: Writes 2D rectangular sheet layout coordinates to CSV.
+    * Columns: Sheet_Index,Piece_ID,X,Y,Width,Height,Rotated
+    * Inputs: aSolution (Map), cOutputPath (String)
+    */
+    func exportLayout2DCSV(aSolution, cOutputPath) {
+        aSheets = aSolution[:sheets]
+        nSheetsCount = len(aSheets)
+
+        cOut = "Sheet_Index,Piece_ID,X,Y,Width,Height,Rotated" + nl
+
+        for nS = 1 to nSheetsCount {
+            sheet = aSheets[nS]
+            aPlacements = sheet[:placements]
+            nPlCount = len(aPlacements)
+
+            for nP = 1 to nPlCount {
+                pl = aPlacements[nP]
+                cRot = "0"
+                if pl[:rotated] {
+                    cRot = "1"
+                }
+                cLine = "" + nS + "," + pl[:id] + "," + pl[:x] + "," + pl[:y] + "," + pl[:w] + "," + pl[:h] + "," + cRot + nl
+                cOut += cLine
+            }
+        }
+
+        write(cOutputPath, cOut)
+        return true
+    }
+
+    /*
+    * Function: exportLayout2DJSON
+    * Description: Writes 2D nesting layout to structured JSON.
+    * Inputs: aSolution (Map), cOutputPath (String)
+    */
+    func exportLayout2DJSON(aSolution, cOutputPath) {
+        cQ = char(34)
+        aSheets = aSolution[:sheets]
+        nSheetsCount = len(aSheets)
+
+        cJSON = "{" + nl
+        cJSON += '  ' + cQ + 'engine' + cQ + ': ' + cQ + 'MadarOpt 0.1.0-alpha' + cQ + ',' + nl
+        cJSON += '  ' + cQ + 'summary' + cQ + ': {' + nl
+        cJSON += '    ' + cQ + 'sheets_used' + cQ + ': ' + aSolution[:sheets_used] + ',' + nl
+        cJSON += '    ' + cQ + 'theoretical_min' + cQ + ': ' + aSolution[:theoretical_min] + ',' + nl
+        cJSON += '    ' + cQ + 'total_stock_area' + cQ + ': ' + aSolution[:total_stock_area] + ',' + nl
+        cJSON += '    ' + cQ + 'total_demand_area' + cQ + ': ' + aSolution[:total_demand_area] + ',' + nl
+        cJSON += '    ' + cQ + 'total_scrap_area' + cQ + ': ' + aSolution[:total_scrap_area] + ',' + nl
+        cJSON += '    ' + cQ + 'waste_percentage' + cQ + ': ' + aSolution[:waste_percentage] + nl
+        cJSON += '  },' + nl
+        cJSON += '  ' + cQ + 'sheets' + cQ + ': [' + nl
+
+        for nS = 1 to nSheetsCount {
+            sheet = aSheets[nS]
+            aPlacements = sheet[:placements]
+            nPlCount = len(aPlacements)
+
+            cJSON += '    {' + nl
+            cJSON += '      ' + cQ + 'sheet_index' + cQ + ': ' + nS + ',' + nl
+            cJSON += '      ' + cQ + 'piece_count' + cQ + ': ' + nPlCount + ',' + nl
+            cJSON += '      ' + cQ + 'placements' + cQ + ': [' + nl
+
+            for nP = 1 to nPlCount {
+                pl = aPlacements[nP]
+                cRot = "false"
+                if pl[:rotated] {
+                    cRot = "true"
+                }
+
+                cJSON += '        {' + nl
+                cJSON += '          ' + cQ + 'id' + cQ + ': ' + cQ + pl[:id] + cQ + ',' + nl
+                cJSON += '          ' + cQ + 'x' + cQ + ': ' + pl[:x] + ',' + nl
+                cJSON += '          ' + cQ + 'y' + cQ + ': ' + pl[:y] + ',' + nl
+                cJSON += '          ' + cQ + 'w' + cQ + ': ' + pl[:w] + ',' + nl
+                cJSON += '          ' + cQ + 'h' + cQ + ': ' + pl[:h] + ',' + nl
+                cJSON += '          ' + cQ + 'rotated' + cQ + ': ' + cRot + nl
+
+                if nP < nPlCount {
+                    cJSON += '        },' + nl
+                else
+                    cJSON += '        }' + nl
+                }
+            }
+
+            cJSON += '      ]' + nl
+            if nS < nSheetsCount {
+                cJSON += '    },' + nl
+            else
+                cJSON += '    }' + nl
+            }
+        }
+
+        cJSON += '  ]' + nl
+        cJSON += '}' + nl
+
+        write(cOutputPath, cJSON)
+        return true
+    }

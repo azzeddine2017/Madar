@@ -100,3 +100,14 @@ In addition to neural inference (`MadarAgent`, GGUF, LoRA, OpenCL GPU offloading
   2. Two-Phase Diet LP (Minimization): $x_1^* = 3.0, x_2^* = 1.0, Z^* = 9.0$ in **422 us**.
   3. Discrete Knapsack MILP: $x_1^* = 2, x_2^* = 1, Z^* = 16.0$ in **4.6 ms**.
   4. Capital Budgeting Binary 0/1: $P_1 = 1, P_2 = 0, P_3 = 1, Z^* = 35.0$ in **1.01 ms**.
+
+### 6. 2D Rectangular Cutting Stock & Generalized MILP Nesting
+- **Modules:**
+  - `libraries/madar_opt/problems/cutting_stock_2d.ring`: Formulation of 2D cutting with kerf loss and rotational freedom, including `toPatternMILP()` translating candidate cutting patterns directly into an algebraic `OptModel`.
+  - `libraries/madar_opt/solvers/heuristic_2d_solver.ring`: Best-Short-Side Fit (BSSF) guillotine rectangular packing algorithm with 90° piece rotation.
+  - `libraries/madar_opt/io/plan_exporter.ring`: Production layout exporter generating shopfloor CSV and CNC/MES JSON layout coordinates (`Sheet_Index, Piece_ID, X, Y, Width, Height, Rotated`).
+  - `libraries/madar_opt/cli.ring`: Full `--2d` command-line workflow with dedicated input/output file isolation (`data/inputs/sample_orders_2d.csv` -> `data/outputs/layout_2d.csv`, `data/outputs/layout_2d.json`).
+- **Mathematical Optimization Insights:**
+  - Branch-and-Bound accelerated by integrating an integer objective ceiling pruning rule: `ceil(nNodeObj - 0.0001) >= nBestObj` prunes non-improving fractional subtrees, reducing node exploration from 500 nodes (25s) to 5 nodes (11.49 ms).
+- **Verification (`tests/test_cutting_2d.ring`):** 4/4 passing tests (Geometric packing, 90° rotation constraint, exact MILP branch-and-bound verification, and CSV/JSON layout serialization).
+

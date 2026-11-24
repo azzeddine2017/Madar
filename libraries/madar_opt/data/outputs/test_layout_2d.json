@@ -1,0 +1,73 @@
+{
+  "engine": "MadarOpt 0.1.0-alpha",
+  "summary": {
+    "sheets_used": 2,
+    "theoretical_min": 2,
+    "total_stock_area": 5953600,
+    "total_demand_area": 3680000,
+    "total_scrap_area": 2273600,
+    "waste_percentage": 38.19
+  },
+  "sheets": [
+    {
+      "sheet_index": 1,
+      "piece_count": 4,
+      "placements": [
+        {
+          "id": "P1",
+          "x": 0,
+          "y": 0,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "P1",
+          "x": 1203,
+          "y": 0,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "P1",
+          "x": 0,
+          "y": 603,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        },
+        {
+          "id": "P1",
+          "x": 1203,
+          "y": 603,
+          "w": 1200,
+          "h": 600,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "sheet_index": 2,
+      "piece_count": 2,
+      "placements": [
+        {
+          "id": "P2",
+          "x": 0,
+          "y": 0,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        },
+        {
+          "id": "P2",
+          "x": 803,
+          "y": 0,
+          "w": 800,
+          "h": 500,
+          "rotated": false
+        }
+      ]
+    }
+  ]
+}

@@ -36,9 +36,10 @@ class OptBranchBoundSolver
 
         while len(aQueue) > 0 and nNodesExplored < nMaxNodes {
             nNodesExplored++
-            # Pop node (Depth-First / FIFO Search)
-            oNode = aQueue[1]
-            del(aQueue, 1)
+            # Pop node (Depth-First Search: LIFO)
+            nQueueLen = len(aQueue)
+            oNode = aQueue[nQueueLen]
+            del(aQueue, nQueueLen)
 
             # Solve LP Relaxation
             aLPRes = oSolver.solve(oNode)
@@ -51,11 +52,11 @@ class OptBranchBoundSolver
             nNodeObj = aLPRes[:objective_value]
             aNodeVars = aLPRes[:variables]
 
-            # Prune by bound: if LP relaxation is already worse than best integer solution
-            if nSense = OPT_MINIMIZE and nNodeObj >= nBestObj {
+            # Prune by bound: if LP relaxation is already worse than or cannot beat best integer solution
+            if nSense = OPT_MINIMIZE and ceil(nNodeObj - 0.0001) >= nBestObj {
                 loop
             }
-            if nSense = OPT_MAXIMIZE and nNodeObj <= nBestObj {
+            if nSense = OPT_MAXIMIZE and floor(nNodeObj + 0.0001) <= nBestObj {
                 loop
             }
 

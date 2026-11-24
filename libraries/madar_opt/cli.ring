@@ -23,6 +23,10 @@ func main() {
     cOutCSV        = "data/outputs/cutting_plan.csv"
     cOutJSON       = "data/outputs/cutting_plan.json"
     bSimulateMode  = false
+    b2DMode        = false
+    nSheetW        = 2440.0
+    nSheetH        = 1220.0
+    bRotate        = true
 
     # CLI argument parser
     nArgCount = len(aArgs)
@@ -34,6 +38,14 @@ func main() {
             cScenariosPath = aArgs[nI + 1]
         elseif cArg = "--simulate" or cArg = "-s"
             bSimulateMode = true
+        elseif cArg = "--2d"
+            b2DMode = true
+        elseif cArg = "--sheet_w" and nI < nArgCount
+            nSheetW = 0.0 + aArgs[nI + 1]
+        elseif cArg = "--sheet_h" and nI < nArgCount
+            nSheetH = 0.0 + aArgs[nI + 1]
+        elseif cArg = "--no_rotate"
+            bRotate = false
         elseif cArg = "--stock" and nI < nArgCount
             nStock = 0.0 + aArgs[nI + 1]
         elseif cArg = "--kerf" and nI < nArgCount
@@ -53,9 +65,74 @@ func main() {
     # Mode Dispatcher
     if bSimulateMode {
         runWhatIfSimulation(cOrdersPath, cScenariosPath, cMethod)
+    elseif b2DMode
+        if cOrdersPath = "data/inputs/sample_orders.csv" {
+            cOrdersPath = "data/inputs/sample_orders_2d.csv"
+        }
+        if cOutCSV = "data/outputs/cutting_plan.csv" {
+            cOutCSV = "data/outputs/layout_2d.csv"
+        }
+        if cOutJSON = "data/outputs/cutting_plan.json" {
+            cOutJSON = "data/outputs/layout_2d.json"
+        }
+        run2DOptimization(cOrdersPath, nSheetW, nSheetH, nKerf, bRotate, cOutCSV, cOutJSON)
     else
         runSingleOptimization(cOrdersPath, nStock, nKerf, cMethod, cOutCSV, cOutJSON)
     }
+}
+
+func run2DOptimization(cOrdersPath, nSheetW, nSheetH, nKerf, bRotate, cOutCSV, cOutJSON) {
+    ? "===================================================================="
+    ? "  MadarOpt: 2D Rectangular Nesting & Guillotine Cutting Engine"
+    ? "  High-Performance BSSF Guillotine Solver (v0.1.0-alpha)"
+    ? "===================================================================="
+
+    oLoader = new OptDataLoader
+    aPieces = oLoader.loadOrders2DCSV(cOrdersPath)
+    nPieceTypes = len(aPieces)
+
+    if nPieceTypes = 0 {
+        ? f"[MadarOpt Error] No valid 2D pieces loaded from: {cOrdersPath}"
+        bye 1
+    }
+
+    oProblem = new CuttingStock2D(nSheetW, nSheetH, aPieces, nKerf, bRotate)
+    nTheoryMin = oProblem.theoreticalMinimumSheets()
+    nTotalDemandArea = oProblem.totalDemandArea()
+
+    # Count total individual pieces
+    nTotalUnits = 0
+    for p in aPieces {
+        nTotalUnits += p[:qty]
+    }
+
+    ? f"  [Input Work Order] Ingested {nPieceTypes} piece types ({nTotalUnits} total units) from '{cOrdersPath}'"
+    ? f"  [Total Surface]    {nTotalDemandArea} mm^2 demand area ({nTotalDemandArea / 1000000.0} m^2)"
+    ? f"  [Stock Profile]    Standard sheet: {nSheetW} x {nSheetH} mm (Kerf: {nKerf} mm)"
+    ? f"  [Lower Bound]      Theoretical optimal minimum: {nTheoryMin} sheets"
+    ? f"  [Rotation Freedom] Allowed: {bRotate}"
+    ? "--------------------------------------------------------------------"
+
+    nStartNs = nanotime()
+    oSolver = new Heuristic2DCuttingSolver
+    aSolution = oSolver.solve(oProblem)
+    nElapsedUs = (nanotime() - nStartNs) / 1000.0
+    nElapsedMs = nElapsedUs / 1000.0
+
+    oExporter = new OptPlanExporter
+    oExporter.exportLayout2DCSV(aSolution, cOutCSV)
+    oExporter.exportLayout2DJSON(aSolution, cOutJSON)
+
+    ? "[Optimization Results]"
+    ? f"  -> Raw Stock Sheets Required: {aSolution[:sheets_used]} sheets"
+    ? f"  -> Total Scrap Waste:         {aSolution[:total_scrap_area]} mm^2 ({aSolution[:total_scrap_area] / 1000000.0} m^2)"
+    ? f"  -> Overall Waste Ratio:       {aSolution[:waste_percentage]}%"
+    ? f"  -> Solver Latency:            {nElapsedUs} us ({nElapsedMs} ms)"
+    ? "--------------------------------------------------------------------"
+    ? "[Production Artifacts Generated]"
+    ? f"  [OK] Shopfloor 2D Layout Table (CSV): {cOutCSV}"
+    ? f"  [OK] CNC/MES Nesting Schema    (JSON): {cOutJSON}"
+    ? "===================================================================="
 }
 
 func runWhatIfSimulation(cOrdersPath, cScenariosPath, cMethod) {
@@ -202,9 +279,13 @@ func printHelp() {
     ? "  --simulate, -s     Run multi-scenario What-If simulation mode"
     ? "  --scenarios <file> Path to scenarios JSON (default: data/inputs/scenarios.json)"
     ? "  --orders <file>    Path to input orders CSV (default: data/inputs/sample_orders.csv)"
-    ? "  --stock <mm>       Length of standard raw stock bar (default: 6000.0)"
-    ? "  --kerf <mm>        Blade saw cut loss per cut (default: 4.0)"
+    ? "  --stock <mm>       Length of standard raw stock bar for 1D (default: 6000.0)"
+    ? "  --2d               Run 2D rectangular cutting & nesting mode"
+    ? "  --sheet_w <mm>     Width of 2D raw stock sheet (default: 2440.0)"
+    ? "  --sheet_h <mm>     Height of 2D raw stock sheet (default: 1220.0)"
+    ? "  --no_rotate        Disallow 90-degree piece rotation in 2D nesting"
+    ? "  --kerf <mm>        Blade/laser saw cut loss per cut (default: 4.0 for 1D, 3.0 for 2D)"
     ? "  --method <str>     Solver algorithm: BFD, FFD, or GA (default: BFD)"
-    ? "  --out_csv <file>   Output shopfloor CSV table (default: data/outputs/cutting_plan.csv)"
-    ? "  --out_json <file>  Output machine JSON plan (default: data/outputs/cutting_plan.json)"
+    ? "  --out_csv <file>   Output shopfloor CSV table (default: data/outputs/cutting_plan.csv or layout_2d.csv)"
+    ? "  --out_json <file>  Output machine JSON plan (default: data/outputs/cutting_plan.json or layout_2d.json)"
 }
