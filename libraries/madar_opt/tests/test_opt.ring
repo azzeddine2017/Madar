@@ -68,8 +68,17 @@ func main() {
     }
     ? "  [PASS] RingTensor Kernel: In-Core GEMM evaluated 3000.0 mm fill correctly"
 
+    # Test 7: Multi-Scenario What-If Engine
+    oScenarioEngine = new OptScenarioEngine
+    aSimMatrix = oScenarioEngine.simulate([3000.0, 3000.0, 2000.0, 4000.0], "../data/inputs/scenarios.json", "BFD")
+    if aSimMatrix[:scenarios_count] < 3 {
+        ? "FAIL: Scenario simulation failed to evaluate scenarios"
+        bye 1
+    }
+    ? "  [PASS] What-If Engine: Successfully simulated " + aSimMatrix[:scenarios_count] + " scenarios"
+
     ? "================================================="
-    ? "  ALL MADAROPT TESTS PASSED SUCCESSFULLY! (6/6)   "
+    ? "  ALL MADAROPT TESTS PASSED SUCCESSFULLY! (7/7)   "
     ? "================================================="
 }
 

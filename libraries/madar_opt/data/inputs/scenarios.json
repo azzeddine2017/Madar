@@ -1,0 +1,43 @@
+{
+  "project": "Curtain Wall & Architectural Aluminum Profiles",
+  "baseline_scenario_id": "SCN_STD_6000",
+  "scenarios": [
+    {
+      "id": "SCN_STD_6000",
+      "name": "Standard Local 6000mm (Baseline)",
+      "stock_length_mm": 6000.0,
+      "price_per_bar_usd": 45.0,
+      "blade_kerf_mm": 4.0,
+      "supplier": "Local Extrusion Plant A",
+      "lead_time_days": 2
+    },
+    {
+      "id": "SCN_LONG_6500",
+      "name": "Custom Mill Long 6500mm",
+      "stock_length_mm": 6500.0,
+      "price_per_bar_usd": 51.0,
+      "blade_kerf_mm": 4.0,
+      "supplier": "Regional Mill Direct",
+      "lead_time_days": 7
+    },
+    {
+      "id": "SCN_SHORT_5500",
+      "name": "Economy Off-the-Shelf 5500mm",
+      "stock_length_mm": 5500.0,
+      "price_per_bar_usd": 39.50,
+      "blade_kerf_mm": 4.0,
+      "supplier": "Distributor Warehouse B",
+      "lead_time_days": 1
+    },
+    {
+      "id": "SCN_ROUGH_KERF_6000",
+      "name": "Maintenance Contingency (Kerf 6mm)",
+      "stock_length_mm": 6000.0,
+      "price_per_bar_usd": 45.0,
+      "blade_kerf_mm": 6.0,
+      "supplier": "Local Extrusion Plant A",
+      "lead_time_days": 2
+    }
+  ]
+}
+

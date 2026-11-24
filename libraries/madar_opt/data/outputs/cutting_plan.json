@@ -1,0 +1,279 @@
+{
+  "engine": "MadarOpt 0.1.0-alpha",
+  "summary": {
+    "bars_used": 38,
+    "theoretical_minimum": 36,
+    "total_stock_mm": 209000,
+    "total_demand_mm": 193900,
+    "total_waste_mm": 15100,
+    "waste_percentage": 7.22
+  },
+  "cutting_schedule": [
+    {
+      "bar_index": 1,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 2,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 3,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 4,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 5,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 6,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 7,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 8,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 9,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 10,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 11,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 12,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 13,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 14,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 15,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 16,
+      "piece_count": 2,
+      "total_used_mm": 5054,
+      "scrap_mm": 446,
+      "cuts": [3100, 1950]
+    },
+    {
+      "bar_index": 17,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 18,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 19,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 20,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 21,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 22,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 23,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 24,
+      "piece_count": 2,
+      "total_used_mm": 5304,
+      "scrap_mm": 196,
+      "cuts": [2650, 2650]
+    },
+    {
+      "bar_index": 25,
+      "piece_count": 3,
+      "total_used_mm": 5328,
+      "scrap_mm": 172,
+      "cuts": [1950, 1950, 1420]
+    },
+    {
+      "bar_index": 26,
+      "piece_count": 3,
+      "total_used_mm": 5328,
+      "scrap_mm": 172,
+      "cuts": [1950, 1950, 1420]
+    },
+    {
+      "bar_index": 27,
+      "piece_count": 3,
+      "total_used_mm": 5328,
+      "scrap_mm": 172,
+      "cuts": [1950, 1950, 1420]
+    },
+    {
+      "bar_index": 28,
+      "piece_count": 3,
+      "total_used_mm": 5328,
+      "scrap_mm": 172,
+      "cuts": [1950, 1950, 1420]
+    },
+    {
+      "bar_index": 29,
+      "piece_count": 4,
+      "total_used_mm": 5162,
+      "scrap_mm": 338,
+      "cuts": [1420, 1420, 1420, 890]
+    },
+    {
+      "bar_index": 30,
+      "piece_count": 4,
+      "total_used_mm": 5162,
+      "scrap_mm": 338,
+      "cuts": [1420, 1420, 1420, 890]
+    },
+    {
+      "bar_index": 31,
+      "piece_count": 4,
+      "total_used_mm": 5162,
+      "scrap_mm": 338,
+      "cuts": [1420, 1420, 1420, 890]
+    },
+    {
+      "bar_index": 32,
+      "piece_count": 4,
+      "total_used_mm": 5162,
+      "scrap_mm": 338,
+      "cuts": [1420, 1420, 1420, 890]
+    },
+    {
+      "bar_index": 33,
+      "piece_count": 4,
+      "total_used_mm": 5162,
+      "scrap_mm": 338,
+      "cuts": [1420, 1420, 1420, 890]
+    },
+    {
+      "bar_index": 34,
+      "piece_count": 5,
+      "total_used_mm": 4996,
+      "scrap_mm": 504,
+      "cuts": [1420, 890, 890, 890, 890]
+    },
+    {
+      "bar_index": 35,
+      "piece_count": 6,
+      "total_used_mm": 5360,
+      "scrap_mm": 140,
+      "cuts": [890, 890, 890, 890, 890, 890]
+    },
+    {
+      "bar_index": 36,
+      "piece_count": 6,
+      "total_used_mm": 5360,
+      "scrap_mm": 140,
+      "cuts": [890, 890, 890, 890, 890, 890]
+    },
+    {
+      "bar_index": 37,
+      "piece_count": 6,
+      "total_used_mm": 5360,
+      "scrap_mm": 140,
+      "cuts": [890, 890, 890, 890, 890, 890]
+    },
+    {
+      "bar_index": 38,
+      "piece_count": 3,
+      "total_used_mm": 2678,
+      "scrap_mm": 2822,
+      "cuts": [890, 890, 890]
+    }
+  ]
+}

@@ -6,11 +6,14 @@
 
 load "core/numerical_kernel.ring"
 load "core/tensor_kernel.ring"
+load "core/scenario_engine.ring"
 load "problems/cutting_stock_1d.ring"
 load "solvers/heuristic_solver.ring"
 load "solvers/genetic_solver.ring"
 load "io/data_loader.ring"
 load "io/plan_exporter.ring"
+load "io/decision_reporter.ring"
+load "modeler/model.ring"
 
 /*
 * Function: madaropt_version

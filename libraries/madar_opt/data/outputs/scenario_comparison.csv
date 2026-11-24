@@ -1,0 +1,5 @@
+Scenario_ID,Name,Supplier,Stock_mm,Unit_Price_USD,Bars_Used,Total_Waste_mm,Waste_Percent,Total_Cost_USD,Cost_Delta_USD,Savings_Percent,Latency_ms,Status
+SCN_STD_6000,'Standard Local 6000mm (Baseline)','Local Extrusion Plant A',6000,45,34,10100,4.95,1530,0,0,5.34,BASELINE
+SCN_LONG_6500,'Custom Mill Long 6500mm','Regional Mill Direct',6500,51,33,20600,9.60,1683,153,-10,3.33,Alternative
+SCN_SHORT_5500,'Economy Off-the-Shelf 5500mm','Distributor Warehouse B',5500,39.50,38,15100,7.22,1501,-29,1.90,3.81,RECOMMENDED_WINNER
+SCN_ROUGH_KERF_6000,'Maintenance Contingency (Kerf 6mm)','Local Extrusion Plant A',6000,45,34,10100,4.95,1530,0,0,3.88,BASELINE

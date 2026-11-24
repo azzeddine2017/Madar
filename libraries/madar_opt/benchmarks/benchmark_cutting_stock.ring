@@ -50,7 +50,7 @@ func main() {
     # --- Benchmark 0: Naive Sequential First-Fit (Traditional Manual Cutting) ---
     nStartNs = nanotime()
     oSolverHeuristic = new HeuristicCuttingSolver
-    aResNaive = oSolverHeuristic.solveBFD(oProblem)
+    aResNaive = oSolverHeuristic.solveFFD(oProblem)
     nTimeNaive_us = (nanotime() - nStartNs) / 1000.0
     nTimeNaive_ms = nTimeNaive_us / 1000.0
 
