@@ -1,5 +1,8 @@
 aAllPackagesInfo = [
 	:stdlib = 	[
 		"ringenv"
+	],
+	:naturallib = 	[
+
 	]
 ]
